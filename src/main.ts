@@ -1,4 +1,6 @@
 import './style.css';
+import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { Application } from 'pixi.js';
 import { Sfx } from './audio/Sfx';
 import poolData from './data/players.json';
@@ -18,7 +20,19 @@ import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 import { KitEditor } from './ui/KitEditor';
 
+/** Native-only niceties: dark status bar over the pitch. Nothing here matters on the web. */
+async function nativeSetup(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await StatusBar.setStyle({ style: Style.Dark });
+    if (Capacitor.getPlatform() === 'android') await StatusBar.setBackgroundColor({ color: '#0d2416' });
+  } catch {
+    /* plugin missing or unsupported: ignore */
+  }
+}
+
 async function boot(): Promise<void> {
+  void nativeSetup();
   const app = new Application();
   await app.init({
     resizeTo: window,

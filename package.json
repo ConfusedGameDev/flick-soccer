@@ -12,9 +12,16 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/status-bar": "^8.0.4",
     "pixi.js": "^8.22.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "typescript": "^5.9.3",
     "vite": "^8.3.3",
     "vitest": "^5.0.3"
