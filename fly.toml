@@ -1,6 +1,6 @@
 # Fly.io app for the match server (server/). Deploy: `fly deploy` from the repo root.
 app = "flick-soccer-match"
-primary_region = "qro"
+primary_region = "dfw"
 
 [build]
   dockerfile = "server/Dockerfile"
