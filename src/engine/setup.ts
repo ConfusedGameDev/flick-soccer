@@ -1,48 +1,39 @@
-import type { MatchState, PlayerState, Team, TeamMeta, Vec2 } from './types';
 import { PITCH_L, PITCH_W } from './pitch';
+import { defaultSquad, stats, type Squad } from './pool';
+import type { MatchState, PlayerState, Team, TeamMeta, Vec2 } from './types';
 
-// 4-4-2 as (x, distance from own goal line), spread over the whole pitch so a
-// pass chain can progress toward the far goal: forwards start deep in the
-// opponent's half. The rows are offset in x so the mirrored away team's discs
-// interleave with ours instead of landing on top of them. Shirt numbers follow
-// the array order.
-const FORMATION_442: Vec2[] = [
-  { x: PITCH_W / 2, y: 3 }, // GK
-  { x: 10, y: 20 },
-  { x: 26, y: 20 },
-  { x: 42, y: 20 },
-  { x: 58, y: 20 },
-  { x: 14, y: 48 },
-  { x: 30, y: 48 },
-  { x: 46, y: 48 },
-  { x: 62, y: 48 },
-  { x: 22, y: 78 },
-  { x: 46, y: 78 },
-];
+/** Mirror a home-frame position for the away side, which defends the far goal. */
+export const mirror = (p: Vec2): Vec2 => ({ x: PITCH_W - p.x, y: PITCH_L - p.y });
 
-/** Kickoff position of a team's i-th player (0 = keeper). Away defends the far goal, so it is mirrored. */
-export function kickoffPosition(team: Team, i: number): Vec2 {
-  const slot = FORMATION_442[i];
-  return team === 'home' ? { ...slot } : { x: PITCH_W - slot.x, y: PITCH_L - slot.y };
+/** World-frame kickoff spot of a squad's i-th player. */
+export function kickoffPosition(team: Team, i: number, squad: Squad = defaultSquad(team)): Vec2 {
+  const p = squad.positions[i];
+  return team === 'home' ? { ...p } : mirror(p);
 }
 
-function placeTeam(team: Team, firstId: number): PlayerState[] {
-  return FORMATION_442.map((_, i) => ({
-    id: firstId + i,
-    team,
-    number: i + 1,
-    keeper: i === 0,
-    pos: kickoffPosition(team, i),
-  }));
+function placeTeam(team: Team, firstId: number, squad: Squad): PlayerState[] {
+  return squad.players.map((p, i) => {
+    const kickoff = kickoffPosition(team, i, squad);
+    return {
+      id: firstId + i,
+      team,
+      number: i + 1,
+      keeper: p.position === 'GK' && i === squad.players.findIndex((q) => q.position === 'GK'),
+      name: p.short,
+      stats: stats(p),
+      kickoff,
+      pos: { ...kickoff },
+    };
+  });
 }
 
 export const keeperOf = (players: readonly PlayerState[], team: Team): PlayerState =>
   players.find((p) => p.team === team && p.keeper)!;
 
-/** 11 v 11 in fixed formations, ball with the home keeper, home attacking first. */
-export function initialMatch(kickoff: Team = 'home'): MatchState {
-  const home = placeTeam('home', 0);
-  const away = placeTeam('away', home.length);
+/** 11 v 11 at their kickoff spots, ball with the kicking-off keeper. Default squads are all-3s baseline players. */
+export function initialMatch(kickoff: Team = 'home', squads?: Record<Team, Squad>): MatchState {
+  const home = placeTeam('home', 0, squads?.home ?? defaultSquad('home'));
+  const away = placeTeam('away', home.length, squads?.away ?? defaultSquad('away'));
   const players = [...home, ...away];
   const keeper = keeperOf(players, kickoff);
   return {

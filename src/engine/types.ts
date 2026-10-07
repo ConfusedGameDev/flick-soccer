@@ -8,6 +8,14 @@ export interface Vec2 {
 
 export type Team = 'home' | 'away';
 
+export interface PlayerStats {
+  pass: number;
+  shot: number;
+  speed: number;
+  tackle: number;
+  keeping: number;
+}
+
 export interface PlayerState {
   /** Unique across both teams; also the index into MatchState.players. */
   id: number;
@@ -15,6 +23,11 @@ export interface PlayerState {
   /** Shirt number, 1..11. */
   number: number;
   keeper: boolean;
+  /** Short display name (surname). */
+  name: string;
+  stats: PlayerStats;
+  /** Where this player stands at a kickoff (world frame). */
+  kickoff: Vec2;
   pos: Vec2;
 }
 

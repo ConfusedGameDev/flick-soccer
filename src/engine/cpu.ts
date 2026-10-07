@@ -13,7 +13,7 @@ import {
 } from './pitch';
 import { BOOSTER_INFO, rollDice } from './dice';
 import { mulberry32 } from './rng';
-import { findReceiver, goalLineCrossing, passTarget, resolveTurn } from './sim';
+import { findReceiver, goalLineCrossing, kickRange, passTarget, resolveTurn } from './sim';
 import { keeperOf } from './setup';
 import type { Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
 import { add, clamp, dist, normalize, scale, sub } from './vec';
@@ -112,18 +112,19 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
       for (const dx of [-GOAL_W * 0.38, 0, GOAL_W * 0.38]) {
         const target = { x: PITCH_W / 2 + dx, y: goalY };
         // A shot must reach the line to count, so never offer one from out of range.
-        if (dist(ball, target) > SHOT_RANGE) continue;
+        if (dist(ball, target) > SHOT_RANGE * kickRange(state.players[carrier], 'shot')) continue;
         options.push({ flick: aim(carrier, ball, target, 1, 1), weight: 6 + 40 / (1 + dist(ball, target) / 10), next: null });
       }
     }
+    const reach = PASS_RANGE * kickRange(state.players[carrier], 'pass');
     for (const m of mates) {
       if (used.has(m.id) || m.keeper) continue;
       const d = dist(ball, m.pos);
-      if (d > PASS_RANGE || d < 3) continue;
+      if (d > reach || d < 3) continue;
       // Slight error so the sample space isn't just "perfect passes".
       const target = add(m.pos, { x: (rng() - 0.5) * 2, y: (rng() - 0.5) * 2 });
-      const flick = aim(carrier, ball, target, PASS_RANGE);
-      const { to, out } = passTarget(ball, flick, 'pass');
+      const flick = aim(carrier, ball, target, reach);
+      const { to, out } = passTarget(ball, flick, 'pass', kickRange(state.players[carrier], 'pass'));
       const receiver = out ? null : findReceiver(live.players, team, to, carrier);
       if (!receiver) continue;
       const advance = Math.abs(goalY - ball.y) - Math.abs(goalY - receiver.pos.y);
@@ -236,7 +237,7 @@ function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: bo
     if (f.playerId !== carrier) continue; // a run
     const cross = goalLineCrossing(team, ball, f.dir);
     const shot = !!cross && Math.abs(cross.x - PITCH_W / 2) <= GOAL_W / 2 && inAttackingThird(team, ball);
-    const { to, out } = passTarget(ball, f, shot ? 'shot' : 'pass');
+    const { to, out } = passTarget(ball, f, shot ? 'shot' : 'pass', kickRange(state.players[carrier], shot ? 'shot' : 'pass'));
     segs.push({ a: ball, b: to, shot });
     if (shot) break;
     const receiver = out ? null : findReceiver(state.players, team, to, carrier);

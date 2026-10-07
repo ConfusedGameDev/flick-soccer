@@ -45,8 +45,9 @@ import {
   targetGoalY,
 } from './pitch';
 import { DICE_BLOCK_TURNS, MAX_BOOSTERS, MAX_DICE_BONUS, rollDice } from './dice';
+import { statFactor, statOdds } from './pool';
 import { mulberry32 } from './rng';
-import { keeperOf, kickoffPosition } from './setup';
+import { keeperOf } from './setup';
 import { add, dist, lerp, normalize, scale } from './vec';
 
 // ---------------------------------------------------------------------------
@@ -73,20 +74,29 @@ export function flickKind(state: MatchState, team: Team, role: 'attack' | 'defen
   return cross && inGoalMouth(cross.x) && inAttackingThird(team, state.ball) ? 'shot' : 'pass';
 }
 
-/** Where a pass or shot from `from` lands, clipped to the pitch. `out` is true if it crossed a line. */
-export function passTarget(from: Vec2, flick: Flick, kind: 'pass' | 'shot' = 'pass'): { to: Vec2; out: boolean } {
-  const range = kind === 'shot' ? SHOT_RANGE : PASS_RANGE;
+/**
+ * Where a pass or shot from `from` lands, clipped to the pitch. `out` is true
+ * if it crossed a line. `rangeMul` is the kicker's pass/shot stat factor.
+ */
+export function passTarget(from: Vec2, flick: Flick, kind: 'pass' | 'shot' = 'pass', rangeMul = 1): { to: Vec2; out: boolean } {
+  const range = (kind === 'shot' ? SHOT_RANGE : PASS_RANGE) * rangeMul;
   const raw = add(from, scale(normalize(flick.dir), flick.strength * range));
   const out = !inPitch(raw);
   return { to: out ? clipToEdge(from, raw) : raw, out };
 }
 
-/** Where a slide, run or dive from `from` ends, clipped to the pitch. `rangeMul` is the longer-slide booster. */
+/** Where a slide, run or dive from `from` ends, clipped to the pitch. `rangeMul` combines stat and booster factors. */
 export function moveTarget(from: Vec2, flick: Flick, kind: 'slide' | 'run' | 'dive', rangeMul = 1): Vec2 {
   const base = kind === 'slide' ? SLIDE_RANGE : kind === 'run' ? RUN_RANGE : DIVE_RANGE;
-  const range = kind === 'run' ? base : base * rangeMul;
-  return clampToPitch(add(from, scale(normalize(flick.dir), flick.strength * range)));
+  return clampToPitch(add(from, scale(normalize(flick.dir), flick.strength * base * rangeMul)));
 }
+
+/** Range factor for a player's pass or shot. */
+export const kickRange = (p: PlayerState, kind: 'pass' | 'shot'): number => statFactor(kind === 'shot' ? p.stats.shot : p.stats.pass);
+
+/** Range factor for a player's slide, run or dive (before boosters). */
+export const moveRange = (p: PlayerState, kind: 'slide' | 'run' | 'dive'): number =>
+  statFactor(kind === 'run' ? p.stats.speed : kind === 'slide' ? p.stats.tackle : p.stats.keeping);
 
 /** Bank a roll's side effects (booster pack, dice block) into a team's meta. */
 function bankRoll(m: TeamMeta, roll: DiceRoll): void {
@@ -159,6 +169,8 @@ interface Move {
 
 interface BallSegment {
   shot: boolean;
+  /** Who kicked it; their pass/shot stat resists interception. */
+  kicker: PlayerState;
   from: Vec2;
   to: Vec2;
   duration: number;
@@ -250,8 +262,9 @@ export function resolveTurn(
       }
     }
   }
-  const speedMul = (team: Team) => (mods[team].booster === 'double-speed' ? 2 : 1);
-  const rangeMul = (team: Team) => (mods[team].booster === 'longer-slide' ? 1.5 : 1);
+  const speedMul = (p: PlayerState) => (mods[p.team].booster === 'double-speed' ? 2 : 1) * statFactor(p.stats.speed);
+  const rangeMul = (p: PlayerState, kind: 'slide' | 'run' | 'dive') =>
+    (kind !== 'run' && mods[p.team].booster === 'longer-slide' ? 1.5 : 1) * moveRange(p, kind);
   const superKeeper = mods[defenseTeam].booster === 'super-keeper';
   let unstoppableLeft = mods[attackTeam].booster === 'unstoppable-pass';
 
@@ -266,8 +279,8 @@ export function resolveTurn(
       events.push({ t, type: 'invalid-flick', playerId: p.id, reason: 'already moving' });
       return;
     }
-    const to = moveTarget(p.pos, f, kind, rangeMul(p.team));
-    const speed = (kind === 'slide' ? SLIDE_SPEED : kind === 'run' ? RUN_SPEED : DIVE_SPEED) * speedMul(p.team);
+    const to = moveTarget(p.pos, f, kind, rangeMul(p, kind));
+    const speed = (kind === 'slide' ? SLIDE_SPEED : kind === 'run' ? RUN_SPEED : DIVE_SPEED) * speedMul(p);
     moves.push({ idx: p.id, from: { ...p.pos }, to, duration: dist(p.pos, to) / speed });
     moving.add(p.id);
     events.push({ t, type: kind, playerId: p.id });
@@ -296,7 +309,7 @@ export function resolveTurn(
       addMove(byId(f.playerId), f, 'run');
     } else {
       chain.push(f);
-      const { to, out } = passTarget(projected.ball, f, kind as 'pass' | 'shot');
+      const { to, out } = passTarget(projected.ball, f, kind as 'pass' | 'shot', kickRange(byId(f.playerId), kind as 'pass' | 'shot'));
       const receiver = kind === 'pass' && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
       projected = receiver
         ? { ...projected, ball: { ...receiver.pos }, possession: { team: attackTeam, playerId: receiver.id } }
@@ -339,11 +352,12 @@ export function resolveTurn(
       const live: MatchState = { ...state, players, ball, possession };
       const kind = flickKind(live, attackTeam, 'attack', f);
       const shot = kind === 'shot';
-      const { to, out } = passTarget(from, f, shot ? 'shot' : 'pass');
+      const kicker = byId(f.playerId);
+      const { to, out } = passTarget(from, f, shot ? 'shot' : 'pass', kickRange(kicker, shot ? 'shot' : 'pass'));
       const speed = shot ? SHOT_SPEED : BALL_SPEED;
       const unstoppable = !shot && unstoppableLeft;
       if (unstoppable) unstoppableLeft = false;
-      seg = { shot, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable };
+      seg = { shot, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable };
       events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
@@ -366,11 +380,14 @@ export function resolveTurn(
       let stopped = false;
       for (const p of players) {
         if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
-        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) : TACKLE_REACH;
+        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * statFactor(p.stats.keeping) : TACKLE_REACH;
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
         let chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
         chance += mods[defenseTeam].bonus - mods[attackTeam].bonus;
+        // Stats: the stopper's tackle/keeping against the kicker's pass/shot.
+        chance += statOdds(p.keeper ? p.stats.keeping : p.stats.tackle);
+        chance -= statOdds(seg.shot ? seg.kicker.stats.shot : seg.kicker.stats.pass);
         if (p.keeper && superKeeper) chance += 0.25;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {
@@ -530,5 +547,5 @@ export function continueMatch(state: MatchState): MatchState {
 }
 
 function resetFormations(players: PlayerState[]): void {
-  for (const p of players) p.pos = kickoffPosition(p.team, p.number - 1);
+  for (const p of players) p.pos = { ...p.kickoff };
 }

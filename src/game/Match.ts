@@ -1,6 +1,7 @@
 import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, kickoffRoll } from '../engine/dice';
 import { other } from '../engine/pitch';
+import { FORMATION_NAMES, cpuSquad, defaultSquad, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
@@ -9,12 +10,16 @@ import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import { DiceView } from '../ui/DiceView';
+import type { Draft } from '../ui/Draft';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
 import { CpuController, teamName, type PlanController } from './controller';
+import type { FormationEditor } from './FormationEditor';
 
 export type Phase =
   | 'MENU'
+  | 'DRAFT'
+  | 'FORMATION'
   | 'KICKOFF'
   | 'PLAN_ATTACK'
   | 'HANDOFF'
@@ -26,11 +31,15 @@ export type Phase =
   | 'OVER';
 
 export type Mode = 'hotseat' | 'cpu-easy' | 'cpu-normal';
+export type Setup = 'quick' | 'draft';
 
 export interface MatchDeps {
   hud: Hud;
   duel: Duel;
   dice: DiceView;
+  draft: Draft;
+  editor: FormationEditor;
+  pool: readonly PoolPlayer[];
   pieces: PiecesView;
   preview: PlanPreview;
   player: TimelinePlayer;
@@ -40,11 +49,12 @@ export interface MatchDeps {
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
 
-/** Drives a match: menu → kickoff dice → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
+/** Drives a match: menu → teams → kickoff dice → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
 export class Match {
   state: MatchState = initialMatch();
   phase: Phase = 'MENU';
   mode: Mode = 'hotseat';
+  squads: Record<Team, Squad> = { home: defaultSquad('home'), away: defaultSquad('away') };
   /** Per-match seed; each turn derives its own so a replay with the same plans matches exactly. */
   seed = newSeed();
   lastResult: TurnResult | null = null;
@@ -57,6 +67,7 @@ export class Match {
   async start(): Promise<void> {
     for (;;) {
       await this.menu();
+      await this.teams();
       await this.kickoff();
       while (this.state.status !== 'full-time') await this.runTurn();
       await this.fullTime();
@@ -92,16 +103,17 @@ export class Match {
     this.setPhase('MENU');
     this.state = initialMatch();
     this.seed = newSeed();
+    this.deps.pieces.rebuild(this.state.players);
     this.snap();
-    this.deps.hud.setStatus('Flick Soccer', '');
-    this.deps.hud.setPlanning(null);
-    this.deps.hud.setScoreboard(this.state);
-    this.mode = await this.deps.hud.showMenu<Mode>('Flick Soccer', 'Pick a mode', [
+    const { local, hud } = this.deps;
+    hud.setStatus('Flick Soccer', '');
+    hud.setPlanning(null);
+    hud.setScoreboard(this.state);
+    this.mode = await hud.showMenu<Mode>('Flick Soccer', 'Pick a mode', [
       { key: 'hotseat', label: '2 players · same device' },
       { key: 'cpu-easy', label: 'vs CPU · easy' },
       { key: 'cpu-normal', label: 'vs CPU · normal' },
     ]);
-    const { local, hud } = this.deps;
     if (this.mode === 'hotseat') {
       this.controllers = { home: local, away: local };
     } else {
@@ -112,10 +124,41 @@ export class Match {
     }
   }
 
+  /** Quick match uses baseline squads; draft lets each human pick and arrange a team. The CPU auto-picks. */
+  private async teams(): Promise<void> {
+    const { hud, draft, editor, pool } = this.deps;
+    const setup = await hud.showMenu<Setup>('Teams', 'Draft from the Liga MX pool, or play with plain squads', [
+      { key: 'draft', label: 'Draft teams (100 points)' },
+      { key: 'quick', label: 'Quick match' },
+    ]);
+    if (setup === 'quick') {
+      this.squads = { home: defaultSquad('home'), away: defaultSquad('away') };
+      return;
+    }
+    for (const team of ['home', 'away'] as const) {
+      const seed = (this.seed ^ (team === 'home' ? 0x1234 : 0x5678)) >>> 0;
+      if (this.isCpu(team)) {
+        const formation = FORMATION_NAMES[seed % FORMATION_NAMES.length];
+        this.squads[team] = cpuSquad(pool, formation, seed);
+        continue;
+      }
+      if (this.hotSeat) {
+        await hud.showCover(`${teamName(team)} draft`, `Hand the device to the ${teamName(team)} player.`, 'Start drafting');
+      }
+      this.setPhase('DRAFT');
+      const players = await draft.run(`${teamName(team)}: pick your eleven`, pool, seed);
+      this.setPhase('FORMATION');
+      this.squads[team] = await editor.run(`${teamName(team)}: set your formation`, players);
+    }
+  }
+
   /** Each side flicks a die; the higher roll attacks first. */
   private async kickoff(): Promise<void> {
     this.setPhase('KICKOFF');
-    const { dice, hud } = this.deps;
+    const { dice, hud, pieces } = this.deps;
+    this.state = initialMatch('home', this.squads);
+    pieces.rebuild(this.state.players);
+    this.snap();
     const k = kickoffRoll(mulberry32(this.seed ^ 0x2545f491));
     const again = k.rounds.length > 1 ? ' (ties rolled again)' : '';
     for (const team of ['home', 'away'] as const) {
@@ -130,7 +173,7 @@ export class Match {
         again: 'Tie! Roll again…',
       });
     }
-    this.state = initialMatch(k.winner);
+    this.state = initialMatch(k.winner, this.squads);
     this.snap();
     await hud.showCover(
       `${teamName(k.winner)} attack first`,
@@ -258,7 +301,7 @@ export class Match {
     const { hud } = this.deps;
     const who = (id: number) => {
       const p = this.state.players[id];
-      return `${teamName(p.team)} #${p.number}`;
+      return `${p.name} (${teamName(p.team)})`;
     };
     switch (e.type) {
       case 'goal':

@@ -2,7 +2,7 @@ import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
 import { MAX_FLICKS, PLAN_SECONDS } from '../engine/pitch';
 import { mulberry32 } from '../engine/rng';
-import { findReceiver, flickKind, moveTarget, passTarget } from '../engine/sim';
+import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget } from '../engine/sim';
 import type { Booster, DiceRoll, Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
 import type { PiecesView } from '../render/PiecesView';
@@ -158,13 +158,14 @@ export class LocalController implements PlanController {
     const kind = flickKind(s.projected, s.team, s.role, flick);
     if (kind === 'invalid') return { kind: 'pass', from, to: from, bad: true };
     if (flick.strength === 0) return { kind, from, to: from };
+    const player = s.state.players[id];
     if (kind === 'pass' || kind === 'shot') {
-      const { to, out } = passTarget(s.projected.ball, flick, kind);
+      const { to, out } = passTarget(s.projected.ball, flick, kind, kickRange(player, kind));
       if (kind === 'shot') return { kind, from: s.projected.ball, to, bad: !out };
       const receiver = out ? null : findReceiver(s.state.players, s.team, to, id);
       return { kind, from: s.projected.ball, to, receiver: receiver?.pos, bad: out || !receiver };
     }
-    const rangeMul = s.booster === 'longer-slide' && kind !== 'run' ? 1.5 : 1;
+    const rangeMul = (s.booster === 'longer-slide' && kind !== 'run' ? 1.5 : 1) * moveRange(player, kind);
     return { kind, from, to: moveTarget(from, flick, kind, rangeMul) };
   }
 

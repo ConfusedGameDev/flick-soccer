@@ -1,7 +1,10 @@
 import './style.css';
 import { Application } from 'pixi.js';
+import poolData from './data/players.json';
+import type { PoolPlayer } from './engine/pool';
 import { initialMatch } from './engine/setup';
 import { LocalController } from './game/controller';
+import { FormationEditor } from './game/FormationEditor';
 import { Match } from './game/Match';
 import { FlickGesture } from './input/FlickGesture';
 import { PiecesView } from './render/PiecesView';
@@ -9,6 +12,7 @@ import { PitchView } from './render/PitchView';
 import { PlanPreview } from './render/PlanPreview';
 import { TimelinePlayer } from './render/TimelinePlayer';
 import { DiceView } from './ui/DiceView';
+import { Draft } from './ui/Draft';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 
@@ -27,10 +31,12 @@ async function boot(): Promise<void> {
   const hud = new Hud(overlay);
   const duel = new Duel(overlay);
   const dice = new DiceView(overlay);
+  const draft = new Draft(overlay);
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
+  const pool = poolData as PoolPlayer[];
 
-  // The discs only need the fixed team/number layout, which initialMatch() always gives.
+  // The discs are rebuilt whenever squads change; start with the baseline layout.
   const pieces = new PiecesView(pitch, initialMatch().players);
   let match: Match;
   const player = new TimelinePlayer(
@@ -38,7 +44,8 @@ async function boot(): Promise<void> {
     (e) => match.onEvent(e),
   );
   const local = new LocalController({ hud, preview, pieces, dice, rollSeed: (s, team) => match.rollSeed(s, team) });
-  match = new Match({ hud, duel, dice, pieces, preview, player, local });
+  const editor = new FormationEditor({ hud, pitch, pieces, canvas: app.canvas });
+  match = new Match({ hud, duel, dice, draft, editor, pool, pieces, preview, player, local });
   const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
   local.attachGesture(gesture);
 
@@ -46,8 +53,8 @@ async function boot(): Promise<void> {
 
   const layout = () => {
     pitch.layout(app.screen.width, app.screen.height);
-    pieces.redraw(match.state.players);
-    if (!player.playing) {
+    pieces.redraw();
+    if (!player.playing && match.phase !== 'FORMATION') {
       pieces.setPositions(
         match.state.players.map((p) => p.pos),
         match.state.ball,

@@ -108,6 +108,18 @@ export class Hud {
     }
   }
 
+  /** Generic buttons in the bottom-left slot (formation presets etc.). */
+  setToolbar(items: { label: string; active?: boolean; onClick: () => void }[]): void {
+    this.extras.innerHTML = '';
+    for (const it of items) {
+      const b = document.createElement('button');
+      b.textContent = it.label;
+      b.classList.toggle('armed', !!it.active);
+      b.addEventListener('click', it.onClick);
+      this.extras.appendChild(b);
+    }
+  }
+
   /** Dice and booster controls during planning; pass null to clear. */
   setExtras(spec: ExtrasSpec | null): void {
     this.extras.innerHTML = '';
