@@ -4,15 +4,14 @@ import poolData from './data/players.json';
 import type { PoolPlayer } from './engine/pool';
 import { initialMatch } from './engine/setup';
 import { LocalController } from './game/controller';
-import { FormationEditor } from './game/FormationEditor';
 import { Match } from './game/Match';
+import { TeamBuilder } from './game/TeamBuilder';
 import { FlickGesture } from './input/FlickGesture';
 import { PiecesView } from './render/PiecesView';
 import { PitchView } from './render/PitchView';
 import { PlanPreview } from './render/PlanPreview';
 import { TimelinePlayer } from './render/TimelinePlayer';
 import { DiceView } from './ui/DiceView';
-import { Draft } from './ui/Draft';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 
@@ -31,7 +30,6 @@ async function boot(): Promise<void> {
   const hud = new Hud(overlay);
   const duel = new Duel(overlay);
   const dice = new DiceView(overlay);
-  const draft = new Draft(overlay);
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
   const pool = poolData as PoolPlayer[];
@@ -44,23 +42,22 @@ async function boot(): Promise<void> {
     (e) => match.onEvent(e),
   );
   const local = new LocalController({ hud, preview, pieces, dice, rollSeed: (s, team) => match.rollSeed(s, team) });
-  const editor = new FormationEditor({ hud, pitch, pieces, canvas: app.canvas });
-  match = new Match({ hud, duel, dice, draft, editor, pool, pieces, preview, player, local });
-  const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
-  local.attachGesture(gesture);
-
-  app.stage.addChild(pitch.root, pieces.root, preview.root);
-
   const layout = () => {
     pitch.layout(app.screen.width, app.screen.height);
     pieces.redraw();
-    if (!player.playing && match.phase !== 'FORMATION') {
+    if (!player.playing && match.phase !== 'BUILD') {
       pieces.setPositions(
         match.state.players.map((p) => p.pos),
         match.state.ball,
       );
     }
   };
+  const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
+  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local });
+  const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
+  local.attachGesture(gesture);
+
+  app.stage.addChild(pitch.root, pieces.root, preview.root);
   app.renderer.on('resize', layout);
   layout();
 

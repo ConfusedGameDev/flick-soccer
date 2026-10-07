@@ -274,14 +274,51 @@ button:disabled {
   font-weight: 700;
 }
 
-/* Draft screen */
-.draft {
+/* Team builder: the pool panel sits beside the pitch (landscape) or under it (portrait). */
+.draft-panel {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44vh;
   display: flex;
   flex-direction: column;
   background: var(--ink);
   color: var(--cream);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  z-index: 2;
+}
+
+.draft-panel.side {
+  top: 0;
+  right: auto;
+  height: auto;
+  width: min(440px, 46vw);
+  border-top: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* The bottom bar must stay clear of the panel. */
+#overlay.building .bar.bottom {
+  position: fixed;
+  right: 0;
+  bottom: 44vh;
+  left: 0;
+}
+
+#overlay.building .draft-panel.side ~ .bar.bottom,
+#overlay.building:has(.draft-panel.side) .bar.bottom {
+  bottom: 0;
+  left: min(440px, 46vw);
+}
+
+#overlay.building .bar.top {
+  position: relative;
+  z-index: 3;
+}
+
+#overlay.building:has(.draft-panel.side) .bar.top {
+  margin-left: min(440px, 46vw);
 }
 
 .draft-head {
@@ -289,11 +326,15 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: max(16px, env(safe-area-inset-top)) 16px 8px;
+  padding: 10px 12px 6px;
+}
+
+.draft-panel.side .draft-head {
+  padding-top: max(12px, env(safe-area-inset-top));
 }
 
 .draft-title {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 800;
 }
 
@@ -428,12 +469,20 @@ button:disabled {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  padding: 10px 16px max(12px, env(safe-area-inset-bottom));
+  padding: 8px 12px max(10px, env(safe-area-inset-bottom));
   background: rgba(0, 0, 0, 0.3);
 }
 
-@media (max-width: 480px) {
-  .draft-row .stats {
+.draft-panel .draft-row .stats {
+  display: none;
+}
+
+.draft-panel.side .draft-row .stats {
+  display: flex;
+}
+
+@media (max-width: 1100px) {
+  .draft-panel.side .draft-row .stats {
     display: none;
   }
 }

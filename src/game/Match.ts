@@ -10,16 +10,14 @@ import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import { DiceView } from '../ui/DiceView';
-import type { Draft } from '../ui/Draft';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
 import { CpuController, teamName, type PlanController } from './controller';
-import type { FormationEditor } from './FormationEditor';
+import type { TeamBuilder } from './TeamBuilder';
 
 export type Phase =
   | 'MENU'
-  | 'DRAFT'
-  | 'FORMATION'
+  | 'BUILD'
   | 'KICKOFF'
   | 'PLAN_ATTACK'
   | 'HANDOFF'
@@ -37,8 +35,7 @@ export interface MatchDeps {
   hud: Hud;
   duel: Duel;
   dice: DiceView;
-  draft: Draft;
-  editor: FormationEditor;
+  builder: TeamBuilder;
   pool: readonly PoolPlayer[];
   pieces: PiecesView;
   preview: PlanPreview;
@@ -126,7 +123,7 @@ export class Match {
 
   /** Quick match uses baseline squads; draft lets each human pick and arrange a team. The CPU auto-picks. */
   private async teams(): Promise<void> {
-    const { hud, draft, editor, pool } = this.deps;
+    const { hud, builder, pool } = this.deps;
     const setup = await hud.showMenu<Setup>('Teams', 'Draft from the Liga MX pool, or play with plain squads', [
       { key: 'draft', label: 'Draft teams (100 points)' },
       { key: 'quick', label: 'Quick match' },
@@ -145,10 +142,8 @@ export class Match {
       if (this.hotSeat) {
         await hud.showCover(`${teamName(team)} draft`, `Hand the device to the ${teamName(team)} player.`, 'Start drafting');
       }
-      this.setPhase('DRAFT');
-      const players = await draft.run(`${teamName(team)}: pick your eleven`, pool, seed);
-      this.setPhase('FORMATION');
-      this.squads[team] = await editor.run(`${teamName(team)}: set your formation`, players);
+      this.setPhase('BUILD');
+      this.squads[team] = await builder.run(`${teamName(team)}: build your team`, pool, seed);
     }
   }
 

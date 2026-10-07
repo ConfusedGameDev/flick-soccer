@@ -15,6 +15,8 @@ export class PitchView {
   private readonly g = new Graphics();
   /** Pixels per meter. */
   scale = 1;
+  /** Screen areas taken by overlays (e.g. the team builder panel); the pitch fits in what's left. */
+  insets = { left: 0, right: 0, top: 0, bottom: 0 };
   private ox = 0;
   private oy = 0;
 
@@ -23,10 +25,13 @@ export class PitchView {
   }
 
   layout(width: number, height: number): void {
-    const s = Math.min((width - PAD_X * 2) / PITCH_W, (height - PAD_TOP - PAD_BOTTOM) / PITCH_L);
+    const { left, right, top, bottom } = this.insets;
+    const availW = width - left - right - PAD_X * 2;
+    const availH = height - top - bottom - PAD_TOP - PAD_BOTTOM;
+    const s = Math.max(0.5, Math.min(availW / PITCH_W, availH / PITCH_L));
     this.scale = s;
-    this.ox = (width - PITCH_W * s) / 2;
-    this.oy = PAD_TOP + (height - PAD_TOP - PAD_BOTTOM - PITCH_L * s) / 2;
+    this.ox = left + PAD_X + (availW - PITCH_W * s) / 2;
+    this.oy = top + PAD_TOP + (availH - PITCH_L * s) / 2;
     this.draw();
   }
 

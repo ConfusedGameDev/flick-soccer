@@ -111,7 +111,7 @@ Unstoppable pass and super goalkeeper never conflict, because one affects passes
 - **Player pool:** 52 real Liga MX players, 26 classic (1960–1987) and 26 modern (1988–2007). Real names are used for this proof of concept.
 - **Stats (proposed):** Pass, Shot, Speed, Tackle and Keeping, each rated 1–5. Cost is derived from the stats.
 - **Draft (proposed):** a budget of 100 points to buy exactly 11 players, at least one of whom is a goalkeeper. Both teams draft from the full pool on their own, so the two teams can share players.
-- **Formation:** pick a preset (4-4-2, 4-3-3, 5-3-2), then drag players around within your own half.
+- **Formation:** picked and arranged on the same screen as the draft. Each pick lands on the next free slot of the chosen preset (4-4-2, 4-3-3, 5-3-2); drag players anywhere on the pitch or tap two to swap while you keep picking.
 - **Kits:** 1990-era América, Chivas, Pumas and Cruz Azul, plus custom kits (§6.4).
 - The player pool lives in a data file (JSON) so it can be edited without touching code.
 

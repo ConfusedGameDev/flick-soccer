@@ -25,6 +25,9 @@ export class PiecesView {
   private pieces: Piece[] = [];
   private players: readonly PlayerState[] = [];
   private readonly ball = new Graphics();
+  /** Dashed rings for unfilled formation slots (team builder). */
+  private readonly slotsG = new Graphics();
+  private slots: Vec2[] = [];
   private carrierId: number | null = null;
   private flickable = new Set<number>();
   private showNames = true;
@@ -33,8 +36,24 @@ export class PiecesView {
     private readonly pitch: PitchView,
     players: readonly PlayerState[],
   ) {
-    this.root.addChild(this.ball);
+    this.root.addChild(this.slotsG, this.ball);
     this.rebuild(players);
+  }
+
+  /** Show empty-slot markers at these world positions (empty list hides them). */
+  setSlots(positions: Vec2[]): void {
+    this.slots = positions;
+    this.redrawSlots();
+  }
+
+  private redrawSlots(): void {
+    const r = PLAYER_RADIUS_M * this.pitch.scale;
+    this.slotsG.clear();
+    for (const p of this.slots) {
+      const s = this.pitch.toScreen(p);
+      this.slotsG.circle(s.x, s.y, r).stroke({ width: 2, color: 0xffffff, alpha: 0.45 });
+      this.slotsG.circle(s.x, s.y, r * 0.25).fill({ color: 0xffffff, alpha: 0.45 });
+    }
   }
 
   /** Replace every disc (new squads). */
@@ -101,6 +120,7 @@ export class PiecesView {
     });
     this.ball.clear().circle(0, 0, BALL_RADIUS_M * this.pitch.scale).fill(0xffffff).stroke({ width: 1, color: 0x000000, alpha: 0.6 });
     this.redrawRings();
+    this.redrawSlots();
   }
 
   private redrawRings(): void {
