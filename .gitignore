@@ -1,0 +1,10 @@
+node_modules
+dist
+.DS_Store
+
+# Mobile signing material (Capacitor, added at M7)
+android/app/release.keystore
+ios/App/build
+*.p12
+*.mobileprovision
+AuthKey_*.p8

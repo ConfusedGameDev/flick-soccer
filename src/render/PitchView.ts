@@ -1,0 +1,81 @@
+import { Container, Graphics } from 'pixi.js';
+import { GOAL_W, PITCH_L, PITCH_W } from '../engine/pitch';
+import type { Vec2 } from '../engine/types';
+
+const PAD_X = 16;
+const PAD_TOP = 72;
+const PAD_BOTTOM = 84;
+
+/**
+ * Draws the pitch and owns the world (meters, +y up) to screen (pixels, +y down)
+ * mapping. Home defends the bottom edge of the screen.
+ */
+export class PitchView {
+  readonly root = new Container();
+  private readonly g = new Graphics();
+  /** Pixels per meter. */
+  scale = 1;
+  private ox = 0;
+  private oy = 0;
+
+  constructor() {
+    this.root.addChild(this.g);
+  }
+
+  layout(width: number, height: number): void {
+    const s = Math.min((width - PAD_X * 2) / PITCH_W, (height - PAD_TOP - PAD_BOTTOM) / PITCH_L);
+    this.scale = s;
+    this.ox = (width - PITCH_W * s) / 2;
+    this.oy = PAD_TOP + (height - PAD_TOP - PAD_BOTTOM - PITCH_L * s) / 2;
+    this.draw();
+  }
+
+  toScreen(p: Vec2): Vec2 {
+    return { x: this.ox + p.x * this.scale, y: this.oy + (PITCH_L - p.y) * this.scale };
+  }
+
+  toWorld(p: Vec2): Vec2 {
+    return { x: (p.x - this.ox) / this.scale, y: PITCH_L - (p.y - this.oy) / this.scale };
+  }
+
+  private draw(): void {
+    const g = this.g;
+    const s = this.scale;
+    const line = { width: Math.max(1, 0.15 * s), color: 0xffffff, alpha: 0.85 };
+    g.clear();
+
+    // Grass, with mowing stripes.
+    const tl = this.toScreen({ x: 0, y: PITCH_L });
+    g.rect(tl.x, tl.y, PITCH_W * s, PITCH_L * s).fill(0x2f7a3e);
+    for (let i = 0; i < 10; i += 2) {
+      const a = this.toScreen({ x: 0, y: PITCH_L - (i * PITCH_L) / 10 });
+      g.rect(a.x, a.y, PITCH_W * s, (PITCH_L / 10) * s).fill(0x2a6f38);
+    }
+
+    // Outline, halfway line, center circle and spot.
+    g.rect(tl.x, tl.y, PITCH_W * s, PITCH_L * s).stroke(line);
+    const hl = this.toScreen({ x: 0, y: PITCH_L / 2 });
+    const hr = this.toScreen({ x: PITCH_W, y: PITCH_L / 2 });
+    g.moveTo(hl.x, hl.y).lineTo(hr.x, hr.y).stroke(line);
+    const c = this.toScreen({ x: PITCH_W / 2, y: PITCH_L / 2 });
+    g.circle(c.x, c.y, 9.15 * s).stroke(line);
+    g.circle(c.x, c.y, 0.3 * s).fill(0xffffff);
+
+    // Boxes and goals at both ends.
+    for (const end of [0, PITCH_L]) {
+      const dir = end === 0 ? 1 : -1;
+      const box = (w: number, d: number) => {
+        const a = this.toScreen({ x: PITCH_W / 2 - w / 2, y: end + dir * d });
+        const b = this.toScreen({ x: PITCH_W / 2 + w / 2, y: end });
+        g.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)).stroke(line);
+      };
+      box(40.3, 16.5);
+      box(18.3, 5.5);
+      const goalA = this.toScreen({ x: PITCH_W / 2 - GOAL_W / 2, y: end });
+      const goalB = this.toScreen({ x: PITCH_W / 2 + GOAL_W / 2, y: end - dir * 2.4 });
+      g.rect(Math.min(goalA.x, goalB.x), Math.min(goalA.y, goalB.y), Math.abs(goalB.x - goalA.x), Math.abs(goalB.y - goalA.y))
+        .fill({ color: 0xffffff, alpha: 0.25 })
+        .stroke(line);
+    }
+  }
+}
