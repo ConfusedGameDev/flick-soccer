@@ -1,5 +1,5 @@
 import { Texture } from 'pixi.js';
-import { hex, type Kit } from './kits';
+import { hex, shirtColorAt, type Kit } from './kits';
 
 // Pixel-art player sprites painted from ASCII templates, in the spirit of
 // 16-bit football games: a 10x14 figure seen from slightly above. Letters:
@@ -82,20 +82,12 @@ const SKIN = '#d9a066';
 const HAIR = '#2b1d12';
 const BOOTS = '#1a1a1a';
 
+/** Jersey block of the templates: rows 5..8, all 10 columns. */
+const JERSEY_TOP = 5;
+const JERSEY_ROWS = 4;
+
 function jerseyColor(kit: Kit, x: number, y: number): string {
-  const second = (() => {
-    switch (kit.pattern) {
-      case 'stripes':
-        return (x >> 1) % 2 === 1;
-      case 'hoops':
-        return y % 2 === 1;
-      case 'sash':
-        return x + (y - 5) >= 6 && x + (y - 5) <= 8;
-      default:
-        return false;
-    }
-  })();
-  return hex(second ? kit.jersey2 : kit.jersey);
+  return hex(shirtColorAt(kit, (x + 0.5) / SPRITE_W, (y - JERSEY_TOP + 0.5) / JERSEY_ROWS));
 }
 
 /** Paint one pose at integer scale `k` onto a 2D context at (x, y) = top-left. */
@@ -144,7 +136,8 @@ const cache = new Map<string, Texture>();
 
 /** Pixi texture for a pose at 1:1 pixels; scale the sprite by an integer for crisp pixels. */
 export function spriteTexture(pose: Pose, kit: Kit, keeper: boolean): Texture {
-  const key = `${kit.id}:${keeper ? 'gk' : 'out'}:${pose}`;
+  // Custom kits can be edited, so their cache key includes the design.
+  const key = `${kit.id}:${keeper ? 'gk' : 'out'}:${pose}:${kit.design ? kit.design.pixels.join('') : ''}:${kit.shorts}:${kit.socks}`;
   let t = cache.get(key);
   if (!t) {
     t = Texture.from(spriteCanvas(pose, kit, keeper, 1));

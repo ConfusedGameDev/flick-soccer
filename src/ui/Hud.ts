@@ -170,7 +170,7 @@ export class Hud {
   }
 
   /** Full-screen cover with several choices; resolves with the chosen key. */
-  showMenu<K extends string>(title: string, text: string, options: { key: K; label: string }[]): Promise<K> {
+  showMenu<K extends string>(title: string, text: string, options: { key: K; label: string; icon?: HTMLElement }[]): Promise<K> {
     this.coverTitle.textContent = title;
     this.coverText.textContent = text;
     this.coverBtn.classList.add('hidden');
@@ -182,7 +182,13 @@ export class Hud {
       for (const o of options) {
         const b = document.createElement('button');
         b.className = 'primary';
-        b.textContent = o.label;
+        if (o.icon) {
+          b.classList.add('with-kit');
+          b.appendChild(o.icon);
+          b.appendChild(document.createTextNode(o.label));
+        } else {
+          b.textContent = o.label;
+        }
         b.addEventListener('click', () => {
           list.remove();
           this.coverBtn.classList.remove('hidden');

@@ -16,6 +16,7 @@ import { Cutscene } from './ui/Cutscene';
 import { DiceView } from './ui/DiceView';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
+import { KitEditor } from './ui/KitEditor';
 
 async function boot(): Promise<void> {
   const app = new Application();
@@ -43,6 +44,7 @@ async function boot(): Promise<void> {
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
   const dice = new DiceView(overlay, () => sfx.dice());
   const cutscene = new Cutscene(overlay);
+  const kitEditor = new KitEditor(overlay);
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
   const pool = poolData as PoolPlayer[];
@@ -66,7 +68,7 @@ async function boot(): Promise<void> {
     }
   };
   const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
-  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene });
+  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor });
   const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
   local.attachGesture(gesture);
 

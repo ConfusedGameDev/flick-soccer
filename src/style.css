@@ -590,6 +590,155 @@ button:disabled {
   text-transform: uppercase;
 }
 
+/* Kit editor */
+.kit-editor {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+  color: var(--cream);
+  z-index: 4;
+}
+
+.ke-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top)) 12px 8px;
+}
+
+.ke-name {
+  font: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--cream);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ke-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ke-body {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 16px;
+  padding: 8px 12px max(12px, env(safe-area-inset-bottom));
+  overflow: auto;
+}
+
+.ke-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.ke-grid {
+  image-rendering: pixelated;
+  touch-action: none;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  cursor: crosshair;
+}
+
+.ke-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.ke-tools button {
+  font-size: 13px;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+
+.ke-right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.ke-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-top: 6px;
+}
+
+.ke-palette {
+  display: grid;
+  grid-template-columns: repeat(5, 32px);
+  gap: 4px;
+}
+
+.ke-palette.small {
+  grid-template-columns: repeat(8, 20px);
+}
+
+.swatch {
+  width: 32px;
+  height: 32px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+}
+
+.ke-palette.small .swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.ke-preview {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.ke-preview canvas {
+  image-rendering: pixelated;
+}
+
+@media (max-width: 600px) {
+  .ke-body {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+/* Menu options with a kit preview */
+.menu button.with-kit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.menu button.with-kit canvas {
+  image-rendering: pixelated;
+  flex: 0 0 auto;
+}
+
 .mute {
   min-width: 36px;
   min-height: 36px;

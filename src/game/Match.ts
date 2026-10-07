@@ -10,7 +10,8 @@ import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Sfx } from '../audio/Sfx';
-import { KITS, type Kit } from '../render/kits';
+import { KITS, kitPreview, loadCustomKits, saveCustomKits, type Kit } from '../render/kits';
+import type { KitEditor } from '../ui/KitEditor';
 import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
 import { DiceView } from '../ui/DiceView';
 import type { AutoMasher, Duel } from '../ui/Duel';
@@ -47,6 +48,7 @@ export interface MatchDeps {
   local: PlanController;
   sfx: Sfx;
   cutscene: Cutscene;
+  kitEditor: KitEditor;
 }
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
@@ -130,23 +132,39 @@ export class Match {
     }
   }
 
-  /** Each human picks a kit; the CPU takes a different one. */
+  /** Each human picks a kit (preset or painted); the CPU takes a different preset. */
   private async pickKits(): Promise<void> {
-    const { hud, pieces } = this.deps;
+    const { hud, pieces, kitEditor } = this.deps;
     const taken = new Set<string>();
     for (const team of ['home', 'away'] as const) {
-      const options = KITS.filter((k) => !taken.has(k.id));
-      let kit: Kit;
+      let kit: Kit | null = null;
       if (this.isCpu(team)) {
+        const options = KITS.filter((k) => !taken.has(k.id));
         kit = options[(this.seed >>> 3) % options.length];
       } else {
         if (this.hotSeat && team === 'away') await hud.showCover('Away kit', 'Hand the device to the Away player.', 'OK');
-        const id = await hud.showMenu(
-          `${teamName(team)}: pick a kit`,
-          'Classic 1990 colours',
-          options.map((k) => ({ key: k.id, label: k.name })),
-        );
-        kit = options.find((k) => k.id === id)!;
+        while (!kit) {
+          const custom = loadCustomKits();
+          const options = [...KITS, ...custom].filter((k) => !taken.has(k.id));
+          const id = await hud.showMenu<string>(`${teamName(team)}: pick a kit`, 'Classic 1990 colours, or paint your own', [
+            ...options.map((k) => ({ key: k.id, label: k.name, icon: kitPreview(k, 3) })),
+            { key: '__new', label: '✎ Paint a new kit' },
+            ...(custom.length ? [{ key: '__edit', label: '✎ Edit a painted kit' }] : []),
+          ]);
+          if (id === '__new') {
+            const r = await kitEditor.run();
+            if (r) saveCustomKits([...loadCustomKits(), r.kit]);
+          } else if (id === '__edit') {
+            const which = await hud.showMenu<string>('Edit which kit?', '', custom.map((k) => ({ key: k.id, label: k.name, icon: kitPreview(k, 3) })));
+            const r = await kitEditor.run(custom.find((k) => k.id === which));
+            if (r) {
+              const rest = loadCustomKits().filter((k) => k.id !== r.kit.id);
+              saveCustomKits(r.deleted ? rest : [...rest, r.kit]);
+            }
+          } else {
+            kit = options.find((k) => k.id === id) ?? null;
+          }
+        }
       }
       taken.add(kit.id);
       this.kits[team] = kit;

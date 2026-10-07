@@ -130,7 +130,7 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 
 ### 6.4 Uniform editor
 - A pixel painter for shirts and shorts in the style of Animal Crossing's pattern designer.
-- **(Proposed):** a 32×32 grid and a 15-colour palette.
+- A 16×16 grid and a 15-colour palette (M6 decision: the in-game sprite's shirt is only 10 pixels wide, so 32×32 would be wasted detail and fiddly on a phone), with pencil, fill, mirror mode, and shorts/socks colours. Keeper colours are derived to contrast with the shirt.
 - Kits are saved locally. In an online match, your kit is sent to your opponent.
 
 ## 7. Technical direction
@@ -147,6 +147,7 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
   - A player who disconnects can rejoin within the turn timer.
 - **Renderer:** PixiJS 8 (decided at M0). Server stack **(proposed):** Node with WebSockets (possibly Colyseus), to be decided at M8.
 - **Tests:** vitest on the engine; determinism is a tested invariant.
+- **M6 decisions:** a painted kit is just a `Kit` with a 16×16 design, so it flows through sprites, cutscenes and the picker unchanged; it is stored locally and is plain JSON for online exchange.
 - **M5 decisions:** all art is procedural placeholders behind a stable API: runtime-painted pixel sprites recoloured per kit, procedural stands and nets, CSS/DOM cutscene cards with a blown-up sprite instead of hand-drawn frames, WebAudio-synthesized sound. The view stays flat top-down (no pseudo-3D angle) so the flick geometry is exact. Kits are "inspired by" 1990 colours with no crests; each side picks one before the match (the CPU takes a different one).
 - **M4 decisions:** stats enter the engine only as range/speed factors (±8%/point) and odds shifts (±5 pts/point) around a baseline of 3; the pass stat resists interception, shot resists blocks and saves, tackle and keeping improve them, speed moves everything faster, keeping extends the keeper's reach. Prices are role-weighted (a striker's shot counts, his tackling doesn't) on a convex 3–15 curve. The CPU drafts with a deterministic greedy picker. Formations are edited in the home frame and mirrored for Away. The draft is optional ("Quick match" uses baseline squads).
 - **M3 decisions:** the dice numbers come from the seeded engine RNG; the flick animation only lands on them (so replays and the future server agree). The bonus shifts every interception/block/save roll by ±bonus. A block on a doubles reroll keeps the sum already earned. Booster packs are capped at 2 held; a pack won by this turn's trade roll can be used the same turn. Unstoppable pass applies to the first pass of the chain. Both an overtake and a duel win bank a free roll for the winner's next turn.
