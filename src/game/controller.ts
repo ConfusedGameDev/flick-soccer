@@ -2,6 +2,7 @@ import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
 import { MAX_FLICKS, PLAN_SECONDS } from '../engine/pitch';
 import { mulberry32 } from '../engine/rng';
+import { rollSeed } from '../engine/seeds';
 import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget } from '../engine/sim';
 import type { Booster, DiceRoll, Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
@@ -64,8 +65,6 @@ export interface LocalDeps {
   preview: PlanPreview;
   pieces: PiecesView;
   dice: DiceView;
-  /** Seed for this side's trade roll this turn; the engine would roll the same. */
-  rollSeed: (state: MatchState, team: Team) => number;
 }
 
 /** A human planning on this device with the flick gesture and the HUD buttons. */
@@ -75,8 +74,14 @@ export class LocalController implements PlanController {
   private gesture: FlickGesture | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
+  /** The match seed; trade rolls derive from it and the clock, exactly as the server would roll. */
+  private seed = 0;
 
   constructor(private readonly deps: LocalDeps) {}
+
+  setSeed(seed: number): void {
+    this.seed = seed;
+  }
 
   attachGesture(gesture: FlickGesture): void {
     this.gesture = gesture;
@@ -196,7 +201,7 @@ export class LocalController implements PlanController {
     const s = this.session;
     if (!s || s.dice || this.busy || s.state.meta[s.team].blocked > 0 || s.draft.length >= this.max) return;
     this.busy = true;
-    const roll = rollDice(mulberry32(this.deps.rollSeed(s.state, s.team)));
+    const roll = rollDice(mulberry32(rollSeed(this.seed, s.state, s.team)));
     await this.deps.dice.show({
       title: `${teamName(s.team)}: trade a flick for a roll`,
       rounds: roll.pairs,

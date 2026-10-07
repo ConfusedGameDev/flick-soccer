@@ -200,6 +200,46 @@ export class Hud {
     });
   }
 
+  /** Dismiss a cover that something else resolved (e.g. the opponent arrived). */
+  hideCover(): void {
+    this.cover.classList.add('hidden');
+    this.cover.querySelector('.menu')?.remove();
+    this.cover.querySelector('.prompt')?.remove();
+    this.coverBtn.classList.remove('hidden');
+  }
+
+  /** Cover with a text field; resolves with the text, or null on cancel. */
+  prompt(title: string, text: string, placeholder = ''): Promise<string | null> {
+    this.coverTitle.textContent = title;
+    this.coverText.textContent = text;
+    this.coverBtn.classList.add('hidden');
+    const box = document.createElement('div');
+    box.className = 'prompt';
+    box.innerHTML = `
+      <input class="prompt-input" maxlength="8" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="${placeholder}" />
+      <div class="menu-row">
+        <button data-cancel>Cancel</button>
+        <button class="primary" data-ok>Join</button>
+      </div>`;
+    this.cover.appendChild(box);
+    this.cover.classList.remove('hidden');
+    const input = box.querySelector<HTMLInputElement>('input')!;
+    setTimeout(() => input.focus(), 50);
+    return new Promise((resolve) => {
+      const done = (value: string | null) => {
+        box.remove();
+        this.coverBtn.classList.remove('hidden');
+        this.cover.classList.add('hidden');
+        resolve(value);
+      };
+      box.querySelector('[data-cancel]')!.addEventListener('click', () => done(null));
+      box.querySelector('[data-ok]')!.addEventListener('click', () => done(input.value));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') done(input.value);
+      });
+    });
+  }
+
   waitNext(label = 'Next turn'): Promise<void> {
     this.nextBtn.textContent = label;
     this.nextBtn.classList.remove('hidden');

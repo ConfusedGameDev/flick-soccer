@@ -56,6 +56,10 @@ export class PiecesView {
     this.rebuild(this.players);
   }
 
+  get currentKits(): Kits {
+    return this.kits;
+  }
+
   /** Integer pixel scale that makes a sprite about SPRITE_HEIGHT_M tall. */
   private get k(): number {
     return Math.max(1, Math.round((SPRITE_HEIGHT_M * this.pitch.scale) / SPRITE_H));

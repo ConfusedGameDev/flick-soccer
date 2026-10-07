@@ -9,19 +9,25 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "server:dev": "tsx watch server/index.ts",
+    "server:start": "tsx server/index.ts",
+    "server:typecheck": "tsc -p server"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/status-bar": "^8.0.4",
-    "pixi.js": "^8.22.0"
+    "pixi.js": "^8.22.0",
+    "ws": "^8.22.0",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
+    "@types/ws": "^8.18.2",
     "typescript": "^5.9.3",
     "vite": "^8.3.3",
     "vitest": "^5.0.3"

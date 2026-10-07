@@ -1,0 +1,41 @@
+name: Match server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'src/engine/**'
+      - 'src/net/**'
+      - 'src/render/kits.ts'
+      - 'fly.toml'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/server.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run server
+      - run: npx tsc -p server
+      # Deploy only once the Fly app exists and its token is a repo secret.
+      - if: env.FLY_API_TOKEN != ''
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - if: env.FLY_API_TOKEN != ''
+        run: flyctl deploy --remote-only
+      - if: env.FLY_API_TOKEN == ''
+        run: echo "FLY_API_TOKEN not set; server tests passed, deploy skipped."

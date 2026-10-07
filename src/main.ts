@@ -8,6 +8,7 @@ import type { PoolPlayer } from './engine/pool';
 import { initialMatch } from './engine/setup';
 import { LocalController } from './game/controller';
 import { Match } from './game/Match';
+import { OnlineMatch } from './game/OnlineMatch';
 import { TeamBuilder } from './game/TeamBuilder';
 import { FlickGesture } from './input/FlickGesture';
 import { PiecesView } from './render/PiecesView';
@@ -66,11 +67,12 @@ async function boot(): Promise<void> {
   // The discs are rebuilt whenever squads change; start with the baseline layout.
   const pieces = new PiecesView(pitch, initialMatch().players);
   let match: Match;
+  let online: OnlineMatch;
   const player = new TimelinePlayer(
     (players, ball) => pieces.setPositions(players, ball),
-    (e) => match.onEvent(e),
+    (e) => (match.phase === 'ONLINE' ? online.onEvent(e) : match.onEvent(e)),
   );
-  const local = new LocalController({ hud, preview, pieces, dice, rollSeed: (s, team) => match.rollSeed(s, team) });
+  const local = new LocalController({ hud, preview, pieces, dice });
   const layout = () => {
     pitch.layout(app.screen.width, app.screen.height);
     pieces.redraw();
@@ -83,6 +85,10 @@ async function boot(): Promise<void> {
   };
   const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
   match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor });
+  // Match server: VITE_SERVER_URL overrides; dev talks to `npm run server:dev`, production to Fly.
+  const serverUrl = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? (import.meta.env.DEV ? 'ws://localhost:8787' : 'wss://flick-soccer-match.fly.dev');
+  online = new OnlineMatch({ serverUrl, hud, duel, dice, cutscene, sfx, builder, pool, pieces, preview, player, local, pickKit: () => match.chooseKit('home', new Set(), 'Pick your kit') });
+  match.online = online;
   const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
   local.attachGesture(gesture);
 

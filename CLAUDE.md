@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Docs
 
-`Plan.md` is the original brief. `PRD.md` is the working spec: rules, the three game modes (vs CPU, hot-seat, online) and milestones M0–M8. Where the two disagree, follow `PRD.md`. Current status: **M7 (mobile) done**: Capacitor projects in `android/` and `ios/`, and `.github/workflows/mobile.yml` builds signed iOS/Android on every push to `main` (store uploads switch on once the App Store Connect and Play records exist; rerun the port-app bootstrap then). Next is M8 (online 1v1). Live at https://flick-soccer.vercel.app (push to `main` deploys; branches get preview URLs).
+`Plan.md` is the original brief. `PRD.md` is the working spec: rules, the three game modes (vs CPU, hot-seat, online) and milestones M0–M8. Where the two disagree, follow `PRD.md`. Current status: **M8 (online 1v1) done** pending the first Fly.io deploy; M9 (dual-screen) and the run mode are what's left. Mobile: Capacitor projects in `android/` and `ios/`; `.github/workflows/mobile.yml` builds signed iOS/Android on every push to `main` and uploads to TestFlight and the Play internal track. Live at https://flick-soccer.vercel.app (push to `main` deploys; branches get preview URLs).
 
 ## Commands
 
@@ -40,6 +40,13 @@ The split that matters: **`src/engine/` is pure TypeScript with no DOM or Pixi i
 - `audio/Sfx.ts` — WebAudio-synthesized cues (whistle, kicks, tackle, goal roar, save, dice, duel countdown/mash, crowd murmur loop). No audio files. Context unlocks on the first gesture; mute persists under `flicksoccer.mute`.
 - `ui/Cutscene.ts` — the dramatic freeze-frame cards (goal, save, overtake, duel win, corner, throw-in): kit-colour wash, speed lines, a blown-up sprite and a shouted caption; tap to skip. `Match.dramatic()` picks one card per turn (goal > save > intercept > corner > throw-in).
 - `ui/Hud.ts` — DOM overlay (`#overlay`) for status, buttons, the "pass the device" cover and toasts. UI is HTML, not canvas, as in Claw Island.
+
+## Online (M8)
+
+- `server/` is a small Node + `ws` match server that runs the **same engine** (`src/engine`, `src/net/protocol.ts`, `src/render/kits.ts` for the `Kit` type). `server/room.ts` is a pure state machine (injected `send`/`schedule`/`now`, tested in `server/room.test.ts`); `server/index.ts` is the socket/HTTP shell. It is the authority: it owns the match seed, collects both hidden plans (auto-submitting empty ones after `PLAN_SECONDS` + grace), replaces any client-claimed dice roll with its own `rollDice` from the shared seed, resolves with `resolveTurn`, runs the mash duel (presses rate-limited, meter broadcast every 100 ms) and `resolveDuel`, and replays the last message on `resume`. Rooms live in memory (one Fly machine, `auto_stop_machines = off`).
+- `src/engine/seeds.ts` derives every per-turn seed (`turnSeed`, `rollSeed`, `cpuSeed`, `kickoffSeed`, `duelSeed`) from the match seed and the clock, so client, CPU and server agree. Use these; never hand-roll seeds.
+- Client: `src/net/Socket.ts` (reconnect with backoff, `onReconnect` → `resume`; flow messages are **queued** until `next()` asks for them, because the server runs ahead of the client's animations) and `src/game/OnlineMatch.ts` (create/join by 4-letter code, kit + squad exchange, the same `LocalController` planning UI, `Duel` in remote mode, cards and free-roll animations from the server's results). The menu's two online entries delegate to it; `Match.phase === 'ONLINE'` routes timeline events to it.
+- Run locally: `npm run server:dev` (port 8787) + `npm run dev`; the client uses `ws://localhost:8787` in dev, `wss://flick-soccer-match.fly.dev` in production, or `VITE_SERVER_URL`. Deploy: `fly deploy` (Dockerfile in `server/`, `fly.toml` at root) or the `Match server` workflow, which needs a `FLY_API_TOKEN` repo secret.
 
 ## Mobile
 

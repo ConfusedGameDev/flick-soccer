@@ -3,6 +3,7 @@ import { BOOSTER_INFO, kickoffRoll } from '../engine/dice';
 import { other } from '../engine/pitch';
 import { FORMATION_NAMES, cpuSquad, defaultSquad, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
+import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
 import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
 import type { DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
@@ -30,9 +31,10 @@ export type Phase =
   | 'DUEL'
   | 'REVIEW'
   | 'BREAK'
-  | 'OVER';
+  | 'OVER'
+  | 'ONLINE';
 
-export type Mode = 'hotseat' | 'cpu-easy' | 'cpu-normal';
+export type Mode = 'hotseat' | 'cpu-easy' | 'cpu-normal' | 'online-create' | 'online-join';
 export type Setup = 'quick' | 'draft';
 
 export interface MatchDeps {
@@ -45,10 +47,15 @@ export interface MatchDeps {
   preview: PlanPreview;
   player: TimelinePlayer;
   /** The human on this device. */
-  local: PlanController;
+  local: PlanController & { setSeed(seed: number): void };
   sfx: Sfx;
   cutscene: Cutscene;
   kitEditor: KitEditor;
+}
+
+/** Set by main.ts after construction (it needs this Match's kit picker). */
+export interface OnlineRunner {
+  run(mode: 'create' | 'join'): Promise<void>;
 }
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
@@ -63,6 +70,7 @@ export class Match {
   /** Per-match seed; each turn derives its own so a replay with the same plans matches exactly. */
   seed = newSeed();
   lastResult: TurnResult | null = null;
+  online: OnlineRunner | null = null;
   private controllers: Record<Team, PlanController>;
 
   constructor(private readonly deps: MatchDeps) {
@@ -72,6 +80,13 @@ export class Match {
   async start(): Promise<void> {
     for (;;) {
       await this.menu();
+      if (this.mode === 'online-create' || this.mode === 'online-join') {
+        if (this.online) {
+          this.setPhase('ONLINE');
+          await this.online.run(this.mode === 'online-create' ? 'create' : 'join');
+        }
+        continue;
+      }
       await this.pickKits();
       await this.teams();
       await this.kickoff();
@@ -90,17 +105,8 @@ export class Match {
     this.phase = phase;
   }
 
-  private clockKey(s: MatchState): number {
-    return s.half * 100 + s.turn;
-  }
-
   turnSeed(): number {
-    return (this.seed + this.clockKey(this.state) * 7919) >>> 0;
-  }
-
-  /** Seed for a side's trade roll in the given turn. Deterministic, so a replay rolls the same. */
-  rollSeed(state: MatchState, team: Team): number {
-    return (this.seed ^ (this.clockKey(state) * 40503 + (team === 'home' ? 7919 : 15838))) >>> 0;
+    return turnSeed(this.seed, this.state);
   }
 
   private isCpu(team: Team): boolean {
@@ -117,36 +123,54 @@ export class Match {
     hud.setStatus('Super Soccer Deluxo', '');
     hud.setPlanning(null);
     hud.setScoreboard(this.state);
+    local.setSeed(this.seed);
     this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Pick a mode', [
       { key: 'hotseat', label: '2 players · same device' },
       { key: 'cpu-easy', label: 'vs CPU · easy' },
       { key: 'cpu-normal', label: 'vs CPU · normal' },
+      { key: 'online-create', label: 'Online · create a match' },
+      { key: 'online-join', label: 'Online · join with a code' },
     ]);
+    if (this.mode === 'online-create' || this.mode === 'online-join') return;
     if (this.mode === 'hotseat') {
       this.controllers = { home: local, away: local };
     } else {
       const difficulty: Difficulty = this.mode === 'cpu-easy' ? 'easy' : 'normal';
       // The CPU's seed comes from the match seed and clock, so a replay thinks the same thoughts.
-      const cpu = new CpuController(difficulty, hud, (s) => (this.seed ^ (this.clockKey(s) * 2654435761)) >>> 0);
+      const cpu = new CpuController(difficulty, hud, (s) => cpuSeed(this.seed, s));
       this.controllers = { home: local, away: cpu };
     }
   }
 
   /** Each human picks a kit (preset or painted); the CPU takes a different preset. */
   private async pickKits(): Promise<void> {
-    const { hud, pieces, kitEditor } = this.deps;
+    const { hud, pieces } = this.deps;
     const taken = new Set<string>();
     for (const team of ['home', 'away'] as const) {
-      let kit: Kit | null = null;
+      let kit: Kit;
       if (this.isCpu(team)) {
         const options = KITS.filter((k) => !taken.has(k.id));
         kit = options[(this.seed >>> 3) % options.length];
       } else {
         if (this.hotSeat && team === 'away') await hud.showCover('Away kit', 'Hand the device to the Away player.', 'OK');
+        kit = await this.chooseKit(team, taken);
+      }
+      taken.add(kit.id);
+      this.kits[team] = kit;
+    }
+    pieces.setKits({ ...this.kits });
+  }
+
+  /** The kit menu for a human: presets and painted kits, with the editor reachable from it. */
+  async chooseKit(team: Team, taken: Set<string> = new Set(), title = `${teamName(team)}: pick a kit`): Promise<Kit> {
+    const { hud, kitEditor } = this.deps;
+    let kit: Kit | null = null;
+    {
+      {
         while (!kit) {
           const custom = loadCustomKits();
           const options = [...KITS, ...custom].filter((k) => !taken.has(k.id));
-          const id = await hud.showMenu<string>(`${teamName(team)}: pick a kit`, 'Classic 1990 colours, or paint your own', [
+          const id = await hud.showMenu<string>(title, 'Classic 1990 colours, or paint your own', [
             ...options.map((k) => ({ key: k.id, label: k.name, icon: kitPreview(k, 3) })),
             { key: '__new', label: '✎ Paint a new kit' },
             ...(custom.length ? [{ key: '__edit', label: '✎ Edit a painted kit' }] : []),
@@ -166,10 +190,8 @@ export class Match {
           }
         }
       }
-      taken.add(kit.id);
-      this.kits[team] = kit;
     }
-    pieces.setKits({ ...this.kits });
+    return kit;
   }
 
   /** Quick match uses baseline squads; draft lets each human pick and arrange a team. The CPU auto-picks. */
@@ -205,7 +227,7 @@ export class Match {
     this.state = initialMatch('home', this.squads);
     pieces.rebuild(this.state.players);
     this.snap();
-    const k = kickoffRoll(mulberry32(this.seed ^ 0x2545f491));
+    const k = kickoffRoll(mulberry32(kickoffSeed(this.seed)));
     const again = k.rounds.length > 1 ? ' (ties rolled again)' : '';
     for (const team of ['home', 'away'] as const) {
       const i = team === 'home' ? 0 : 1;
@@ -356,7 +378,7 @@ export class Match {
       this.setPhase('DUEL');
       hud.setStatus('Dead ball!', 'Mash to win it');
       const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher());
-      const { state, roll } = resolveDuel(this.state, winner, this.turnSeed() ^ 0x7f4a7c15);
+      const { state, roll } = resolveDuel(this.state, winner, duelSeed(this.seed, this.state));
       this.state = state;
       this.snap();
       await this.card('duel', this.state.possession.playerId, winner);
@@ -453,6 +475,3 @@ export class Match {
   }
 }
 
-function newSeed(): number {
-  return (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0;
-}

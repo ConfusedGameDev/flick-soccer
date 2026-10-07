@@ -19,6 +19,14 @@ export interface AutoMasher {
   rate: number;
 }
 
+/** Online duel: this device owns one pad; the server owns the meter and the verdict. */
+export interface RemoteDuel {
+  side: 'left' | 'right';
+  openInMs: number;
+  send: () => void;
+  subscribe: (cb: (msg: { t: 'meter'; value: number } | { t: 'end'; winner: Team }) => void) => () => void;
+}
+
 /**
  * Dead-ball dispute: whistle, 3-2-1-GO, then both players mash. The first to
  * pull the meter fully to their side wins; at the time limit whoever leads
@@ -36,7 +44,12 @@ export class Duel {
     private readonly sounds?: DuelSounds,
   ) {}
 
-  run(sides: DuelSides, names: Record<Team, string>, auto?: AutoMasher): Promise<Team> {
+  run(sides: DuelSides, names: Record<Team, string>, auto?: AutoMasher, remote?: RemoteDuel): Promise<Team> {
+    const padLabel = (side: 'left' | 'right'): string => {
+      if (auto?.side === side) return 'CPU';
+      if (remote && remote.side !== side) return 'Opponent';
+      return `mash! (${side === 'left' ? 'A' : 'L'})`;
+    };
     return new Promise((resolve) => {
       const root = document.createElement('div');
       root.className = 'duel';
@@ -48,8 +61,8 @@ export class Duel {
           <div class="duel-timer" data-timer></div>
         </div>
         <div class="duel-pads">
-          <button class="duel-pad left" data-pad="left">${names[sides.left]}<small>${auto?.side === 'left' ? 'CPU' : 'mash! (A)'}</small></button>
-          <button class="duel-pad right" data-pad="right">${names[sides.right]}<small>${auto?.side === 'right' ? 'CPU' : 'mash! (L)'}</small></button>
+          <button class="duel-pad left" data-pad="left">${names[sides.left]}<small>${padLabel('left')}</small></button>
+          <button class="duel-pad right" data-pad="right">${names[sides.right]}<small>${padLabel('right')}</small></button>
         </div>`;
       this.overlay.appendChild(root);
 
@@ -80,6 +93,7 @@ export class Duel {
         open = false;
         cancelAnimationFrame(raf);
         if (autoTimer) clearTimeout(autoTimer);
+        unsubscribe?.();
         window.removeEventListener('keydown', onKey);
         count.textContent = `${names[winner]} win the ball!`;
         root.classList.add('done');
@@ -94,13 +108,30 @@ export class Duel {
         pads[side].classList.add('hit');
         setTimeout(() => pads[side].classList.remove('hit'), 80);
         this.sounds?.mash();
+        if (remote) {
+          // The server keeps the score; we only report presses.
+          remote.send();
+          return;
+        }
         meter += side === 'left' ? -PRESS_STEP : PRESS_STEP;
         meter = Math.max(-1, Math.min(1, meter));
         paint();
         if (sudden || meter <= -1 || meter >= 1) finish(meter < 0 ? sides.left : sides.right);
       };
 
-      const human = (side: 'left' | 'right') => auto?.side !== side;
+      let unsubscribe: (() => void) | null = null;
+      if (remote) {
+        unsubscribe = remote.subscribe((msg) => {
+          if (msg.t === 'meter') {
+            meter = msg.value;
+            paint();
+          } else {
+            finish(msg.winner);
+          }
+        });
+      }
+
+      const human = (side: 'left' | 'right') => auto?.side !== side && (!remote || remote.side === side);
       const onKey = (e: KeyboardEvent) => {
         if (e.repeat) return;
         if (e.code === 'KeyA' && human('left')) press('left');
@@ -131,7 +162,8 @@ export class Duel {
         if (done) return;
         const left = Math.max(0, endAt - performance.now());
         timerEl.textContent = sudden ? 'Sudden death!' : (left / 1000).toFixed(1);
-        if (open && !sudden && left <= 0) {
+        // Online, the server decides the end; locally we do.
+        if (open && !remote && !sudden && left <= 0) {
           if (meter !== 0) finish(meter < 0 ? sides.left : sides.right);
           else {
             sudden = true;
