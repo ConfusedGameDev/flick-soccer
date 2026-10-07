@@ -8,3 +8,5 @@ ios/App/build
 *.p12
 *.mobileprovision
 AuthKey_*.p8
+.vercel
+.env*
