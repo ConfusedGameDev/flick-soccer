@@ -22,7 +22,7 @@ All three modes run on one shared match engine. The only difference between them
 
 ### 3.1 Match flow
 1. **Draft:** each player picks a team (§5).
-2. **Formation:** each player places their 11 players in their own half.
+2. **Formation:** each player places their 11 players anywhere on the pitch. Kickoff shapes span the full field (forwards start deep in the opponent's half) so a pass chain can progress toward the far goal.
 3. **Kickoff roll:** each player flicks a die. The higher roll attacks first, and a tie means both roll again. The ball starts with the attacker's goalkeeper.
 4. **Turns** repeat until the match ends.
 5. **Length (proposed):** 2 halves of 8 turns each. The second half starts with the side that defended first now attacking. A draw is a valid result in the PoC.
