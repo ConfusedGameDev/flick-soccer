@@ -23,7 +23,7 @@ describe('cpu vs cpu', () => {
         const d = planDefense(s, other(att), 'normal', seed + 7);
         plans += 2;
         s = resolveTurn(s, a, d, seed, { keyframes: false }).state;
-        if (s.status === 'duel') s = resolveDuel(s, seed % 2 ? 'home' : 'away');
+        if (s.status === 'duel') s = resolveDuel(s, seed % 2 ? 'home' : 'away', seed).state;
         if (s.status === 'half-time') s = continueMatch(s);
       }
       results.push(`${s.score.home}-${s.score.away} (${turn} turns)`);

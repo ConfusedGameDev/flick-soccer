@@ -1,5 +1,17 @@
-import type { MatchState } from '../engine/types';
+import { BOOSTER_INFO } from '../engine/dice';
+import type { Booster, MatchState } from '../engine/types';
 import { TURNS_PER_HALF } from '../engine/pitch';
+
+export interface ExtrasSpec {
+  canRoll: boolean;
+  rolled: boolean;
+  /** Turns the dice stay blocked, 0 if usable. */
+  blocked: number;
+  /** Total success bonus for this turn (banked + rolled). */
+  bonus: number;
+  boosters: { booster: Booster; usable: boolean; fresh?: boolean }[];
+  armed: Booster | null;
+}
 
 /** DOM overlay: scoreboard, status text, planning buttons, the pass-the-device cover and toasts. */
 export class Hud {
@@ -16,8 +28,12 @@ export class Hud {
   private readonly coverText: HTMLElement;
   private readonly coverBtn: HTMLButtonElement;
 
+  private readonly extras: HTMLElement;
+
   onUndo: () => void = () => {};
   onConfirm: () => void = () => {};
+  onRoll: () => void = () => {};
+  onBooster: (b: Booster) => void = () => {};
 
   constructor(readonly overlay: HTMLElement) {
     overlay.innerHTML = `
@@ -33,9 +49,12 @@ export class Hud {
         </div>
       </div>
       <div class="bar bottom">
-        <button data-undo>Undo</button>
-        <button class="primary" data-confirm>Confirm</button>
-        <button class="primary hidden" data-next>Next turn</button>
+        <div class="extras" data-extras></div>
+        <div class="actions">
+          <button data-undo>Undo</button>
+          <button class="primary" data-confirm>Confirm</button>
+          <button class="primary hidden" data-next>Next turn</button>
+        </div>
       </div>
       <div class="cover hidden" data-cover>
         <h1 data-cover-title></h1>
@@ -54,6 +73,7 @@ export class Hud {
     this.coverTitle = overlay.querySelector('[data-cover-title]')!;
     this.coverText = overlay.querySelector('[data-cover-text]')!;
     this.coverBtn = overlay.querySelector('[data-cover-btn]')!;
+    this.extras = overlay.querySelector('[data-extras]')!;
 
     this.undoBtn.addEventListener('click', () => this.onUndo());
     this.confirmBtn.addEventListener('click', () => this.onConfirm());
@@ -83,6 +103,34 @@ export class Hud {
     if (state) {
       this.undoBtn.disabled = !state.canUndo;
       this.confirmBtn.disabled = !state.canConfirm;
+    } else {
+      this.setExtras(null);
+    }
+  }
+
+  /** Dice and booster controls during planning; pass null to clear. */
+  setExtras(spec: ExtrasSpec | null): void {
+    this.extras.innerHTML = '';
+    if (!spec) return;
+    const roll = document.createElement('button');
+    roll.textContent = spec.rolled ? '🎲 Rolled' : spec.blocked > 0 ? `🎲 Blocked (${spec.blocked})` : '🎲 Roll (−1 flick)';
+    roll.disabled = !spec.canRoll;
+    roll.addEventListener('click', () => this.onRoll());
+    this.extras.appendChild(roll);
+    for (const b of spec.boosters) {
+      const btn = document.createElement('button');
+      btn.textContent = `${BOOSTER_INFO[b.booster].name}${b.fresh ? ' ✨' : ''}`;
+      btn.title = BOOSTER_INFO[b.booster].text;
+      btn.disabled = !b.usable;
+      btn.classList.toggle('armed', spec.armed === b.booster);
+      btn.addEventListener('click', () => this.onBooster(b.booster));
+      this.extras.appendChild(btn);
+    }
+    if (spec.bonus > 0) {
+      const el = document.createElement('span');
+      el.className = 'bonus';
+      el.textContent = `+${Math.round(spec.bonus * 100)}% this turn`;
+      this.extras.appendChild(el);
     }
   }
 

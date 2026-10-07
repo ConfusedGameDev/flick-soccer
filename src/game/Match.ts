@@ -1,17 +1,21 @@
 import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
+import { BOOSTER_INFO, kickoffRoll } from '../engine/dice';
 import { other } from '../engine/pitch';
+import { mulberry32 } from '../engine/rng';
 import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
-import type { MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
+import type { DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
+import { DiceView } from '../ui/DiceView';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
 import { CpuController, teamName, type PlanController } from './controller';
 
 export type Phase =
   | 'MENU'
+  | 'KICKOFF'
   | 'PLAN_ATTACK'
   | 'HANDOFF'
   | 'PLAN_DEFENSE'
@@ -26,6 +30,7 @@ export type Mode = 'hotseat' | 'cpu-easy' | 'cpu-normal';
 export interface MatchDeps {
   hud: Hud;
   duel: Duel;
+  dice: DiceView;
   pieces: PiecesView;
   preview: PlanPreview;
   player: TimelinePlayer;
@@ -35,7 +40,7 @@ export interface MatchDeps {
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
 
-/** Drives a match: menu → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
+/** Drives a match: menu → kickoff dice → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
 export class Match {
   state: MatchState = initialMatch();
   phase: Phase = 'MENU';
@@ -52,6 +57,7 @@ export class Match {
   async start(): Promise<void> {
     for (;;) {
       await this.menu();
+      await this.kickoff();
       while (this.state.status !== 'full-time') await this.runTurn();
       await this.fullTime();
     }
@@ -65,8 +71,21 @@ export class Match {
     this.phase = phase;
   }
 
+  private clockKey(s: MatchState): number {
+    return s.half * 100 + s.turn;
+  }
+
   turnSeed(): number {
-    return (this.seed + (this.state.half * 100 + this.state.turn) * 7919) >>> 0;
+    return (this.seed + this.clockKey(this.state) * 7919) >>> 0;
+  }
+
+  /** Seed for a side's trade roll in the given turn. Deterministic, so a replay rolls the same. */
+  rollSeed(state: MatchState, team: Team): number {
+    return (this.seed ^ (this.clockKey(state) * 40503 + (team === 'home' ? 7919 : 15838))) >>> 0;
+  }
+
+  private isCpu(team: Team): boolean {
+    return this.controllers[team].kind === 'cpu';
   }
 
   private async menu(): Promise<void> {
@@ -75,6 +94,7 @@ export class Match {
     this.seed = newSeed();
     this.snap();
     this.deps.hud.setStatus('Flick Soccer', '');
+    this.deps.hud.setPlanning(null);
     this.deps.hud.setScoreboard(this.state);
     this.mode = await this.deps.hud.showMenu<Mode>('Flick Soccer', 'Pick a mode', [
       { key: 'hotseat', label: '2 players · same device' },
@@ -87,9 +107,36 @@ export class Match {
     } else {
       const difficulty: Difficulty = this.mode === 'cpu-easy' ? 'easy' : 'normal';
       // The CPU's seed comes from the match seed and clock, so a replay thinks the same thoughts.
-      const cpu = new CpuController(difficulty, hud, (s) => (this.seed ^ ((s.half * 100 + s.turn) * 2654435761)) >>> 0);
+      const cpu = new CpuController(difficulty, hud, (s) => (this.seed ^ (this.clockKey(s) * 2654435761)) >>> 0);
       this.controllers = { home: local, away: cpu };
     }
+  }
+
+  /** Each side flicks a die; the higher roll attacks first. */
+  private async kickoff(): Promise<void> {
+    this.setPhase('KICKOFF');
+    const { dice, hud } = this.deps;
+    const k = kickoffRoll(mulberry32(this.seed ^ 0x2545f491));
+    const again = k.rounds.length > 1 ? ' (ties rolled again)' : '';
+    for (const team of ['home', 'away'] as const) {
+      const i = team === 'home' ? 0 : 1;
+      const last = k.rounds[k.rounds.length - 1];
+      await dice.show({
+        title: `Kickoff: ${teamName(team)}${this.isCpu(team) ? ' (CPU)' : ''} roll`,
+        rounds: k.rounds.map((r) => [r[i]]),
+        caption: `${teamName(team)} rolled ${last[i]}${again}`,
+        flick: !this.isCpu(team),
+        hint: `${teamName(team)}, pull back and release your die`,
+        again: 'Tie! Roll again…',
+      });
+    }
+    this.state = initialMatch(k.winner);
+    this.snap();
+    await hud.showCover(
+      `${teamName(k.winner)} attack first`,
+      `Home ${k.rounds[k.rounds.length - 1][0]} – ${k.rounds[k.rounds.length - 1][1]} Away on the dice.`,
+      'Kick off',
+    );
   }
 
   /** Put every piece where the state says (restarts teleport players). */
@@ -111,6 +158,17 @@ export class Match {
       if (c.kind === 'cpu') return { side, rate: CPU_PARAMS[(c as CpuController).difficulty].mashRate };
     }
     return undefined;
+  }
+
+  /** Show a free roll (overtake or duel win) landing on the engine's numbers. */
+  private async showFreeRoll(team: Team, roll: DiceRoll, why: string): Promise<void> {
+    await this.deps.dice.show({
+      title: `${teamName(team)} ${why}: free roll!`,
+      rounds: roll.pairs,
+      caption: `${DiceView.caption(roll)} (banked for ${teamName(team)}'s next turn)`,
+      flick: !this.isCpu(team),
+      hint: `${teamName(team)}, pull back and release`,
+    });
   }
 
   private async runTurn(): Promise<void> {
@@ -153,12 +211,17 @@ export class Match {
     this.snap();
     hud.setScoreboard(this.state);
 
+    const free = result.events.find((e) => e.type === 'dice' && e.free);
+    if (free && free.type === 'dice') await this.showFreeRoll(free.team, free.roll, 'overtake');
+
     if (this.state.status === 'duel') {
       this.setPhase('DUEL');
       hud.setStatus('Dead ball!', 'Mash to win it');
       const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher());
-      this.state = resolveDuel(this.state, winner);
+      const { state, roll } = resolveDuel(this.state, winner, this.turnSeed() ^ 0x7f4a7c15);
+      this.state = state;
       this.snap();
+      await this.showFreeRoll(winner, roll, 'win the ball');
     }
 
     if (this.state.status === 'half-time') {
@@ -219,8 +282,14 @@ export class Match {
       case 'goal-kick':
         hud.toast(`Goal kick for ${teamName(e.team)}`);
         break;
+      case 'dice':
+        if (!e.free) hud.toast(`${teamName(e.team)} rolled ${e.roll.sum}: ${DiceView.caption(e.roll)}`);
+        break;
+      case 'booster':
+        hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);
+        break;
       case 'invalid-flick':
-        hud.toast(`Flick ignored: ${e.reason}`);
+        hud.toast(`Ignored: ${e.reason}`);
         break;
       default:
         break;

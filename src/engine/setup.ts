@@ -1,4 +1,4 @@
-import type { MatchState, PlayerState, Team, Vec2 } from './types';
+import type { MatchState, PlayerState, Team, TeamMeta, Vec2 } from './types';
 import { PITCH_L, PITCH_W } from './pitch';
 
 // 4-4-2 as (x, distance from own goal line), spread over the whole pitch so a
@@ -54,5 +54,8 @@ export function initialMatch(kickoff: Team = 'home'): MatchState {
     players,
     ball: { ...keeper.pos },
     possession: { team: kickoff, playerId: keeper.id },
+    meta: { home: emptyMeta(), away: emptyMeta() },
   };
 }
+
+export const emptyMeta = (): TeamMeta => ({ blocked: 0, bonus: 0, boosters: [] });

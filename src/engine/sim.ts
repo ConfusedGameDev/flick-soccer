@@ -1,4 +1,6 @@
 import type {
+  Booster,
+  DiceRoll,
   Flick,
   FlickKind,
   Keyframe,
@@ -6,6 +8,7 @@ import type {
   Plan,
   PlayerState,
   Team,
+  TeamMeta,
   TimelineEvent,
   TurnResult,
   Vec2,
@@ -41,6 +44,7 @@ import {
   other,
   targetGoalY,
 } from './pitch';
+import { DICE_BLOCK_TURNS, MAX_BOOSTERS, MAX_DICE_BONUS, rollDice } from './dice';
 import { mulberry32 } from './rng';
 import { keeperOf, kickoffPosition } from './setup';
 import { add, dist, lerp, normalize, scale } from './vec';
@@ -77,10 +81,23 @@ export function passTarget(from: Vec2, flick: Flick, kind: 'pass' | 'shot' = 'pa
   return { to: out ? clipToEdge(from, raw) : raw, out };
 }
 
-/** Where a slide, run or dive from `from` ends, clipped to the pitch. */
-export function moveTarget(from: Vec2, flick: Flick, kind: 'slide' | 'run' | 'dive'): Vec2 {
-  const range = kind === 'slide' ? SLIDE_RANGE : kind === 'run' ? RUN_RANGE : DIVE_RANGE;
+/** Where a slide, run or dive from `from` ends, clipped to the pitch. `rangeMul` is the longer-slide booster. */
+export function moveTarget(from: Vec2, flick: Flick, kind: 'slide' | 'run' | 'dive', rangeMul = 1): Vec2 {
+  const base = kind === 'slide' ? SLIDE_RANGE : kind === 'run' ? RUN_RANGE : DIVE_RANGE;
+  const range = kind === 'run' ? base : base * rangeMul;
   return clampToPitch(add(from, scale(normalize(flick.dir), flick.strength * range)));
+}
+
+/** Bank a roll's side effects (booster pack, dice block) into a team's meta. */
+function bankRoll(m: TeamMeta, roll: DiceRoll): void {
+  if (roll.booster && m.boosters.length < MAX_BOOSTERS) m.boosters.push(roll.booster);
+  if (roll.blocked) m.blocked = DICE_BLOCK_TURNS;
+}
+
+interface TurnMods {
+  /** Success bonus this turn, 0..MAX_DICE_BONUS. */
+  bonus: number;
+  booster: Booster | null;
 }
 
 /** The teammate who collects a ball landing at `point`, or null if nobody is close enough. */
@@ -149,6 +166,8 @@ interface BallSegment {
   out: boolean;
   /** Defenders that already had their roll for this segment. */
   rolled: Set<number>;
+  /** Unstoppable-pass booster: nobody gets a roll on this segment. */
+  unstoppable: boolean;
 }
 
 /** How a turn's chain of play ended; drives the restart. */
@@ -192,8 +211,52 @@ export function resolveTurn(
   // Boxed so assignments inside endChain() are visible to the switch below.
   const run: { outcome: Outcome } = { outcome: { kind: 'settled' } };
 
-  const attackFlicks = attackPlan.team === attackTeam ? attackPlan.flicks.slice(0, MAX_FLICKS.attack) : [];
-  const defenseFlicks = defensePlan.team === defenseTeam ? defensePlan.flicks.slice(0, MAX_FLICKS.defense) : [];
+  // ---- Dice and boosters: set up this turn's modifiers ----
+  const meta: Record<Team, TeamMeta> = {
+    home: { ...state.meta.home, boosters: [...state.meta.home.boosters] },
+    away: { ...state.meta.away, boosters: [...state.meta.away.boosters] },
+  };
+  const mods: Record<Team, TurnMods> = { home: { bonus: 0, booster: null }, away: { bonus: 0, booster: null } };
+  const maxFlicks = { attack: MAX_FLICKS.attack as number, defense: MAX_FLICKS.defense as number };
+  const sides = [
+    [attackPlan, attackTeam, 'attack'],
+    [defensePlan, defenseTeam, 'defense'],
+  ] as const;
+  for (const [plan, team, role] of sides) {
+    if (plan.team !== team) continue;
+    const m = meta[team];
+    let bonus = m.bonus; // a free roll banked at the end of the previous turn
+    m.bonus = 0;
+    if (plan.dice) {
+      if (m.blocked > 0) {
+        events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'dice are blocked' });
+      } else {
+        maxFlicks[role] -= 1;
+        bonus += plan.dice.bonus;
+        bankRoll(m, plan.dice);
+        events.push({ t, type: 'dice', team, roll: plan.dice, free: false });
+      }
+    }
+    mods[team].bonus = Math.min(MAX_DICE_BONUS, bonus);
+    if (plan.booster) {
+      const i = m.boosters.indexOf(plan.booster);
+      if (i < 0) {
+        events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'booster not held' });
+      } else {
+        m.boosters.splice(i, 1);
+        mods[team].booster = plan.booster;
+        if (plan.booster === 'extra-flick') maxFlicks[role] += 1;
+        events.push({ t, type: 'booster', team, booster: plan.booster });
+      }
+    }
+  }
+  const speedMul = (team: Team) => (mods[team].booster === 'double-speed' ? 2 : 1);
+  const rangeMul = (team: Team) => (mods[team].booster === 'longer-slide' ? 1.5 : 1);
+  const superKeeper = mods[defenseTeam].booster === 'super-keeper';
+  let unstoppableLeft = mods[attackTeam].booster === 'unstoppable-pass';
+
+  const attackFlicks = attackPlan.team === attackTeam ? attackPlan.flicks.slice(0, maxFlicks.attack) : [];
+  const defenseFlicks = defensePlan.team === defenseTeam ? defensePlan.flicks.slice(0, maxFlicks.defense) : [];
 
   // Every movement flick (slides, dives, runs) starts at t = 0 and runs in parallel.
   const moves: Move[] = [];
@@ -203,8 +266,8 @@ export function resolveTurn(
       events.push({ t, type: 'invalid-flick', playerId: p.id, reason: 'already moving' });
       return;
     }
-    const to = moveTarget(p.pos, f, kind);
-    const speed = kind === 'slide' ? SLIDE_SPEED : kind === 'run' ? RUN_SPEED : DIVE_SPEED;
+    const to = moveTarget(p.pos, f, kind, rangeMul(p.team));
+    const speed = (kind === 'slide' ? SLIDE_SPEED : kind === 'run' ? RUN_SPEED : DIVE_SPEED) * speedMul(p.team);
     moves.push({ idx: p.id, from: { ...p.pos }, to, duration: dist(p.pos, to) / speed });
     moving.add(p.id);
     events.push({ t, type: kind, playerId: p.id });
@@ -278,7 +341,9 @@ export function resolveTurn(
       const shot = kind === 'shot';
       const { to, out } = passTarget(from, f, shot ? 'shot' : 'pass');
       const speed = shot ? SHOT_SPEED : BALL_SPEED;
-      seg = { shot, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set() };
+      const unstoppable = !shot && unstoppableLeft;
+      if (unstoppable) unstoppableLeft = false;
+      seg = { shot, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable };
       events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
@@ -297,13 +362,16 @@ export function resolveTurn(
 
       // One roll per defender per segment, the first tick they are in reach.
       // Keepers have a longer reach and use the save odds; outfield use tackle/block odds.
+      // The dice bonus shifts every roll in its owner's favour; boosters tweak the keeper.
       let stopped = false;
       for (const p of players) {
-        if (p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
-        const reach = p.keeper ? KEEPER_REACH : TACKLE_REACH;
+        if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
+        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) : TACKLE_REACH;
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
-        const chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
+        let chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
+        chance += mods[defenseTeam].bonus - mods[attackTeam].bonus;
+        if (p.keeper && superKeeper) chance += 0.25;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {
           events.push({ t, type: 'save', playerId: p.id });
@@ -404,6 +472,15 @@ export function resolveTurn(
       break;
   }
 
+  // ---- Overtake: the interceptor's side gets a free roll banked for its next turn ----
+  if (outcome.kind === 'settled' && possession.team === defenseTeam && events.some((e) => e.type === 'intercept')) {
+    const roll = rollDice(rng);
+    meta[defenseTeam].bonus = roll.bonus;
+    bankRoll(meta[defenseTeam], roll);
+    events.push({ t, type: 'dice', team: defenseTeam, roll, free: true });
+  }
+  for (const team of ['home', 'away'] as const) meta[team].blocked = Math.max(0, meta[team].blocked - 1);
+
   // ---- Clock ----
   let turn = state.turn + 1;
   let half = state.half;
@@ -426,18 +503,25 @@ export function resolveTurn(
   events.push({ t, type: 'end' });
 
   return {
-    state: { ...state, turn, half, score, status, players, ball, possession },
+    state: { ...state, turn, half, score, status, players, ball, possession, meta },
     keyframes,
     events,
   };
 }
 
-/** After a dead-ball duel: the winner's nearest player collects the ball where it stopped. */
-export function resolveDuel(state: MatchState, winner: Team): MatchState {
+/**
+ * After a dead-ball duel: the winner's nearest player collects the ball where
+ * it stopped, and the winner gets a free roll banked for their next turn.
+ */
+export function resolveDuel(state: MatchState, winner: Team, seed: number): { state: MatchState; roll: DiceRoll } {
   const players = state.players.map((p) => ({ ...p, pos: { ...p.pos } }));
   const taker = nearestOf(players, winner, state.ball);
   taker.pos = { ...state.ball };
-  return { ...state, status: 'playing', players, possession: { team: winner, playerId: taker.id } };
+  const roll = rollDice(mulberry32(seed));
+  const m: TeamMeta = { ...state.meta[winner], boosters: [...state.meta[winner].boosters], bonus: roll.bonus };
+  bankRoll(m, roll);
+  const meta = { ...state.meta, [winner]: m };
+  return { state: { ...state, status: 'playing', players, possession: { team: winner, playerId: taker.id }, meta }, roll };
 }
 
 /** Acknowledge half-time; the second-half kickoff is already set up. */

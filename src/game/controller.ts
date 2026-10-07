@@ -1,10 +1,13 @@
 import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
+import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
 import { MAX_FLICKS, PLAN_SECONDS } from '../engine/pitch';
+import { mulberry32 } from '../engine/rng';
 import { findReceiver, flickKind, moveTarget, passTarget } from '../engine/sim';
-import type { Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
+import type { Booster, DiceRoll, Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
 import type { PiecesView } from '../render/PiecesView';
 import type { DragPreview, GhostFlick, PlanPreview } from '../render/PlanPreview';
+import { DiceView } from '../ui/DiceView';
 import type { Hud } from '../ui/Hud';
 
 export type Role = 'attack' | 'defense';
@@ -50,8 +53,19 @@ interface Session {
   projected: MatchState;
   /** Players already given a movement flick this turn. */
   moving: Set<number>;
+  dice: DiceRoll | null;
+  booster: Booster | null;
   deadline: number;
   resolve: (plan: Plan) => void;
+}
+
+export interface LocalDeps {
+  hud: Hud;
+  preview: PlanPreview;
+  pieces: PiecesView;
+  dice: DiceView;
+  /** Seed for this side's trade roll this turn; the engine would roll the same. */
+  rollSeed: (state: MatchState, team: Team) => number;
 }
 
 /** A human planning on this device with the flick gesture and the HUD buttons. */
@@ -60,12 +74,9 @@ export class LocalController implements PlanController {
   private session: Session | null = null;
   private gesture: FlickGesture | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private busy = false;
 
-  constructor(
-    private readonly hud: Hud,
-    private readonly preview: PlanPreview,
-    private readonly pieces: PiecesView,
-  ) {}
+  constructor(private readonly deps: LocalDeps) {}
 
   attachGesture(gesture: FlickGesture): void {
     this.gesture = gesture;
@@ -87,11 +98,16 @@ export class LocalController implements PlanController {
         ghosts: [],
         projected: state,
         moving: new Set(),
+        dice: null,
+        booster: null,
         deadline: performance.now() + PLAN_SECONDS * 1000,
         resolve,
       };
-      this.hud.onUndo = () => this.undo();
-      this.hud.onConfirm = () => this.confirm();
+      const { hud } = this.deps;
+      hud.onUndo = () => this.undo();
+      hud.onConfirm = () => this.confirm();
+      hud.onRoll = () => void this.roll();
+      hud.onBooster = (b) => this.toggleBooster(b);
       if (this.gesture) this.gesture.enabled = true;
       this.timer = setInterval(() => this.tick(), 250);
       this.tick();
@@ -99,8 +115,19 @@ export class LocalController implements PlanController {
     });
   }
 
+  /** Flicks allowed this turn: base, minus one for a traded roll, plus one for the booster. */
   private get max(): number {
-    return this.session ? MAX_FLICKS[this.session.role] : 0;
+    const s = this.session;
+    if (!s) return 0;
+    return MAX_FLICKS[s.role] - (s.dice ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0);
+  }
+
+  /** Boosters available this turn: held ones plus a fresh pack from this turn's roll. */
+  private available(): { booster: Booster; fresh: boolean }[] {
+    const s = this.session!;
+    const list = s.state.meta[s.team].boosters.map((b) => ({ booster: b, fresh: false }));
+    if (s.dice?.booster) list.push({ booster: s.dice.booster, fresh: true });
+    return list;
   }
 
   private positions(): Vec2[] {
@@ -115,13 +142,12 @@ export class LocalController implements PlanController {
     const kind = flickKind(s.projected, s.team, s.role, probe);
     if (kind === 'invalid') return null;
     if ((kind === 'run' || kind === 'slide' || kind === 'dive') && s.moving.has(id)) return null;
-    // A run on the current carrier makes no sense; a pass needs an open chain.
     if ((kind === 'pass' || kind === 'shot') && s.projected.possession.playerId < 0) return null;
     return kind;
   }
 
   private pick(world: Vec2): number | null {
-    if (!this.session) return null;
+    if (!this.session || this.busy) return null;
     return FlickGesture.nearest(world, this.positions(), (id) => this.kindFor(id) !== null);
   }
 
@@ -138,13 +164,14 @@ export class LocalController implements PlanController {
       const receiver = out ? null : findReceiver(s.state.players, s.team, to, id);
       return { kind, from: s.projected.ball, to, receiver: receiver?.pos, bad: out || !receiver };
     }
-    return { kind, from, to: moveTarget(from, flick, kind) };
+    const rangeMul = s.booster === 'longer-slide' && kind !== 'run' ? 1.5 : 1;
+    return { kind, from, to: moveTarget(from, flick, kind, rangeMul) };
   }
 
   private drag(id: number, flick: Flick, pull: Vec2): void {
     if (!this.session) return;
     const drag: DragPreview = { ...this.ghostFor(id, flick), pull };
-    this.preview.draw(this.session.ghosts, drag);
+    this.deps.preview.draw(this.session.ghosts, drag);
   }
 
   private release(id: number, flick: Flick | null): void {
@@ -163,6 +190,35 @@ export class LocalController implements PlanController {
     this.refresh();
   }
 
+  /** Trade a flick for 2d6. The result comes from the shared seed; the flick animation is theater. */
+  private async roll(): Promise<void> {
+    const s = this.session;
+    if (!s || s.dice || this.busy || s.state.meta[s.team].blocked > 0 || s.draft.length >= this.max) return;
+    this.busy = true;
+    const roll = rollDice(mulberry32(this.deps.rollSeed(s.state, s.team)));
+    await this.deps.dice.show({
+      title: `${teamName(s.team)}: trade a flick for a roll`,
+      rounds: roll.pairs,
+      caption: DiceView.caption(roll),
+      flick: true,
+    });
+    this.busy = false;
+    if (this.session !== s) return; // timed out while the dice were up
+    s.dice = roll;
+    this.rebuild();
+    this.refresh();
+  }
+
+  private toggleBooster(b: Booster): void {
+    const s = this.session;
+    if (!s) return;
+    s.booster = s.booster === b ? null : b;
+    // Dropping an extra flick may leave one flick too many.
+    while (s.draft.length > this.max) s.draft.pop();
+    this.rebuild();
+    this.refresh();
+  }
+
   private confirm(): void {
     const s = this.session;
     if (!s) return;
@@ -170,18 +226,22 @@ export class LocalController implements PlanController {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     if (this.gesture) this.gesture.enabled = false;
-    this.hud.setPlanning(null);
-    this.hud.setTimer(null);
-    this.preview.clear();
-    this.pieces.setHighlights(null, []);
-    s.resolve({ team: s.team, flicks: s.draft });
+    const { hud, preview, pieces } = this.deps;
+    hud.setPlanning(null);
+    hud.setTimer(null);
+    preview.clear();
+    pieces.setHighlights(null, []);
+    const plan: Plan = { team: s.team, flicks: s.draft };
+    if (s.dice) plan.dice = s.dice;
+    if (s.booster) plan.booster = s.booster;
+    s.resolve(plan);
   }
 
   private tick(): void {
     const s = this.session;
     if (!s) return;
     const left = Math.max(0, Math.ceil((s.deadline - performance.now()) / 1000));
-    this.hud.setTimer(left);
+    this.deps.hud.setTimer(left);
     if (left === 0) this.confirm();
   }
 
@@ -207,6 +267,7 @@ export class LocalController implements PlanController {
 
   private refresh(): void {
     const s = this.session!;
+    const { hud, preview, pieces } = this.deps;
     const left = this.max - s.draft.length;
     const flicks = `${left} flick${left === 1 ? '' : 's'} left`;
     let sub: string;
@@ -217,11 +278,22 @@ export class LocalController implements PlanController {
           ? 'The chain is finished; you can still flick a teammate to run'
           : 'Pull back from the carrier to pass or shoot, or from a teammate to run';
     } else sub = 'Pull back from a defender to tackle, or from the keeper to dive';
-    this.hud.setStatus(`${teamName(s.team)} ${s.role === 'attack' ? 'attacks' : 'defends'} · ${flicks}`, sub);
-    this.hud.setPlanning({ canUndo: s.draft.length > 0, canConfirm: true });
-    this.preview.draw(s.ghosts, null);
+    hud.setStatus(`${teamName(s.team)} ${s.role === 'attack' ? 'attacks' : 'defends'} · ${flicks}`, sub);
+    hud.setPlanning({ canUndo: s.draft.length > 0, canConfirm: true });
+
+    const meta = s.state.meta[s.team];
+    hud.setExtras({
+      canRoll: !s.dice && meta.blocked === 0 && s.draft.length < this.max,
+      rolled: !!s.dice,
+      blocked: meta.blocked,
+      bonus: Math.min(MAX_DICE_BONUS, meta.bonus + (s.dice?.bonus ?? 0)),
+      boosters: this.available().map((b) => ({ ...b, usable: BOOSTER_INFO[b.booster].roles.includes(s.role) })),
+      armed: s.booster,
+    });
+
+    preview.draw(s.ghosts, null);
     const flickable = s.state.players.filter((p) => this.kindFor(p.id) !== null).map((p) => p.id);
     const carrier = s.role === 'attack' && s.projected.possession.playerId >= 0 ? s.projected.possession.playerId : null;
-    this.pieces.setHighlights(carrier, flickable);
+    pieces.setHighlights(carrier, flickable);
   }
 }

@@ -33,6 +33,29 @@ export type Score = Record<Team, number>;
  */
 export type MatchStatus = 'playing' | 'duel' | 'half-time' | 'full-time';
 
+export type Booster = 'longer-slide' | 'double-speed' | 'extra-flick' | 'unstoppable-pass' | 'super-keeper';
+
+/** The outcome of flicking 2d6, including any rerolls on doubles. */
+export interface DiceRoll {
+  pairs: [number, number][];
+  /** Total of all counted pairs. */
+  sum: number;
+  /** Success bonus for the turn, 0..MAX_DICE_BONUS. */
+  bonus: number;
+  booster: Booster | null;
+  /** True when a pair came up below 4: the dice are blocked for DICE_BLOCK_TURNS. */
+  blocked: boolean;
+}
+
+export interface TeamMeta {
+  /** Turns left during which this team cannot roll. */
+  blocked: number;
+  /** Bonus already earned for the next turn (from a free roll). */
+  bonus: number;
+  /** Held boosters, at most MAX_BOOSTERS. */
+  boosters: Booster[];
+}
+
 export interface MatchState {
   /** 1-based turn within the current half. */
   turn: number;
@@ -44,6 +67,7 @@ export interface MatchState {
   players: PlayerState[];
   ball: Vec2;
   possession: Possession;
+  meta: Record<Team, TeamMeta>;
 }
 
 /** One pull-back-and-release gesture. `dir` is a unit vector in the direction of travel. */
@@ -57,6 +81,10 @@ export interface Flick {
 export interface Plan {
   team: Team;
   flicks: Flick[];
+  /** A flick traded for a dice roll (made during planning with rollDice). */
+  dice?: DiceRoll;
+  /** A held booster to use this turn. */
+  booster?: Booster;
 }
 
 /** What a flick means, decided by who was flicked and from where. */
@@ -76,6 +104,8 @@ export type TimelineEvent = { t: number } & (
   | { type: 'throw-in'; team: Team }
   | { type: 'goal-kick'; team: Team }
   | { type: 'dead-ball' }
+  | { type: 'dice'; team: Team; roll: DiceRoll; free: boolean }
+  | { type: 'booster'; team: Team; booster: Booster }
   | { type: 'invalid-flick'; playerId: number; reason: string }
   | { type: 'half-time' }
   | { type: 'full-time' }

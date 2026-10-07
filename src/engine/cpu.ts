@@ -11,6 +11,7 @@ import {
   other,
   targetGoalY,
 } from './pitch';
+import { BOOSTER_INFO, rollDice } from './dice';
 import { mulberry32 } from './rng';
 import { findReceiver, goalLineCrossing, passTarget, resolveTurn } from './sim';
 import { keeperOf } from './setup';
@@ -85,7 +86,7 @@ function expectedScore(state: MatchState, attack: Plan, defense: Plan, team: Tea
 // ---------------------------------------------------------------------------
 
 /** One random, plausible attacking plan built by projecting the chain forward. */
-function sampleAttack(state: MatchState, team: Team, rng: Rng): Plan {
+function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number = MAX_FLICKS.attack): Plan {
   const flicks: Flick[] = [];
   const goalY = targetGoalY(team);
   let ball = state.ball;
@@ -103,7 +104,7 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng): Plan {
     }
   }
 
-  while (flicks.length < MAX_FLICKS.attack) {
+  while (flicks.length < maxFlicks) {
     const live: MatchState = { ...state, ball, possession: { team, playerId: carrier } };
     const options: { flick: Flick; weight: number; next: PlayerState | null }[] = [];
 
@@ -168,21 +169,47 @@ function addNoise(plan: Plan, noise: number, rng: Rng): Plan {
 }
 
 /** The `count` best attacking plans (best first) with their expected scores. */
-function rankAttacks(state: MatchState, team: Team, params: Params, seed: number, count: number): { plan: Plan; score: number }[] {
+function rankAttacks(
+  state: MatchState,
+  team: Team,
+  params: Params,
+  seed: number,
+  count: number,
+  extras: Pick<Plan, 'dice' | 'booster'> = {},
+): { plan: Plan; score: number }[] {
   const rng = mulberry32(seed);
   const empty: Plan = { team: other(team), flicks: [] };
   const ranked: { plan: Plan; score: number }[] = [];
+  const maxFlicks = MAX_FLICKS.attack - (extras.dice ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
   for (let i = 0; i < params.attackSamples; i++) {
-    const plan = sampleAttack(state, team, rng);
+    const plan = { ...sampleAttack(state, team, rng, maxFlicks), ...extras };
     ranked.push({ plan, score: expectedScore(state, plan, empty, team, params.seeds, seed + i) });
   }
   ranked.sort((a, b) => b.score - a.score);
   return ranked.slice(0, count);
 }
 
+/**
+ * Dice and booster choices for a turn. The CPU trades a flick for a roll
+ * about a third of the time when allowed (the roll itself is made here, with
+ * the same seeded rule as a human's), and plays the first held booster that
+ * fits its role.
+ */
+export function cpuExtras(state: MatchState, team: Team, role: 'attack' | 'defense', seed: number): Pick<Plan, 'dice' | 'booster'> {
+  const rng = mulberry32(seed ^ 0x3c6ef372);
+  const m = state.meta[team];
+  const extras: Pick<Plan, 'dice' | 'booster'> = {};
+  if (m.blocked === 0 && rng() < 0.33) extras.dice = rollDice(rng);
+  const held = [...m.boosters, ...(extras.dice?.booster ? [extras.dice.booster] : [])];
+  const fit = held.find((b) => BOOSTER_INFO[b].roles.includes(role));
+  if (fit) extras.booster = fit;
+  return extras;
+}
+
 export function planAttack(state: MatchState, team: Team, difficulty: Difficulty, seed: number): Plan {
   const params = CPU_PARAMS[difficulty];
-  const best = rankAttacks(state, team, params, seed, 1)[0]?.plan ?? { team, flicks: [] };
+  const extras = cpuExtras(state, team, 'attack', seed);
+  const best = rankAttacks(state, team, params, seed, 1, extras)[0]?.plan ?? { team, flicks: [], ...extras };
   return addNoise(best, params.noise, mulberry32(seed ^ 0x5bd1e995));
 }
 
@@ -220,7 +247,7 @@ function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: bo
   return segs;
 }
 
-function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rng): Plan {
+function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rng, maxFlicks: number = MAX_FLICKS.defense): Plan {
   const flicks: Flick[] = [];
   const used = new Set<number>();
   const defenders = state.players.filter((p) => p.team === team && !p.keeper);
@@ -229,7 +256,7 @@ function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rn
   const shots = allSegs.filter((s) => s.shot);
   const n = 1 + (rng() < 0.75 ? 1 : 0);
 
-  while (flicks.length < Math.min(n, MAX_FLICKS.defense)) {
+  while (flicks.length < Math.min(n, maxFlicks)) {
     // Keeper: dive to where a predicted shot crosses the line.
     if (shots.length && !used.has(keeper.id) && rng() < 0.6) {
       const s = shots[Math.floor(rng() * shots.length)];
@@ -265,9 +292,14 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
   if (predicted.length === 0) return { team, flicks: [] };
 
   const rng = mulberry32(seed);
-  let best: Plan = { team, flicks: [] };
+  const extras = cpuExtras(state, team, 'defense', seed);
+  const maxFlicks = MAX_FLICKS.defense - (extras.dice ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
+  let best: Plan = { team, flicks: [], ...extras };
   let bestScore = Infinity;
-  const candidates = [best, ...Array.from({ length: params.defenseSamples }, () => sampleDefense(state, team, predicted, rng))];
+  const candidates = [
+    best,
+    ...Array.from({ length: params.defenseSamples }, () => ({ ...sampleDefense(state, team, predicted, rng, maxFlicks), ...extras })),
+  ];
   candidates.forEach((candidate, i) => {
     let total = 0;
     for (const attack of predicted) total += expectedScore(state, attack, candidate, attacker, params.seeds, seed + i * 7);
