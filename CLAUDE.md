@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Docs
 
-`Plan.md` is the original brief. `PRD.md` is the working spec: rules, the three game modes (vs CPU, hot-seat, online) and milestones M0–M8. Where the two disagree, follow `PRD.md`. Current status: **M6 (uniform editor) done**; next is M7 (mobile: Capacitor + CI, same pipeline as Claw Island). Live at https://flick-soccer.vercel.app (push to `main` deploys; branches get preview URLs).
+`Plan.md` is the original brief. `PRD.md` is the working spec: rules, the three game modes (vs CPU, hot-seat, online) and milestones M0–M8. Where the two disagree, follow `PRD.md`. Current status: **M7 (mobile) done**: Capacitor projects in `android/` and `ios/`, and `.github/workflows/mobile.yml` builds signed iOS/Android on every push to `main` (store uploads switch on once the App Store Connect and Play records exist; rerun the port-app bootstrap then). Next is M8 (online 1v1). Live at https://flick-soccer.vercel.app (push to `main` deploys; branches get preview URLs).
 
 ## Commands
 
@@ -40,6 +40,10 @@ The split that matters: **`src/engine/` is pure TypeScript with no DOM or Pixi i
 - `audio/Sfx.ts` — WebAudio-synthesized cues (whistle, kicks, tackle, goal roar, save, dice, duel countdown/mash, crowd murmur loop). No audio files. Context unlocks on the first gesture; mute persists under `flicksoccer.mute`.
 - `ui/Cutscene.ts` — the dramatic freeze-frame cards (goal, save, overtake, duel win, corner, throw-in): kit-colour wash, speed lines, a blown-up sprite and a shouted caption; tap to skip. `Match.dramatic()` picks one card per turn (goal > save > intercept > corner > throw-in).
 - `ui/Hud.ts` — DOM overlay (`#overlay`) for status, buttons, the "pass the device" cover and toasts. UI is HTML, not canvas, as in Claw Island.
+
+## Mobile
+
+`capacitor.config.ts` (app id `dev.confusedgame.flicksoccer`, `webDir: dist`). `android/` and `ios/` are committed and only ever receive the built web assets: `npm run build && npx cap sync` after web changes, never hand-edit the web copy inside them. iOS uses SPM (no CocoaPods). `resources/logo.png` is the icon source; regenerate with `npx capacitor-assets generate ...` (flags in the port-app skill). Android `versionCode`/`versionName` come from CI via gradle properties. Signing material lives in the port-app vault (`~/.port-app/`) and as repo secrets; never commit keys. The `/port-app` skill owns the pipeline; `references/troubleshooting.md` there is the first stop for CI failures.
 
 ## Conventions
 
