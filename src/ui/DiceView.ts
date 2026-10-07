@@ -1,6 +1,8 @@
 import type { DiceRoll } from '../engine/types';
 
 const TUMBLE_MS = 900;
+/** Fraction of the tumble during which faces still shuffle. */
+const SHUFFLE_UNTIL = 0.6;
 const PAIR_GAP_MS = 500;
 
 export interface DiceShow {
@@ -52,7 +54,11 @@ export class DiceView {
           root.classList.add('rolling');
           tray.style.setProperty('--dx', `${dir.x}px`);
           tray.style.setProperty('--dy', `${dir.y}px`);
+          // Faces shuffle only while the dice are clearly airborne; the real
+          // values are locked in before the CSS tumble settles, so the number
+          // you see land is the number that counts.
           const t0 = performance.now();
+          let locked = false;
           const spin = () => {
             const k = (performance.now() - t0) / TUMBLE_MS;
             if (k >= 1) {
@@ -62,8 +68,13 @@ export class DiceView {
               done();
               return;
             }
-            setFaces(values.map(() => 1 + Math.floor(Math.random() * 6)));
-            setTimeout(spin, 70 + k * 120);
+            if (k < SHUFFLE_UNTIL) {
+              setFaces(values.map(() => 1 + Math.floor(Math.random() * 6)));
+            } else if (!locked) {
+              locked = true;
+              setFaces(values);
+            }
+            setTimeout(spin, 60);
           };
           spin();
         });
