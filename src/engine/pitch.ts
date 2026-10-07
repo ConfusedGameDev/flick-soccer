@@ -12,6 +12,10 @@ export const DT = 1 / 60;
 /** Hard cap on a turn's simulated length, in case a plan never settles. */
 export const MAX_TURN_SECONDS = 20;
 
+export const TURNS_PER_HALF = 8;
+/** Planning time per side, in seconds (client-enforced). */
+export const PLAN_SECONDS = 60;
+
 export const MAX_FLICKS = { attack: 3, defense: 2 } as const;
 
 /** Distance a full-strength pass travels. */
@@ -20,17 +24,42 @@ export const BALL_SPEED = 24;
 /** A teammate this close to where the pass lands collects it. */
 export const RECEIVE_RADIUS = 6;
 
+/** Distance a full-strength shot travels; it must reach the goal line to count. */
+export const SHOT_RANGE = 36;
+export const SHOT_SPEED = 34;
+
 /** Distance a full-strength tackle slides. */
 export const SLIDE_RANGE = 16;
 export const SLIDE_SPEED = 11;
 /** A defender this close to the ball gets one interception roll per pass. */
 export const TACKLE_REACH = 2.5;
 export const INTERCEPT_CHANCE = 0.75;
+/** Outfield players are worse at stopping shots than passes. */
+export const BLOCK_CHANCE = 0.5;
+
+/** Distance a full-strength run moves a teammate without the ball. */
+export const RUN_RANGE = 14;
+export const RUN_SPEED = 12;
+
+/** Keeper dive: short, quick, and with a bigger reach against shots. */
+export const DIVE_RANGE = 7;
+export const DIVE_SPEED = 12;
+export const KEEPER_REACH = 3.5;
+export const SAVE_CHANCE = 0.65;
+/** After a save, chance the keeper holds on; otherwise the ball goes out for a corner. */
+export const HOLD_CHANCE = 0.5;
 
 export const other = (team: Team): Team => (team === 'home' ? 'away' : 'home');
 
 /** +1 when the team attacks toward +y, -1 otherwise. */
 export const attackDir = (team: Team): number => (team === 'home' ? 1 : -1);
+
+/** y of the goal line the team shoots at. */
+export const targetGoalY = (team: Team): number => (team === 'home' ? PITCH_L : 0);
+
+/** The third of the pitch nearest the goal the team attacks; shots are only allowed from here. */
+export const inAttackingThird = (team: Team, p: Vec2): boolean =>
+  team === 'home' ? p.y >= (2 * PITCH_L) / 3 : p.y <= PITCH_L / 3;
 
 export const inPitch = (p: Vec2): boolean =>
   p.x >= 0 && p.x <= PITCH_W && p.y >= 0 && p.y <= PITCH_L;
@@ -39,3 +68,5 @@ export const clampToPitch = (p: Vec2): Vec2 => ({
   x: clamp(p.x, 0, PITCH_W),
   y: clamp(p.y, 0, PITCH_L),
 });
+
+export const inGoalMouth = (x: number): boolean => Math.abs(x - PITCH_W / 2) <= GOAL_W / 2;

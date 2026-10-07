@@ -1,5 +1,5 @@
-import { MAX_FLICKS } from '../engine/pitch';
-import { findReceiver, passTarget, slideTarget } from '../engine/sim';
+import { MAX_FLICKS, PLAN_SECONDS } from '../engine/pitch';
+import { findReceiver, flickKind, moveTarget, passTarget } from '../engine/sim';
 import type { Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
 import type { PiecesView } from '../render/PiecesView';
@@ -22,10 +22,11 @@ interface Session {
   role: Role;
   draft: Flick[];
   ghosts: GhostFlick[];
-  /** Attack only: who makes the next pass, or null once the chain is broken. */
-  carrierId: number | null;
-  /** Defense only: players already given a slide this turn. */
-  used: Set<number>;
+  /** Attack: the engine's projected view of the chain so far (ball + carrier). */
+  projected: MatchState;
+  /** Players already given a movement flick this turn. */
+  moving: Set<number>;
+  deadline: number;
   resolve: (plan: Plan) => void;
 }
 
@@ -34,6 +35,7 @@ export class LocalController implements PlanController {
   readonly kind = 'local' as const;
   private session: Session | null = null;
   private gesture: FlickGesture | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly hud: Hud,
@@ -59,13 +61,16 @@ export class LocalController implements PlanController {
         role,
         draft: [],
         ghosts: [],
-        carrierId: state.possession.playerId,
-        used: new Set(),
+        projected: state,
+        moving: new Set(),
+        deadline: performance.now() + PLAN_SECONDS * 1000,
         resolve,
       };
       this.hud.onUndo = () => this.undo();
       this.hud.onConfirm = () => this.confirm();
       if (this.gesture) this.gesture.enabled = true;
+      this.timer = setInterval(() => this.tick(), 250);
+      this.tick();
       this.refresh();
     });
   }
@@ -78,30 +83,38 @@ export class LocalController implements PlanController {
     return this.session!.state.players.map((p) => p.pos);
   }
 
-  private allowed(id: number): boolean {
+  /** What flicking this player would mean right now, or null if it is not allowed. */
+  private kindFor(id: number): GhostFlick['kind'] | null {
     const s = this.session;
-    if (!s || s.draft.length >= this.max) return false;
-    if (s.role === 'attack') return id === s.carrierId;
-    const p = s.state.players[id];
-    return p.team === s.team && !s.used.has(id);
+    if (!s || s.draft.length >= this.max) return null;
+    const probe: Flick = { playerId: id, dir: { x: 0, y: 1 }, strength: 1 };
+    const kind = flickKind(s.projected, s.team, s.role, probe);
+    if (kind === 'invalid') return null;
+    if ((kind === 'run' || kind === 'slide' || kind === 'dive') && s.moving.has(id)) return null;
+    // A run on the current carrier makes no sense; a pass needs an open chain.
+    if ((kind === 'pass' || kind === 'shot') && s.projected.possession.playerId < 0) return null;
+    return kind;
   }
 
   private pick(world: Vec2): number | null {
     if (!this.session) return null;
-    return FlickGesture.nearest(world, this.positions(), (id) => this.allowed(id));
+    return FlickGesture.nearest(world, this.positions(), (id) => this.kindFor(id) !== null);
   }
 
-  /** Ghost for a flick given the current draft, without committing it. */
+  /** Ghost for a flick given the projected chain, without committing it. */
   private ghostFor(id: number, flick: Flick): GhostFlick {
     const s = this.session!;
     const from = s.state.players[id].pos;
-    if (flick.strength === 0) return { kind: s.role === 'attack' ? 'pass' : 'slide', from, to: from };
-    if (s.role === 'attack') {
-      const { to, out } = passTarget(from, flick);
+    const kind = flickKind(s.projected, s.team, s.role, flick);
+    if (kind === 'invalid') return { kind: 'pass', from, to: from, bad: true };
+    if (flick.strength === 0) return { kind, from, to: from };
+    if (kind === 'pass' || kind === 'shot') {
+      const { to, out } = passTarget(s.projected.ball, flick, kind);
+      if (kind === 'shot') return { kind, from: s.projected.ball, to, bad: !out };
       const receiver = out ? null : findReceiver(s.state.players, s.team, to, id);
-      return { kind: 'pass', from, to, receiver: receiver?.pos, bad: out || !receiver };
+      return { kind, from: s.projected.ball, to, receiver: receiver?.pos, bad: out || !receiver };
     }
-    return { kind: 'slide', from, to: slideTarget(from, flick) };
+    return { kind, from, to: moveTarget(from, flick, kind) };
   }
 
   private drag(id: number, flick: Flick, pull: Vec2): void {
@@ -113,7 +126,7 @@ export class LocalController implements PlanController {
   private release(id: number, flick: Flick | null): void {
     const s = this.session;
     if (!s) return;
-    if (flick && this.allowed(id)) s.draft.push(flick);
+    if (flick && this.kindFor(id) !== null) s.draft.push(flick);
     this.rebuild();
     this.refresh();
   }
@@ -130,27 +143,40 @@ export class LocalController implements PlanController {
     const s = this.session;
     if (!s) return;
     this.session = null;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
     if (this.gesture) this.gesture.enabled = false;
     this.hud.setPlanning(null);
+    this.hud.setTimer(null);
     this.preview.clear();
     this.pieces.setHighlights(null, []);
     s.resolve({ team: s.team, flicks: s.draft });
   }
 
-  /** Recompute ghosts, carrier and used defenders from the draft (simplest correct undo). */
+  private tick(): void {
+    const s = this.session;
+    if (!s) return;
+    const left = Math.max(0, Math.ceil((s.deadline - performance.now()) / 1000));
+    this.hud.setTimer(left);
+    if (left === 0) this.confirm();
+  }
+
+  /** Recompute ghosts and the projected chain from the draft (simplest correct undo). */
   private rebuild(): void {
     const s = this.session!;
     s.ghosts = [];
-    s.used = new Set();
-    s.carrierId = s.state.possession.playerId;
+    s.moving = new Set();
+    s.projected = s.state;
     for (const f of s.draft) {
       const g = this.ghostFor(f.playerId, f);
       s.ghosts.push(g);
-      if (s.role === 'attack') {
+      if (g.kind === 'pass' || g.kind === 'shot') {
         const receiver = g.receiver ? findReceiver(s.state.players, s.team, g.to, f.playerId) : null;
-        s.carrierId = receiver ? receiver.id : null;
+        s.projected = receiver
+          ? { ...s.projected, ball: { ...receiver.pos }, possession: { team: s.team, playerId: receiver.id } }
+          : { ...s.projected, possession: { team: s.team, playerId: -1 } };
       } else {
-        s.used.add(f.playerId);
+        s.moving.add(f.playerId);
       }
     }
   }
@@ -160,15 +186,18 @@ export class LocalController implements PlanController {
     const left = this.max - s.draft.length;
     const flicks = `${left} flick${left === 1 ? '' : 's'} left`;
     let sub: string;
-    if (s.role === 'attack') {
-      sub = s.carrierId === null ? 'The chain ends here (dead ball or out). Undo or confirm.' : left ? 'Pull back from the glowing carrier to pass' : 'Confirm when ready';
-    } else {
-      sub = left ? 'Pull back from a defender to slide them toward the pass' : 'Confirm when ready';
-    }
+    if (left === 0) sub = 'Confirm when ready';
+    else if (s.role === 'attack') {
+      sub =
+        s.projected.possession.playerId < 0
+          ? 'The chain is finished; you can still flick a teammate to run'
+          : 'Pull back from the carrier to pass or shoot, or from a teammate to run';
+    } else sub = 'Pull back from a defender to tackle, or from the keeper to dive';
     this.hud.setStatus(`${teamName(s.team)} ${s.role === 'attack' ? 'attacks' : 'defends'} · ${flicks}`, sub);
     this.hud.setPlanning({ canUndo: s.draft.length > 0, canConfirm: true });
     this.preview.draw(s.ghosts, null);
-    const flickable = s.state.players.filter((p) => this.allowed(p.id)).map((p) => p.id);
-    this.pieces.setHighlights(s.role === 'attack' ? s.carrierId : null, flickable);
+    const flickable = s.state.players.filter((p) => this.kindFor(p.id) !== null).map((p) => p.id);
+    const carrier = s.role === 'attack' && s.projected.possession.playerId >= 0 ? s.projected.possession.playerId : null;
+    this.pieces.setHighlights(carrier, flickable);
   }
 }

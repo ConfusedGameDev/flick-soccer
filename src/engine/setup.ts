@@ -20,26 +20,39 @@ const FORMATION_442: Vec2[] = [
   { x: 46, y: 78 },
 ];
 
+/** Kickoff position of a team's i-th player (0 = keeper). Away defends the far goal, so it is mirrored. */
+export function kickoffPosition(team: Team, i: number): Vec2 {
+  const slot = FORMATION_442[i];
+  return team === 'home' ? { ...slot } : { x: PITCH_W - slot.x, y: PITCH_L - slot.y };
+}
+
 function placeTeam(team: Team, firstId: number): PlayerState[] {
-  return FORMATION_442.map((slot, i) => ({
+  return FORMATION_442.map((_, i) => ({
     id: firstId + i,
     team,
     number: i + 1,
     keeper: i === 0,
-    // Away defends the far goal, so mirror the whole formation.
-    pos: team === 'home' ? { ...slot } : { x: PITCH_W - slot.x, y: PITCH_L - slot.y },
+    pos: kickoffPosition(team, i),
   }));
 }
 
+export const keeperOf = (players: readonly PlayerState[], team: Team): PlayerState =>
+  players.find((p) => p.team === team && p.keeper)!;
+
 /** 11 v 11 in fixed formations, ball with the home keeper, home attacking first. */
-export function initialMatch(): MatchState {
+export function initialMatch(kickoff: Team = 'home'): MatchState {
   const home = placeTeam('home', 0);
   const away = placeTeam('away', home.length);
-  const keeper = home[0];
+  const players = [...home, ...away];
+  const keeper = keeperOf(players, kickoff);
   return {
     turn: 1,
-    players: [...home, ...away],
+    half: 1,
+    score: { home: 0, away: 0 },
+    status: 'playing',
+    kickoff,
+    players,
     ball: { ...keeper.pos },
-    possession: { team: 'home', playerId: keeper.id },
+    possession: { team: kickoff, playerId: keeper.id },
   };
 }

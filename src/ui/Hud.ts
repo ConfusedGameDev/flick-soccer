@@ -1,7 +1,13 @@
-/** DOM overlay: status text, planning buttons, the pass-the-device cover and event toasts. */
+import type { MatchState } from '../engine/types';
+import { TURNS_PER_HALF } from '../engine/pitch';
+
+/** DOM overlay: scoreboard, status text, planning buttons, the pass-the-device cover and toasts. */
 export class Hud {
   private readonly title: HTMLElement;
   private readonly sub: HTMLElement;
+  private readonly score: HTMLElement;
+  private readonly clock: HTMLElement;
+  private readonly timerEl: HTMLElement;
   private readonly undoBtn: HTMLButtonElement;
   private readonly confirmBtn: HTMLButtonElement;
   private readonly nextBtn: HTMLButtonElement;
@@ -13,12 +19,17 @@ export class Hud {
   onUndo: () => void = () => {};
   onConfirm: () => void = () => {};
 
-  constructor(private readonly overlay: HTMLElement) {
+  constructor(readonly overlay: HTMLElement) {
     overlay.innerHTML = `
       <div class="bar top">
         <div>
           <div class="label" data-title></div>
           <div class="sub" data-sub></div>
+        </div>
+        <div class="scoreboard">
+          <div class="score" data-score>0 – 0</div>
+          <div class="clock" data-clock></div>
+          <div class="timer" data-timer></div>
         </div>
       </div>
       <div class="bar bottom">
@@ -33,6 +44,9 @@ export class Hud {
       </div>`;
     this.title = overlay.querySelector('[data-title]')!;
     this.sub = overlay.querySelector('[data-sub]')!;
+    this.score = overlay.querySelector('[data-score]')!;
+    this.clock = overlay.querySelector('[data-clock]')!;
+    this.timerEl = overlay.querySelector('[data-timer]')!;
     this.undoBtn = overlay.querySelector('[data-undo]')!;
     this.confirmBtn = overlay.querySelector('[data-confirm]')!;
     this.nextBtn = overlay.querySelector('[data-next]')!;
@@ -50,6 +64,18 @@ export class Hud {
     this.sub.textContent = sub;
   }
 
+  setScoreboard(state: MatchState): void {
+    this.score.textContent = `Home ${state.score.home} – ${state.score.away} Away`;
+    this.clock.textContent =
+      state.status === 'full-time' ? 'Full time' : `Half ${state.half} · Turn ${state.turn}/${TURNS_PER_HALF}`;
+  }
+
+  /** Seconds left to plan, or null to hide. */
+  setTimer(seconds: number | null): void {
+    this.timerEl.textContent = seconds === null ? '' : `⏱ ${seconds}s`;
+    this.timerEl.classList.toggle('urgent', seconds !== null && seconds <= 10);
+  }
+
   /** Show the planning buttons; pass null to hide them. */
   setPlanning(state: { canUndo: boolean; canConfirm: boolean } | null): void {
     this.undoBtn.classList.toggle('hidden', !state);
@@ -60,7 +86,7 @@ export class Hud {
     }
   }
 
-  /** Full-screen cover that hides the pitch until the next player taps Ready. */
+  /** Full-screen cover that hides the pitch until the next player taps the button. */
   showCover(title: string, text: string, button = 'Ready'): Promise<void> {
     this.coverTitle.textContent = title;
     this.coverText.textContent = text;
@@ -89,9 +115,9 @@ export class Hud {
     });
   }
 
-  toast(text: string): void {
+  toast(text: string, big = false): void {
     const el = document.createElement('div');
-    el.className = 'toast';
+    el.className = big ? 'toast big' : 'toast';
     el.textContent = text;
     this.overlay.appendChild(el);
     el.addEventListener('animationend', () => el.remove());

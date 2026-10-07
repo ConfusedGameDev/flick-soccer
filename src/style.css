@@ -74,6 +74,30 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
+.scoreboard {
+  text-align: right;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+
+.score {
+  font-weight: 700;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock,
+.timer {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.timer.urgent {
+  color: var(--accent);
+  opacity: 1;
+  font-weight: 700;
+}
+
 .sub {
   font-size: 13px;
   opacity: 0.85;
@@ -138,6 +162,133 @@ button:disabled {
   font-weight: 700;
   pointer-events: none;
   animation: toast 1.6s ease-out forwards;
+}
+
+.toast.big {
+  font-size: 32px;
+  color: var(--accent);
+  animation-duration: 2.2s;
+}
+
+/* Dead-ball mash duel */
+.duel {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(16, 38, 26, 0.92);
+  color: var(--cream);
+}
+
+.duel-top {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: max(24px, env(safe-area-inset-top)) 16px 16px;
+  text-align: center;
+}
+
+.duel-title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.duel-count {
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+  min-height: 72px;
+}
+
+.duel-count.pop {
+  animation: pop 0.5s ease-out;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1.6);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.duel-meter {
+  width: min(90vw, 480px);
+  height: 22px;
+  border-radius: 11px;
+  background: var(--away);
+  overflow: hidden;
+  border: 2px solid var(--cream);
+}
+
+.duel-fill {
+  height: 100%;
+  width: 50%;
+  background: var(--home);
+  transition: width 60ms linear;
+}
+
+.duel-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-height: 1.4em;
+}
+
+.duel-pads {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 12px;
+  padding: 0 max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+
+.duel-pad {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 28px;
+  border-radius: 24px;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+  touch-action: manipulation;
+}
+
+.duel-pad small {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.duel-pad.left {
+  background: var(--home);
+  color: var(--ink);
+}
+
+.duel-pad.right {
+  background: var(--away);
+  color: var(--cream);
+}
+
+.duel.open .duel-pad {
+  opacity: 1;
+}
+
+.duel-pad.hit {
+  transform: scale(0.96);
+}
+
+.duel.done .duel-pad {
+  opacity: 0.35;
 }
 
 @keyframes toast {

@@ -23,8 +23,24 @@ export interface Possession {
   playerId: number;
 }
 
+export type Score = Record<Team, number>;
+
+/**
+ * - playing: the next call is resolveTurn
+ * - duel: a dead ball; the client runs the mash duel and calls resolveDuel
+ * - half-time: positions are reset; the client shows a cover and calls continueMatch
+ * - full-time: the match is over
+ */
+export type MatchStatus = 'playing' | 'duel' | 'half-time' | 'full-time';
+
 export interface MatchState {
+  /** 1-based turn within the current half. */
   turn: number;
+  half: 1 | 2;
+  score: Score;
+  status: MatchStatus;
+  /** Who kicked off the first half; the other side kicks off the second. */
+  kickoff: Team;
   players: PlayerState[];
   ball: Vec2;
   possession: Possession;
@@ -43,14 +59,26 @@ export interface Plan {
   flicks: Flick[];
 }
 
+/** What a flick means, decided by who was flicked and from where. */
+export type FlickKind = 'pass' | 'shot' | 'run' | 'slide' | 'dive' | 'invalid';
+
 export type TimelineEvent = { t: number } & (
   | { type: 'pass'; from: number; to: Vec2 }
+  | { type: 'shot'; from: number; to: Vec2 }
+  | { type: 'run'; playerId: number }
+  | { type: 'slide'; playerId: number }
+  | { type: 'dive'; playerId: number }
   | { type: 'receive'; playerId: number }
   | { type: 'intercept'; playerId: number }
-  | { type: 'slide'; playerId: number }
+  | { type: 'save'; playerId: number }
+  | { type: 'goal'; team: Team }
+  | { type: 'corner'; team: Team }
+  | { type: 'throw-in'; team: Team }
+  | { type: 'goal-kick'; team: Team }
   | { type: 'dead-ball' }
-  | { type: 'out' }
   | { type: 'invalid-flick'; playerId: number; reason: string }
+  | { type: 'half-time' }
+  | { type: 'full-time' }
   | { type: 'end' }
 );
 

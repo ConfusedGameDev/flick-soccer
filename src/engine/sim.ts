@@ -1,5 +1,6 @@
 import type {
   Flick,
+  FlickKind,
   Keyframe,
   MatchState,
   Plan,
@@ -11,32 +12,75 @@ import type {
 } from './types';
 import {
   BALL_SPEED,
+  BLOCK_CHANCE,
+  DIVE_RANGE,
+  DIVE_SPEED,
   DT,
+  HOLD_CHANCE,
   INTERCEPT_CHANCE,
+  KEEPER_REACH,
   MAX_FLICKS,
   MAX_TURN_SECONDS,
   PASS_RANGE,
+  PITCH_L,
+  PITCH_W,
   RECEIVE_RADIUS,
+  RUN_RANGE,
+  RUN_SPEED,
+  SAVE_CHANCE,
+  SHOT_RANGE,
+  SHOT_SPEED,
   SLIDE_RANGE,
   SLIDE_SPEED,
   TACKLE_REACH,
+  TURNS_PER_HALF,
   clampToPitch,
+  inAttackingThird,
+  inGoalMouth,
   inPitch,
   other,
+  targetGoalY,
 } from './pitch';
 import { mulberry32 } from './rng';
+import { keeperOf, kickoffPosition } from './setup';
 import { add, dist, lerp, normalize, scale } from './vec';
 
-/** Where a pass from `from` lands, clipped to the pitch. `out` is true if it crossed a line. */
-export function passTarget(from: Vec2, flick: Flick): { to: Vec2; out: boolean } {
-  const raw = add(from, scale(normalize(flick.dir), flick.strength * PASS_RANGE));
+// ---------------------------------------------------------------------------
+// Flick classification and geometry (shared with the client preview)
+// ---------------------------------------------------------------------------
+
+/** Where a flick's ray crosses the goal line the team shoots at, if it does. */
+export function goalLineCrossing(team: Team, from: Vec2, dir: Vec2): Vec2 | null {
+  const gy = targetGoalY(team);
+  const d = normalize(dir);
+  if (Math.abs(d.y) < 1e-6) return null;
+  const t = (gy - from.y) / d.y;
+  if (t <= 0) return null;
+  return { x: from.x + d.x * t, y: gy };
+}
+
+/** What a flick means for this side, from who was flicked and where they stand. */
+export function flickKind(state: MatchState, team: Team, role: 'attack' | 'defense', flick: Flick): FlickKind {
+  const p = state.players[flick.playerId];
+  if (!p || p.team !== team) return 'invalid';
+  if (role === 'defense') return p.keeper ? 'dive' : 'slide';
+  if (p.id !== state.possession.playerId) return 'run';
+  const cross = goalLineCrossing(team, state.ball, flick.dir);
+  return cross && inGoalMouth(cross.x) && inAttackingThird(team, state.ball) ? 'shot' : 'pass';
+}
+
+/** Where a pass or shot from `from` lands, clipped to the pitch. `out` is true if it crossed a line. */
+export function passTarget(from: Vec2, flick: Flick, kind: 'pass' | 'shot' = 'pass'): { to: Vec2; out: boolean } {
+  const range = kind === 'shot' ? SHOT_RANGE : PASS_RANGE;
+  const raw = add(from, scale(normalize(flick.dir), flick.strength * range));
   const out = !inPitch(raw);
   return { to: out ? clipToEdge(from, raw) : raw, out };
 }
 
-/** Where a tackle slide from `from` ends, clipped to the pitch. */
-export function slideTarget(from: Vec2, flick: Flick): Vec2 {
-  return clampToPitch(add(from, scale(normalize(flick.dir), flick.strength * SLIDE_RANGE)));
+/** Where a slide, run or dive from `from` ends, clipped to the pitch. */
+export function moveTarget(from: Vec2, flick: Flick, kind: 'slide' | 'run' | 'dive'): Vec2 {
+  const range = kind === 'slide' ? SLIDE_RANGE : kind === 'run' ? RUN_RANGE : DIVE_RANGE;
+  return clampToPitch(add(from, scale(normalize(flick.dir), flick.strength * range)));
 }
 
 /** The teammate who collects a ball landing at `point`, or null if nobody is close enough. */
@@ -59,6 +103,20 @@ export function findReceiver(
   return best;
 }
 
+export function nearestOf(players: readonly PlayerState[], team: Team, point: Vec2): PlayerState {
+  let best = players.find((p) => p.team === team)!;
+  let bestD = Infinity;
+  for (const p of players) {
+    if (p.team !== team) continue;
+    const d = dist(p.pos, point);
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
+}
+
 /** Walk back along from→raw until the point is inside the pitch. */
 function clipToEdge(from: Vec2, raw: Vec2): Vec2 {
   let lo = 0;
@@ -71,7 +129,11 @@ function clipToEdge(from: Vec2, raw: Vec2): Vec2 {
   return lerp(from, raw, lo);
 }
 
-interface Slide {
+// ---------------------------------------------------------------------------
+// Turn resolution
+// ---------------------------------------------------------------------------
+
+interface Move {
   idx: number;
   from: Vec2;
   to: Vec2;
@@ -79,14 +141,24 @@ interface Slide {
 }
 
 interface BallSegment {
+  shot: boolean;
   from: Vec2;
   to: Vec2;
   duration: number;
   startT: number;
   out: boolean;
-  /** Defenders that already had their interception roll for this pass. */
+  /** Defenders that already had their roll for this segment. */
   rolled: Set<number>;
 }
+
+/** How a turn's chain of play ended; drives the restart. */
+type Outcome =
+  | { kind: 'settled' }
+  | { kind: 'dead-ball' }
+  | { kind: 'goal'; team: Team }
+  | { kind: 'corner'; team: Team; at: Vec2 }
+  | { kind: 'throw-in'; team: Team; at: Vec2 }
+  | { kind: 'goal-kick'; team: Team };
 
 /**
  * Resolve one turn: both plans run at the same time, the ball follows the
@@ -110,21 +182,56 @@ export function resolveTurn(
   let t = 0;
   let possession = { ...state.possession };
   let ball: Vec2 = { ...state.ball };
+  // Boxed so assignments inside endChain() are visible to the switch below.
+  const run: { outcome: Outcome } = { outcome: { kind: 'settled' } };
 
   const attackFlicks = attackPlan.team === attackTeam ? attackPlan.flicks.slice(0, MAX_FLICKS.attack) : [];
   const defenseFlicks = defensePlan.team === defenseTeam ? defensePlan.flicks.slice(0, MAX_FLICKS.defense) : [];
 
-  // Defender slides all start at t = 0.
-  const slides: Slide[] = [];
+  // Every movement flick (slides, dives, runs) starts at t = 0 and runs in parallel.
+  const moves: Move[] = [];
+  const moving = new Set<number>();
+  const addMove = (p: PlayerState, f: Flick, kind: 'slide' | 'run' | 'dive') => {
+    if (moving.has(p.id)) {
+      events.push({ t, type: 'invalid-flick', playerId: p.id, reason: 'already moving' });
+      return;
+    }
+    const to = moveTarget(p.pos, f, kind);
+    const speed = kind === 'slide' ? SLIDE_SPEED : kind === 'run' ? RUN_SPEED : DIVE_SPEED;
+    moves.push({ idx: p.id, from: { ...p.pos }, to, duration: dist(p.pos, to) / speed });
+    moving.add(p.id);
+    events.push({ t, type: kind, playerId: p.id });
+  };
+
   for (const f of defenseFlicks) {
-    const p = byId(f.playerId);
-    if (!p || p.team !== defenseTeam) {
+    const kind = flickKind(state, defenseTeam, 'defense', f);
+    if (kind === 'invalid') {
       events.push({ t, type: 'invalid-flick', playerId: f.playerId, reason: 'not a defender' });
       continue;
     }
-    const to = slideTarget(p.pos, f);
-    slides.push({ idx: p.id, from: { ...p.pos }, to, duration: dist(p.pos, to) / SLIDE_SPEED });
-    events.push({ t, type: 'slide', playerId: p.id });
+    addMove(byId(f.playerId), f, kind as 'slide' | 'dive');
+  }
+
+  // Attack: runs start now; passes and shots are queued and chained in order.
+  // The chain is projected forward from the kickoff positions so that a flick
+  // from the *next* carrier counts as a pass, not a run. This is the same
+  // projection the planning preview shows.
+  const chain: Flick[] = [];
+  let projected: MatchState = { ...state, players, ball: { ...ball }, possession: { ...possession } };
+  for (const f of attackFlicks) {
+    const kind = flickKind(projected, attackTeam, 'attack', f);
+    if (kind === 'invalid') {
+      events.push({ t, type: 'invalid-flick', playerId: f.playerId, reason: 'not an attacker' });
+    } else if (kind === 'run') {
+      addMove(byId(f.playerId), f, 'run');
+    } else {
+      chain.push(f);
+      const { to, out } = passTarget(projected.ball, f, kind as 'pass' | 'shot');
+      const receiver = kind === 'pass' && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
+      projected = receiver
+        ? { ...projected, ball: { ...receiver.pos }, possession: { team: attackTeam, playerId: receiver.id } }
+        : { ...projected, possession: { team: attackTeam, playerId: -1 } };
+    }
   }
 
   let flickIdx = 0;
@@ -132,105 +239,199 @@ export function resolveTurn(
   let chainDone = false;
 
   const snapshot = () => keyframes.push({ t, ball: { ...ball }, players: players.map((p) => ({ ...p.pos })) });
-  const slidesDone = () => slides.every((s) => t >= s.duration);
+  const movesDone = () => moves.every((m) => t >= m.duration);
+  const endChain = (o: Outcome) => {
+    run.outcome = o;
+    seg = null;
+    chainDone = true;
+  };
 
   snapshot();
 
   while (t < MAX_TURN_SECONDS) {
-    // Start the next pass when the ball is settled with a carrier.
+    // Start the next pass or shot when the ball is settled with a carrier.
     while (!chainDone && !seg) {
-      if (flickIdx >= attackFlicks.length) {
+      if (flickIdx >= chain.length) {
         chainDone = true;
         break;
       }
-      const f = attackFlicks[flickIdx++];
+      const f = chain[flickIdx++];
       if (f.playerId !== possession.playerId) {
         events.push({ t, type: 'invalid-flick', playerId: f.playerId, reason: 'not the ball carrier' });
         continue;
       }
       const from = { ...ball };
-      const { to, out } = passTarget(from, f);
-      seg = { from, to, duration: dist(from, to) / BALL_SPEED, startT: t, out, rolled: new Set() };
-      events.push({ t, type: 'pass', from: f.playerId, to });
+      // Re-classify against the live ball position: after a pass the carrier may now be in range.
+      const live: MatchState = { ...state, players, ball, possession };
+      const kind = flickKind(live, attackTeam, 'attack', f);
+      const shot = kind === 'shot';
+      const { to, out } = passTarget(from, f, shot ? 'shot' : 'pass');
+      const speed = shot ? SHOT_SPEED : BALL_SPEED;
+      seg = { shot, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set() };
+      events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
-    if (chainDone && slidesDone()) break;
+    if (chainDone && movesDone()) break;
 
     t += DT;
 
-    for (const s of slides) {
-      const k = s.duration > 0 ? Math.min(1, t / s.duration) : 1;
-      byId(s.idx).pos = lerp(s.from, s.to, k);
+    for (const m of moves) {
+      const k = m.duration > 0 ? Math.min(1, t / m.duration) : 1;
+      byId(m.idx).pos = lerp(m.from, m.to, k);
     }
 
     if (seg) {
       const k = seg.duration > 0 ? Math.min(1, (t - seg.startT) / seg.duration) : 1;
       ball = lerp(seg.from, seg.to, k);
 
-      // One interception roll per defender per pass, the first tick they are in reach.
-      let intercepted = false;
+      // One roll per defender per segment, the first tick they are in reach.
+      // Keepers have a longer reach and use the save odds; outfield use tackle/block odds.
+      let stopped = false;
       for (const p of players) {
         if (p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
-        if (dist(p.pos, ball) > TACKLE_REACH) continue;
+        const reach = p.keeper ? KEEPER_REACH : TACKLE_REACH;
+        if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
-        if (rng() < INTERCEPT_CHANCE) {
+        const chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
+        if (rng() >= chance) continue;
+        if (p.keeper && seg.shot) {
+          events.push({ t, type: 'save', playerId: p.id });
+          if (rng() < HOLD_CHANCE) {
+            possession = { team: defenseTeam, playerId: p.id };
+            ball = { ...p.pos };
+            endChain({ kind: 'settled' });
+          } else {
+            endChain({ kind: 'corner', team: attackTeam, at: ball });
+          }
+        } else {
           possession = { team: defenseTeam, playerId: p.id };
           ball = { ...p.pos };
           events.push({ t, type: 'intercept', playerId: p.id });
-          intercepted = true;
-          break;
+          endChain({ kind: 'settled' });
         }
+        stopped = true;
+        break;
       }
-      if (intercepted) {
-        seg = null;
-        chainDone = true;
-      } else if (k >= 1) {
+
+      if (!stopped && k >= 1) {
         if (seg.out) {
-          // Ball crossed a line: the other side restarts from their nearest player.
-          const nearest = nearestOf(players, defenseTeam, ball);
-          possession = { team: defenseTeam, playerId: nearest.id };
-          events.push({ t, type: 'out' });
-          chainDone = true;
+          // clipToEdge lands a hair inside the line, so use a loose tolerance.
+          const onGoalLine = ball.y < 1e-3 || ball.y > PITCH_L - 1e-3;
+          if (seg.shot && onGoalLine && inGoalMouth(ball.x)) {
+            events.push({ t, type: 'goal', team: attackTeam });
+            endChain({ kind: 'goal', team: attackTeam });
+          } else if (onGoalLine) {
+            // Attacker put it over the goal line: goal kick for the defence.
+            endChain({ kind: 'goal-kick', team: defenseTeam });
+          } else {
+            endChain({ kind: 'throw-in', team: defenseTeam, at: ball });
+          }
         } else {
           const receiver = findReceiver(players, attackTeam, ball, possession.playerId);
           if (receiver) {
             possession = { team: attackTeam, playerId: receiver.id };
             ball = { ...receiver.pos };
             events.push({ t, type: 'receive', playerId: receiver.id });
+            seg = null;
           } else {
             events.push({ t, type: 'dead-ball' });
-            chainDone = true;
+            endChain({ kind: 'dead-ball' });
           }
         }
-        seg = null;
       }
     } else {
-      // Ball rests with the carrier (who may be sliding).
+      // Ball rests with the carrier (who may be moving).
       ball = { ...byId(possession.playerId).pos };
     }
 
     snapshot();
   }
 
+  // ---- Restart placement (state only; the client snaps pieces after playback) ----
+  let status: MatchState['status'] = 'playing';
+  const score = { ...state.score };
+  const outcome = run.outcome;
+  switch (outcome.kind) {
+    case 'goal': {
+      score[outcome.team]++;
+      resetFormations(players);
+      const k = keeperOf(players, other(outcome.team));
+      ball = { ...k.pos };
+      possession = { team: k.team, playerId: k.id };
+      break;
+    }
+    case 'corner': {
+      const cornerX = outcome.at.x < PITCH_W / 2 ? 0 : PITCH_W;
+      ball = { x: cornerX, y: targetGoalY(outcome.team) };
+      const taker = nearestOf(players, outcome.team, ball);
+      taker.pos = { ...ball };
+      possession = { team: outcome.team, playerId: taker.id };
+      events.push({ t, type: 'corner', team: outcome.team });
+      break;
+    }
+    case 'throw-in': {
+      ball = clampToPitch(outcome.at);
+      const taker = nearestOf(players, outcome.team, ball);
+      taker.pos = { ...ball };
+      possession = { team: outcome.team, playerId: taker.id };
+      events.push({ t, type: 'throw-in', team: outcome.team });
+      break;
+    }
+    case 'goal-kick': {
+      const k = keeperOf(players, outcome.team);
+      ball = { ...k.pos };
+      possession = { team: k.team, playerId: k.id };
+      events.push({ t, type: 'goal-kick', team: outcome.team });
+      break;
+    }
+    case 'dead-ball':
+      status = 'duel';
+      break;
+    case 'settled':
+      break;
+  }
+
+  // ---- Clock ----
+  let turn = state.turn + 1;
+  let half = state.half;
+  if (turn > TURNS_PER_HALF) {
+    turn = 1;
+    if (half === 1) {
+      half = 2;
+      status = 'half-time';
+      resetFormations(players);
+      const k = keeperOf(players, other(state.kickoff));
+      ball = { ...k.pos };
+      possession = { team: k.team, playerId: k.id };
+      events.push({ t, type: 'half-time' });
+    } else {
+      status = 'full-time';
+      events.push({ t, type: 'full-time' });
+    }
+  }
+
   events.push({ t, type: 'end' });
 
   return {
-    state: { turn: state.turn + 1, players, ball, possession },
+    state: { ...state, turn, half, score, status, players, ball, possession },
     keyframes,
     events,
   };
 }
 
-function nearestOf(players: readonly PlayerState[], team: Team, point: Vec2): PlayerState {
-  let best = players.find((p) => p.team === team)!;
-  let bestD = Infinity;
-  for (const p of players) {
-    if (p.team !== team) continue;
-    const d = dist(p.pos, point);
-    if (d < bestD) {
-      bestD = d;
-      best = p;
-    }
-  }
-  return best;
+/** After a dead-ball duel: the winner's nearest player collects the ball where it stopped. */
+export function resolveDuel(state: MatchState, winner: Team): MatchState {
+  const players = state.players.map((p) => ({ ...p, pos: { ...p.pos } }));
+  const taker = nearestOf(players, winner, state.ball);
+  taker.pos = { ...state.ball };
+  return { ...state, status: 'playing', players, possession: { team: winner, playerId: taker.id } };
+}
+
+/** Acknowledge half-time; the second-half kickoff is already set up. */
+export function continueMatch(state: MatchState): MatchState {
+  return state.status === 'half-time' ? { ...state, status: 'playing' } : state;
+}
+
+function resetFormations(players: PlayerState[]): void {
+  for (const p of players) p.pos = kickoffPosition(p.team, p.number - 1);
 }

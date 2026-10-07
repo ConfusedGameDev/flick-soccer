@@ -8,6 +8,7 @@ import { PiecesView } from './render/PiecesView';
 import { PitchView } from './render/PitchView';
 import { PlanPreview } from './render/PlanPreview';
 import { TimelinePlayer } from './render/TimelinePlayer';
+import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 
 async function boot(): Promise<void> {
@@ -21,7 +22,9 @@ async function boot(): Promise<void> {
   });
   document.getElementById('game')!.appendChild(app.canvas);
 
-  const hud = new Hud(document.getElementById('overlay')!);
+  const overlay = document.getElementById('overlay')!;
+  const hud = new Hud(overlay);
+  const duel = new Duel(overlay);
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
 
@@ -35,6 +38,7 @@ async function boot(): Promise<void> {
   const local = new LocalController(hud, preview, pieces);
   match = new Match({
     hud,
+    duel,
     pieces,
     preview,
     player,
