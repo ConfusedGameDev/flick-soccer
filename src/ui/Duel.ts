@@ -24,8 +24,17 @@ export interface AutoMasher {
  * pull the meter fully to their side wins; at the time limit whoever leads
  * wins, and a dead heat goes to sudden death (next press wins).
  */
+export interface DuelSounds {
+  whistle: () => void;
+  countdown: (step: number) => void;
+  mash: () => void;
+}
+
 export class Duel {
-  constructor(private readonly overlay: HTMLElement) {}
+  constructor(
+    private readonly overlay: HTMLElement,
+    private readonly sounds?: DuelSounds,
+  ) {}
 
   run(sides: DuelSides, names: Record<Team, string>, auto?: AutoMasher): Promise<Team> {
     return new Promise((resolve) => {
@@ -84,6 +93,7 @@ export class Duel {
         if (!open) return;
         pads[side].classList.add('hit');
         setTimeout(() => pads[side].classList.remove('hit'), 80);
+        this.sounds?.mash();
         meter += side === 'left' ? -PRESS_STEP : PRESS_STEP;
         meter = Math.max(-1, Math.min(1, meter));
         paint();
@@ -133,8 +143,10 @@ export class Duel {
 
       // Whistle, then the countdown.
       let step = 0;
+      this.sounds?.whistle();
       const advance = () => {
         if (step < COUNTDOWN.length) {
+          this.sounds?.countdown(COUNTDOWN.length - 1 - step);
           count.textContent = COUNTDOWN[step++];
           count.classList.remove('pop');
           void count.offsetWidth; // restart the pop animation

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Docs
 
-`Plan.md` is the original brief. `PRD.md` is the working spec: rules, the three game modes (vs CPU, hot-seat, online) and milestones M0–M8. Where the two disagree, follow `PRD.md`. Current status: **M4 (team building) done**; next is M5 (presentation: ISS-style art, kits, cutscenes, audio). Live at https://flick-soccer.vercel.app (push to `main` deploys; branches get preview URLs).
+`Plan.md` is the original brief. `PRD.md` is the working spec: rules, the three game modes (vs CPU, hot-seat, online) and milestones M0–M8. Where the two disagree, follow `PRD.md`. Current status: **M5 (presentation) done** with procedural art; next is M6 (uniform editor). Live at https://flick-soccer.vercel.app (push to `main` deploys; branches get preview URLs).
 
 ## Commands
 
@@ -34,7 +34,10 @@ The split that matters: **`src/engine/` is pure TypeScript with no DOM or Pixi i
 - `ui/Duel.ts` — the dead-ball mash mini-game (whistle, 3-2-1-GO, tug meter, two on-screen pads, `A`/`L` keys). It is client-only; the CPU (M2) and server (M8) will feed `resolveDuel` the same way.
 - `game/controller.ts` — `PlanController` interface (`kind: 'local' | 'cpu' | 'remote'`). `CpuController` wraps `engine/cpu.ts` (seeded from the match seed and clock, so a replay thinks the same thoughts). `LocalController` owns the draft plan, ghost previews, the 60 s timer and the HUD buttons during planning. It keeps a `projected` state (ball + carrier after each queued pass) and feeds it to `flickKind`, mirroring the engine's own projection, so what the preview calls a pass/shot/run is what the engine will do. New modes are new implementations of this interface, not changes to `Match`.
 - `input/FlickGesture.ts` — pointer-event pull-back gesture on the canvas (Angry Birds style: direction is opposite the pull, `MAX_PULL_M` meters = full strength). Uses pointer capture; the gesture does its own hit-testing via `FlickGesture.nearest`.
-- `render/` — PixiJS 8. `PitchView` owns the world↔screen mapping (`toScreen`/`toWorld`); everything else draws in screen space using it, so there is no flipped container or scaled text to fight.
+- `render/` — PixiJS 8. `PitchView` owns the world↔screen mapping (`toScreen`/`toWorld`) and draws the pitch, stands and nets; everything else draws in screen space using it, so there is no flipped container or scaled text to fight. The simulation is flat top-down; there is no perspective.
+- `render/sprites.ts` + `render/kits.ts` — players are pixel-art sprites painted at runtime from 10×14 ASCII templates (poses `stand`/`run1`/`run2`/`slide`) and recoloured per `Kit` (jersey/jersey2 with a `pattern`, shorts, socks, keeper colours). Textures use `scaleMode: 'nearest'` and are scaled by an integer so pixels stay crisp; `PiecesView.tick` animates runs from movement and `setSliding` picks the slide pose after `slide`/`dive` events. `KITS` holds the four 1990-inspired presets (no crests). To replace the procedural art with real sprite sheets, swap `spriteTexture`/`spriteCanvas` and keep the API.
+- `audio/Sfx.ts` — WebAudio-synthesized cues (whistle, kicks, tackle, goal roar, save, dice, duel countdown/mash, crowd murmur loop). No audio files. Context unlocks on the first gesture; mute persists under `flicksoccer.mute`.
+- `ui/Cutscene.ts` — the dramatic freeze-frame cards (goal, save, overtake, duel win, corner, throw-in): kit-colour wash, speed lines, a blown-up sprite and a shouted caption; tap to skip. `Match.dramatic()` picks one card per turn (goal > save > intercept > corner > throw-in).
 - `ui/Hud.ts` — DOM overlay (`#overlay`) for status, buttons, the "pass the device" cover and toasts. UI is HTML, not canvas, as in Claw Island.
 
 ## Conventions

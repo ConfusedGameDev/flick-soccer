@@ -9,6 +9,9 @@ import type { DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../e
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
+import type { Sfx } from '../audio/Sfx';
+import { KITS, type Kit } from '../render/kits';
+import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
 import { DiceView } from '../ui/DiceView';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
@@ -42,6 +45,8 @@ export interface MatchDeps {
   player: TimelinePlayer;
   /** The human on this device. */
   local: PlanController;
+  sfx: Sfx;
+  cutscene: Cutscene;
 }
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
@@ -52,6 +57,7 @@ export class Match {
   phase: Phase = 'MENU';
   mode: Mode = 'hotseat';
   squads: Record<Team, Squad> = { home: defaultSquad('home'), away: defaultSquad('away') };
+  kits: Record<Team, Kit> = { home: KITS[0], away: KITS[1] };
   /** Per-match seed; each turn derives its own so a replay with the same plans matches exactly. */
   seed = newSeed();
   lastResult: TurnResult | null = null;
@@ -64,10 +70,13 @@ export class Match {
   async start(): Promise<void> {
     for (;;) {
       await this.menu();
+      await this.pickKits();
       await this.teams();
       await this.kickoff();
+      this.deps.sfx.crowdStart();
       while (this.state.status !== 'full-time') await this.runTurn();
       await this.fullTime();
+      this.deps.sfx.crowdStop();
     }
   }
 
@@ -119,6 +128,30 @@ export class Match {
       const cpu = new CpuController(difficulty, hud, (s) => (this.seed ^ (this.clockKey(s) * 2654435761)) >>> 0);
       this.controllers = { home: local, away: cpu };
     }
+  }
+
+  /** Each human picks a kit; the CPU takes a different one. */
+  private async pickKits(): Promise<void> {
+    const { hud, pieces } = this.deps;
+    const taken = new Set<string>();
+    for (const team of ['home', 'away'] as const) {
+      const options = KITS.filter((k) => !taken.has(k.id));
+      let kit: Kit;
+      if (this.isCpu(team)) {
+        kit = options[(this.seed >>> 3) % options.length];
+      } else {
+        if (this.hotSeat && team === 'away') await hud.showCover('Away kit', 'Hand the device to the Away player.', 'OK');
+        const id = await hud.showMenu(
+          `${teamName(team)}: pick a kit`,
+          'Classic 1990 colours',
+          options.map((k) => ({ key: k.id, label: k.name })),
+        );
+        kit = options.find((k) => k.id === id)!;
+      }
+      taken.add(kit.id);
+      this.kits[team] = kit;
+    }
+    pieces.setKits({ ...this.kits });
   }
 
   /** Quick match uses baseline squads; draft lets each human pick and arrange a team. The CPU auto-picks. */
@@ -175,6 +208,54 @@ export class Match {
       `Home ${k.rounds[k.rounds.length - 1][0]} – ${k.rounds[k.rounds.length - 1][1]} Away on the dice.`,
       'Kick off',
     );
+    this.deps.sfx.whistle(true);
+  }
+
+  /** The one dramatic moment of a turn, if any, as a cutscene card. */
+  private async dramatic(result: TurnResult): Promise<void> {
+    const ev = result.events;
+    const byType = <T extends TimelineEvent['type']>(t: T) => ev.find((e) => e.type === t) as Extract<TimelineEvent, { type: T }> | undefined;
+    const shot = byType('shot');
+    const goal = byType('goal');
+    const save = byType('save');
+    const intercept = byType('intercept');
+    const corner = byType('corner');
+    const throwIn = byType('throw-in');
+    let kind: CutsceneKind | null = null;
+    let playerId: number | null = null;
+    let team: Team | null = null;
+    if (goal) {
+      kind = 'goal';
+      playerId = shot?.from ?? null;
+      team = goal.team;
+    } else if (save) {
+      kind = 'save';
+      playerId = save.playerId;
+    } else if (intercept) {
+      kind = 'overtake';
+      playerId = intercept.playerId;
+    } else if (corner) {
+      kind = 'corner';
+      team = corner.team;
+    } else if (throwIn) {
+      kind = 'throw-in';
+      team = throwIn.team;
+    }
+    if (!kind) return;
+    await this.card(kind, playerId, team);
+  }
+
+  private async card(kind: CutsceneKind, playerId: number | null, team: Team | null): Promise<void> {
+    const p = playerId !== null ? this.state.players[playerId] : null;
+    const t = p?.team ?? team ?? this.state.possession.team;
+    const featured = p ?? this.state.players[this.state.possession.playerId];
+    await this.deps.cutscene.show({
+      kind,
+      kit: this.kits[t],
+      keeper: featured.keeper,
+      name: featured.name,
+      team: teamName(t),
+    });
   }
 
   /** Put every piece where the state says (restarts teleport players). */
@@ -248,6 +329,7 @@ export class Match {
     this.state = result.state;
     this.snap();
     hud.setScoreboard(this.state);
+    await this.dramatic(result);
 
     const free = result.events.find((e) => e.type === 'dice' && e.free);
     if (free && free.type === 'dice') await this.showFreeRoll(free.team, free.roll, 'overtake');
@@ -259,6 +341,7 @@ export class Match {
       const { state, roll } = resolveDuel(this.state, winner, this.turnSeed() ^ 0x7f4a7c15);
       this.state = state;
       this.snap();
+      await this.card('duel', this.state.possession.playerId, winner);
       await this.showFreeRoll(winner, roll, 'win the ball');
     }
 
@@ -293,31 +376,48 @@ export class Match {
   }
 
   onEvent(e: TimelineEvent): void {
-    const { hud } = this.deps;
+    const { hud, sfx, pieces } = this.deps;
     const who = (id: number) => {
       const p = this.state.players[id];
       return `${p.name} (${teamName(p.team)})`;
     };
     switch (e.type) {
+      case 'pass':
+        sfx.kick(0.4);
+        break;
+      case 'shot':
+        sfx.kick(1);
+        break;
+      case 'slide':
+      case 'dive':
+        pieces.setSliding(e.playerId);
+        break;
       case 'goal':
+        sfx.goal();
         hud.toast(`GOAL! ${teamName(e.team)}`, true);
         break;
       case 'save':
+        sfx.save();
         hud.toast(`Saved by ${who(e.playerId)}!`, true);
         break;
       case 'intercept':
+        sfx.tackle();
         hud.toast(`Intercepted by ${who(e.playerId)}!`);
         break;
       case 'dead-ball':
+        sfx.whistle();
         hud.toast('Dead ball');
         break;
       case 'corner':
+        sfx.whistle();
         hud.toast(`Corner to ${teamName(e.team)}`);
         break;
       case 'throw-in':
+        sfx.whistle();
         hud.toast(`Throw-in to ${teamName(e.team)}`);
         break;
       case 'goal-kick':
+        sfx.whistle();
         hud.toast(`Goal kick for ${teamName(e.team)}`);
         break;
       case 'dice':

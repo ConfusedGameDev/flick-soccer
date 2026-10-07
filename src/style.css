@@ -487,6 +487,118 @@ button:disabled {
   }
 }
 
+/* Cutscene cards */
+.cutscene {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(circle at 30% 40%, var(--kit) 0%, var(--kit2) 55%, #0a0f0c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: cs-in 0.2s ease-out;
+  z-index: 5;
+}
+
+.cutscene.out {
+  animation: cs-out 0.22s ease-in forwards;
+}
+
+@keyframes cs-in {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes cs-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.cs-lines {
+  position: absolute;
+  inset: -50%;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, 0.16) 0deg 2deg, transparent 2deg 9deg);
+  animation: cs-spin 6s linear infinite;
+  mix-blend-mode: screen;
+}
+
+@keyframes cs-spin {
+  to {
+    transform: rotate(18deg);
+  }
+}
+
+.cs-figure {
+  position: absolute;
+  left: 8%;
+  bottom: 6%;
+  filter: drop-shadow(0 12px 0 rgba(0, 0, 0, 0.35));
+  animation: cs-pan 2.6s ease-out forwards;
+}
+
+.cs-figure canvas {
+  image-rendering: pixelated;
+  display: block;
+}
+
+@keyframes cs-pan {
+  from {
+    transform: translate(-6%, 6%) scale(1.12);
+  }
+  to {
+    transform: translate(4%, 0) scale(1);
+  }
+}
+
+.cs-text {
+  position: absolute;
+  right: 6%;
+  top: 18%;
+  text-align: right;
+  color: #fff;
+  text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+}
+
+.cs-title {
+  font-size: clamp(40px, 11vw, 120px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+  animation: cs-slam 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.cutscene.minor .cs-title {
+  font-size: clamp(32px, 8vw, 80px);
+}
+
+@keyframes cs-slam {
+  from {
+    transform: scale(2.4) rotate(-6deg);
+    opacity: 0;
+  }
+}
+
+.cs-sub {
+  margin-top: 10px;
+  font-size: clamp(14px, 2.4vw, 24px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mute {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 8px;
+  margin-left: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--cream);
+}
+
 .menu {
   display: flex;
   flex-direction: column;

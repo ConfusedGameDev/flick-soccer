@@ -34,6 +34,7 @@ export class Hud {
   onConfirm: () => void = () => {};
   onRoll: () => void = () => {};
   onBooster: (b: Booster) => void = () => {};
+  onMute: () => void = () => {};
 
   constructor(readonly overlay: HTMLElement) {
     overlay.innerHTML = `
@@ -47,6 +48,7 @@ export class Hud {
           <div class="clock" data-clock></div>
           <div class="timer" data-timer></div>
         </div>
+        <button class="mute" data-mute title="Sound">🔊</button>
       </div>
       <div class="bar bottom">
         <div class="extras" data-extras></div>
@@ -77,6 +79,11 @@ export class Hud {
 
     this.undoBtn.addEventListener('click', () => this.onUndo());
     this.confirmBtn.addEventListener('click', () => this.onConfirm());
+    overlay.querySelector('[data-mute]')!.addEventListener('click', () => this.onMute());
+  }
+
+  setMuted(muted: boolean): void {
+    this.overlay.querySelector('[data-mute]')!.textContent = muted ? '🔇' : '🔊';
   }
 
   setStatus(title: string, sub = ''): void {

@@ -24,7 +24,10 @@ export interface DiceShow {
  * pull back and release to tumble the dice, which then land on the given values.
  */
 export class DiceView {
-  constructor(private readonly overlay: HTMLElement) {}
+  constructor(
+    private readonly overlay: HTMLElement,
+    private readonly onRoll?: () => void,
+  ) {}
 
   show(spec: DiceShow): Promise<void> {
     return new Promise((resolve) => {
@@ -51,6 +54,7 @@ export class DiceView {
 
       const tumble = (values: number[], dir: { x: number; y: number }) =>
         new Promise<void>((done) => {
+          this.onRoll?.();
           root.classList.add('rolling');
           tray.style.setProperty('--dx', `${dir.x}px`);
           tray.style.setProperty('--dy', `${dir.y}px`);

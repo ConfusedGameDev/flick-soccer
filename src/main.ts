@@ -1,5 +1,6 @@
 import './style.css';
 import { Application } from 'pixi.js';
+import { Sfx } from './audio/Sfx';
 import poolData from './data/players.json';
 import type { PoolPlayer } from './engine/pool';
 import { initialMatch } from './engine/setup';
@@ -11,6 +12,7 @@ import { PiecesView } from './render/PiecesView';
 import { PitchView } from './render/PitchView';
 import { PlanPreview } from './render/PlanPreview';
 import { TimelinePlayer } from './render/TimelinePlayer';
+import { Cutscene } from './ui/Cutscene';
 import { DiceView } from './ui/DiceView';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
@@ -27,9 +29,20 @@ async function boot(): Promise<void> {
   document.getElementById('game')!.appendChild(app.canvas);
 
   const overlay = document.getElementById('overlay')!;
+  const sfx = new Sfx();
   const hud = new Hud(overlay);
-  const duel = new Duel(overlay);
-  const dice = new DiceView(overlay);
+  hud.setMuted(sfx.muted);
+  hud.onMute = () => {
+    sfx.setMuted(!sfx.muted);
+    hud.setMuted(sfx.muted);
+  };
+  // Every UI button blips.
+  overlay.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('button')) sfx.click();
+  });
+  const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
+  const dice = new DiceView(overlay, () => sfx.dice());
+  const cutscene = new Cutscene(overlay);
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
   const pool = poolData as PoolPlayer[];
@@ -53,7 +66,7 @@ async function boot(): Promise<void> {
     }
   };
   const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
-  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local });
+  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene });
   const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
   local.attachGesture(gesture);
 
@@ -61,7 +74,11 @@ async function boot(): Promise<void> {
   app.renderer.on('resize', layout);
   layout();
 
-  app.ticker.add((t) => match.update(Math.min(0.1, t.deltaMS / 1000)));
+  app.ticker.add((t) => {
+    const dt = Math.min(0.1, t.deltaMS / 1000);
+    match.update(dt);
+    pieces.tick(dt);
+  });
 
   if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = match;
 
