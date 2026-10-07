@@ -1,3 +1,4 @@
+import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { MAX_FLICKS, PLAN_SECONDS } from '../engine/pitch';
 import { findReceiver, flickKind, moveTarget, passTarget } from '../engine/sim';
 import type { Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
@@ -15,6 +16,29 @@ export interface PlanController {
 }
 
 export const teamName = (t: Team): string => (t === 'home' ? 'Home' : 'Away');
+
+/** The CPU plans with the engine's sampler; `seed` makes a match replayable. */
+export class CpuController implements PlanController {
+  readonly kind = 'cpu' as const;
+
+  constructor(
+    readonly difficulty: Difficulty,
+    private readonly hud: Hud,
+    private readonly seedFor: (state: MatchState) => number,
+  ) {}
+
+  plan(state: MatchState, team: Team, role: Role): Promise<Plan> {
+    this.hud.setStatus(`${teamName(team)} (CPU) ${role === 'attack' ? 'attack' : 'defend'}`, 'Thinking…');
+    this.hud.setPlanning(null);
+    // Yield a frame so the status paints before the (synchronous) search runs.
+    return new Promise((resolve) =>
+      setTimeout(() => {
+        const seed = this.seedFor(state);
+        resolve(role === 'attack' ? planAttack(state, team, this.difficulty, seed) : planDefense(state, team, this.difficulty, seed));
+      }, 30),
+    );
+  }
+}
 
 interface Session {
   state: MatchState;

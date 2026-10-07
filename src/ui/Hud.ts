@@ -102,6 +102,31 @@ export class Hud {
     });
   }
 
+  /** Full-screen cover with several choices; resolves with the chosen key. */
+  showMenu<K extends string>(title: string, text: string, options: { key: K; label: string }[]): Promise<K> {
+    this.coverTitle.textContent = title;
+    this.coverText.textContent = text;
+    this.coverBtn.classList.add('hidden');
+    const list = document.createElement('div');
+    list.className = 'menu';
+    this.cover.appendChild(list);
+    this.cover.classList.remove('hidden');
+    return new Promise((resolve) => {
+      for (const o of options) {
+        const b = document.createElement('button');
+        b.className = 'primary';
+        b.textContent = o.label;
+        b.addEventListener('click', () => {
+          list.remove();
+          this.coverBtn.classList.remove('hidden');
+          this.cover.classList.add('hidden');
+          resolve(o.key);
+        });
+        list.appendChild(b);
+      }
+    });
+  }
+
   waitNext(label = 'Next turn'): Promise<void> {
     this.nextBtn.textContent = label;
     this.nextBtn.classList.remove('hidden');

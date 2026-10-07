@@ -36,14 +36,7 @@ async function boot(): Promise<void> {
     (e) => match.onEvent(e),
   );
   const local = new LocalController(hud, preview, pieces);
-  match = new Match({
-    hud,
-    duel,
-    pieces,
-    preview,
-    player,
-    controllers: { home: local, away: local },
-  });
+  match = new Match({ hud, duel, pieces, preview, player, local });
   const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
   local.attachGesture(gesture);
 

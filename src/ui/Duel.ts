@@ -13,6 +13,12 @@ export interface DuelSides {
   right: Team;
 }
 
+export interface AutoMasher {
+  side: 'left' | 'right';
+  /** Average presses per second; the actual timing jitters around it. */
+  rate: number;
+}
+
 /**
  * Dead-ball dispute: whistle, 3-2-1-GO, then both players mash. The first to
  * pull the meter fully to their side wins; at the time limit whoever leads
@@ -21,7 +27,7 @@ export interface DuelSides {
 export class Duel {
   constructor(private readonly overlay: HTMLElement) {}
 
-  run(sides: DuelSides, names: Record<Team, string>): Promise<Team> {
+  run(sides: DuelSides, names: Record<Team, string>, auto?: AutoMasher): Promise<Team> {
     return new Promise((resolve) => {
       const root = document.createElement('div');
       root.className = 'duel';
@@ -33,8 +39,8 @@ export class Duel {
           <div class="duel-timer" data-timer></div>
         </div>
         <div class="duel-pads">
-          <button class="duel-pad left" data-pad="left">${names[sides.left]}<small>mash! (A)</small></button>
-          <button class="duel-pad right" data-pad="right">${names[sides.right]}<small>mash! (L)</small></button>
+          <button class="duel-pad left" data-pad="left">${names[sides.left]}<small>${auto?.side === 'left' ? 'CPU' : 'mash! (A)'}</small></button>
+          <button class="duel-pad right" data-pad="right">${names[sides.right]}<small>${auto?.side === 'right' ? 'CPU' : 'mash! (L)'}</small></button>
         </div>`;
       this.overlay.appendChild(root);
 
@@ -52,6 +58,7 @@ export class Duel {
       let done = false;
       let endAt = 0;
       let raf = 0;
+      let autoTimer: ReturnType<typeof setTimeout> | null = null;
 
       const paint = () => {
         fill.style.width = `${((meter + 1) / 2) * 100}%`;
@@ -63,6 +70,7 @@ export class Duel {
         done = true;
         open = false;
         cancelAnimationFrame(raf);
+        if (autoTimer) clearTimeout(autoTimer);
         window.removeEventListener('keydown', onKey);
         count.textContent = `${names[winner]} win the ball!`;
         root.classList.add('done');
@@ -82,19 +90,32 @@ export class Duel {
         if (sudden || meter <= -1 || meter >= 1) finish(meter < 0 ? sides.left : sides.right);
       };
 
+      const human = (side: 'left' | 'right') => auto?.side !== side;
       const onKey = (e: KeyboardEvent) => {
         if (e.repeat) return;
-        if (e.code === 'KeyA') press('left');
-        else if (e.code === 'KeyL') press('right');
+        if (e.code === 'KeyA' && human('left')) press('left');
+        else if (e.code === 'KeyL' && human('right')) press('right');
       };
       window.addEventListener('keydown', onKey);
       for (const side of ['left', 'right'] as const) {
+        if (!human(side)) {
+          pads[side].classList.add('cpu');
+          continue;
+        }
         pads[side].addEventListener('pointerdown', (e) => {
           e.preventDefault();
           press(side);
         });
         pads[side].addEventListener('contextmenu', (e) => e.preventDefault());
       }
+
+      // CPU presses at roughly its rate, with a human-like wobble.
+      const autoPress = () => {
+        if (done || !auto) return;
+        if (open) press(auto.side);
+        const gap = (1000 / auto.rate) * (0.6 + Math.random() * 0.8);
+        autoTimer = setTimeout(autoPress, gap);
+      };
 
       const loop = () => {
         if (done) return;
@@ -123,6 +144,7 @@ export class Duel {
             root.classList.add('open');
             endAt = performance.now() + MASH_SECONDS * 1000;
             raf = requestAnimationFrame(loop);
+            if (auto) autoTimer = setTimeout(autoPress, 150 + Math.random() * 200);
           } else {
             setTimeout(advance, COUNT_STEP_MS);
           }

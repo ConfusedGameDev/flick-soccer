@@ -1,3 +1,4 @@
+import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
 import { other } from '../engine/pitch';
 import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
@@ -5,11 +6,22 @@ import type { MatchState, Team, TimelineEvent, TurnResult } from '../engine/type
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
-import type { Duel } from '../ui/Duel';
+import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
-import { teamName, type PlanController } from './controller';
+import { CpuController, teamName, type PlanController } from './controller';
 
-export type Phase = 'PLAN_ATTACK' | 'HANDOFF' | 'PLAN_DEFENSE' | 'RESOLVE' | 'DUEL' | 'REVIEW' | 'BREAK' | 'OVER';
+export type Phase =
+  | 'MENU'
+  | 'PLAN_ATTACK'
+  | 'HANDOFF'
+  | 'PLAN_DEFENSE'
+  | 'RESOLVE'
+  | 'DUEL'
+  | 'REVIEW'
+  | 'BREAK'
+  | 'OVER';
+
+export type Mode = 'hotseat' | 'cpu-easy' | 'cpu-normal';
 
 export interface MatchDeps {
   hud: Hud;
@@ -17,30 +29,31 @@ export interface MatchDeps {
   pieces: PiecesView;
   preview: PlanPreview;
   player: TimelinePlayer;
-  controllers: Record<Team, PlanController>;
+  /** The human on this device. */
+  local: PlanController;
 }
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
 
-/** Drives turns: plan attack → hand off → plan defense → resolve → (duel) → review → repeat. */
+/** Drives a match: menu → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
 export class Match {
   state: MatchState = initialMatch();
-  phase: Phase = 'PLAN_ATTACK';
+  phase: Phase = 'MENU';
+  mode: Mode = 'hotseat';
   /** Per-match seed; each turn derives its own so a replay with the same plans matches exactly. */
   seed = newSeed();
   lastResult: TurnResult | null = null;
+  private controllers: Record<Team, PlanController>;
 
-  constructor(private readonly deps: MatchDeps) {}
+  constructor(private readonly deps: MatchDeps) {
+    this.controllers = { home: deps.local, away: deps.local };
+  }
 
   async start(): Promise<void> {
     for (;;) {
-      this.snap();
-      this.deps.hud.setScoreboard(this.state);
-      if (this.state.status === 'full-time') {
-        await this.fullTime();
-        continue;
-      }
-      await this.runTurn();
+      await this.menu();
+      while (this.state.status !== 'full-time') await this.runTurn();
+      await this.fullTime();
     }
   }
 
@@ -56,6 +69,29 @@ export class Match {
     return (this.seed + (this.state.half * 100 + this.state.turn) * 7919) >>> 0;
   }
 
+  private async menu(): Promise<void> {
+    this.setPhase('MENU');
+    this.state = initialMatch();
+    this.seed = newSeed();
+    this.snap();
+    this.deps.hud.setStatus('Flick Soccer', '');
+    this.deps.hud.setScoreboard(this.state);
+    this.mode = await this.deps.hud.showMenu<Mode>('Flick Soccer', 'Pick a mode', [
+      { key: 'hotseat', label: '2 players · same device' },
+      { key: 'cpu-easy', label: 'vs CPU · easy' },
+      { key: 'cpu-normal', label: 'vs CPU · normal' },
+    ]);
+    const { local, hud } = this.deps;
+    if (this.mode === 'hotseat') {
+      this.controllers = { home: local, away: local };
+    } else {
+      const difficulty: Difficulty = this.mode === 'cpu-easy' ? 'easy' : 'normal';
+      // The CPU's seed comes from the match seed and clock, so a replay thinks the same thoughts.
+      const cpu = new CpuController(difficulty, hud, (s) => (this.seed ^ ((s.half * 100 + s.turn) * 2654435761)) >>> 0);
+      this.controllers = { home: local, away: cpu };
+    }
+  }
+
   /** Put every piece where the state says (restarts teleport players). */
   private snap(): void {
     this.deps.pieces.setPositions(
@@ -65,15 +101,25 @@ export class Match {
   }
 
   private get hotSeat(): boolean {
-    const c = this.deps.controllers;
-    return c.home.kind === 'local' && c.away.kind === 'local';
+    return this.controllers.home.kind === 'local' && this.controllers.away.kind === 'local';
+  }
+
+  private cpuMasher(): AutoMasher | undefined {
+    for (const side of ['left', 'right'] as const) {
+      const team: Team = side === 'left' ? 'home' : 'away';
+      const c = this.controllers[team];
+      if (c.kind === 'cpu') return { side, rate: CPU_PARAMS[(c as CpuController).difficulty].mashRate };
+    }
+    return undefined;
   }
 
   private async runTurn(): Promise<void> {
-    const { hud, controllers, player, pieces, preview, duel } = this.deps;
+    const { hud, player, pieces, preview, duel } = this.deps;
     const attackTeam = this.state.possession.team;
     const defenseTeam = other(attackTeam);
     const turnLabel = `Half ${this.state.half} · Turn ${this.state.turn}`;
+    this.snap();
+    hud.setScoreboard(this.state);
 
     if (this.hotSeat) {
       this.setPhase('HANDOFF');
@@ -83,7 +129,7 @@ export class Match {
       );
     }
     this.setPhase('PLAN_ATTACK');
-    const attackPlan = await controllers[attackTeam].plan(this.state, attackTeam, 'attack');
+    const attackPlan = await this.controllers[attackTeam].plan(this.state, attackTeam, 'attack');
 
     if (this.hotSeat) {
       this.setPhase('HANDOFF');
@@ -93,7 +139,7 @@ export class Match {
       );
     }
     this.setPhase('PLAN_DEFENSE');
-    const defensePlan = await controllers[defenseTeam].plan(this.state, defenseTeam, 'defense');
+    const defensePlan = await this.controllers[defenseTeam].plan(this.state, defenseTeam, 'defense');
 
     this.setPhase('RESOLVE');
     hud.setPlanning(null);
@@ -110,7 +156,7 @@ export class Match {
     if (this.state.status === 'duel') {
       this.setPhase('DUEL');
       hud.setStatus('Dead ball!', 'Mash to win it');
-      const winner = await duel.run({ left: 'home', right: 'away' }, NAMES);
+      const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher());
       this.state = resolveDuel(this.state, winner);
       this.snap();
     }
@@ -138,12 +184,11 @@ export class Match {
 
   private async fullTime(): Promise<void> {
     this.setPhase('OVER');
+    this.deps.hud.setScoreboard(this.state);
     const { home, away } = this.state.score;
     const verdict = home === away ? 'A draw!' : `${home > away ? 'Home' : 'Away'} win!`;
     this.deps.hud.setStatus('Full time', verdict);
-    await this.deps.hud.showCover('Full time', `Home ${home} – ${away} Away. ${verdict}`, 'Play again');
-    this.state = initialMatch();
-    this.seed = newSeed();
+    await this.deps.hud.showCover('Full time', `Home ${home} – ${away} Away. ${verdict}`, 'Back to menu');
   }
 
   onEvent(e: TimelineEvent): void {

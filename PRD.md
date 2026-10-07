@@ -147,6 +147,7 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
   - A player who disconnects can rejoin within the turn timer.
 - **Renderer:** PixiJS 8 (decided at M0). Server stack **(proposed):** Node with WebSockets (possibly Colyseus), to be decided at M8.
 - **Tests:** vitest on the engine; determinism is a tested invariant.
+- **M2 decisions:** the CPU is a sampler + the real engine as evaluator (no hand-written tactics). Easy = fewer samples plus aiming noise and a slower mash; Normal = more samples, no noise. The human always plays Home against the CPU.
 - **M1 decisions:** a flick from the carrier is a shot only from the attacking third *and* when its ray crosses the goal mouth, otherwise it is a pass. Outfield players can block shots (50%) and keepers save (65%, reach 3.5 m); a save is held 50% of the time, otherwise it's a corner. Runs are flicks on a teammate without the ball (14 m). Throw-ins and corners teleport the nearest taker to the ball at the end of the turn.
 
 ## 8. Milestones

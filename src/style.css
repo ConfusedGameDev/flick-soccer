@@ -150,6 +150,21 @@ button:disabled {
   opacity: 0.85;
 }
 
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(80vw, 320px);
+}
+
+.menu button {
+  width: 100%;
+}
+
+.duel-pad.cpu {
+  cursor: default;
+}
+
 .toast {
   position: fixed;
   left: 50%;

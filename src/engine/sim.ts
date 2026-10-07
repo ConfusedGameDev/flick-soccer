@@ -165,12 +165,19 @@ type Outcome =
  * attacker's chain and defenders slide toward where they guessed. Pure and
  * deterministic for a given (state, plans, seed).
  */
+export interface ResolveOptions {
+  /** Skip per-tick keyframes (the CPU evaluator only needs the outcome). The first and last are always kept. */
+  keyframes?: boolean;
+}
+
 export function resolveTurn(
   state: MatchState,
   attackPlan: Plan,
   defensePlan: Plan,
   seed: number,
+  opts: ResolveOptions = {},
 ): TurnResult {
+  const keepFrames = opts.keyframes !== false;
   const rng = mulberry32(seed);
   const attackTeam = state.possession.team;
   const defenseTeam = other(attackTeam);
@@ -238,7 +245,10 @@ export function resolveTurn(
   let seg: BallSegment | null = null;
   let chainDone = false;
 
-  const snapshot = () => keyframes.push({ t, ball: { ...ball }, players: players.map((p) => ({ ...p.pos })) });
+  const frame = (): Keyframe => ({ t, ball: { ...ball }, players: players.map((p) => ({ ...p.pos })) });
+  const snapshot = () => {
+    if (keepFrames) keyframes.push(frame());
+  };
   const movesDone = () => moves.every((m) => t >= m.duration);
   const endChain = (o: Outcome) => {
     run.outcome = o;
@@ -246,7 +256,8 @@ export function resolveTurn(
     chainDone = true;
   };
 
-  snapshot();
+  if (keepFrames) snapshot();
+  else keyframes.push(frame());
 
   while (t < MAX_TURN_SECONDS) {
     // Start the next pass or shot when the ball is settled with a carrier.
@@ -346,6 +357,8 @@ export function resolveTurn(
 
     snapshot();
   }
+
+  if (!keepFrames) keyframes.push(frame());
 
   // ---- Restart placement (state only; the client snaps pieces after playback) ----
   let status: MatchState['status'] = 'playing';
