@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'dev.confusedgame.flicksoccer',
-  appName: 'Flick Soccer',
+  appName: 'Super Soccer Deluxo',
   webDir: 'dist',
   backgroundColor: '#0d2416',
   server: {

@@ -114,10 +114,10 @@ export class Match {
     this.deps.pieces.rebuild(this.state.players);
     this.snap();
     const { local, hud } = this.deps;
-    hud.setStatus('Flick Soccer', '');
+    hud.setStatus('Super Soccer Deluxo', '');
     hud.setPlanning(null);
     hud.setScoreboard(this.state);
-    this.mode = await hud.showMenu<Mode>('Flick Soccer', 'Pick a mode', [
+    this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Pick a mode', [
       { key: 'hotseat', label: '2 players · same device' },
       { key: 'cpu-easy', label: 'vs CPU · easy' },
       { key: 'cpu-normal', label: 'vs CPU · normal' },

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Flick Soccer</string>
-    <string name="title_activity_main">Flick Soccer</string>
+    <string name="app_name">Super Soccer Deluxo</string>
+    <string name="title_activity_main">Super Soccer Deluxo</string>
     <string name="package_name">dev.confusedgame.flicksoccer</string>
     <string name="custom_url_scheme">dev.confusedgame.flicksoccer</string>
 </resources>

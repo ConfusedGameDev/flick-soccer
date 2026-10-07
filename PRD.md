@@ -168,7 +168,8 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 | **M6** | Uniform editor | §6.4 | A player can paint a kit and use it in a match |
 | **M7** | Mobile | Capacitor build and the CI pipeline from Claw Island | Signed builds reach TestFlight and the Play internal track |
 | **M8** | Online 1v1 | Server, room codes, server-resolved turns, server-decided dispute balls, reconnects | Two devices finish a match online |
-| **M9+** | Upgrade store / run mode | §9 | Design after M8 |
+| **M9** | Dual-screen (iPhone Duo) layouts | Detect the two-screen posture (Viewport Segments API) and snap panels to the hinge: lineup/pool on one screen and the pitch on the other in the team builder and during planning; sprite preview on one screen and the paint grid on the other in the kit editor. No engine changes: `PitchView.insets` and the existing side panels already split the layout. | On a dual-screen device each mode uses both screens with no content under the hinge; single-screen layouts are unchanged |
+| **M10+** | Upgrade store / run mode | §9 | Design after M8 |
 
 ## 9. After M8: upgrade store ideas (not committed)
 
