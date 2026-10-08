@@ -5,6 +5,8 @@ import type { Vec2 } from '../engine/types';
 const PAD_X = 16;
 const PAD_TOP = 84;
 const PAD_BOTTOM = 92;
+/** Margin on a dedicated pitch screen: room for the stands band (up to 40 px) plus a gap. */
+const PAD_SCREEN = 48;
 
 /**
  * Draws the pitch and owns the world (meters, +y up) to screen (pixels, +y down)
@@ -17,6 +19,12 @@ export class PitchView {
   scale = 1;
   /** Screen areas taken by overlays (e.g. the team builder panel); the pitch fits in what's left. */
   insets = { left: 0, right: 0, top: 0, bottom: 0 };
+  /**
+   * Dual-screen (M9): when set, the pitch fills this screen and ignores `insets`
+   * and the bar padding, because the HUD lives on the other screen. The margin
+   * keeps the stands inside the screen, clear of the hinge.
+   */
+  screen: { x: number; y: number; width: number; height: number } | null = null;
   private ox = 0;
   private oy = 0;
 
@@ -25,13 +33,27 @@ export class PitchView {
   }
 
   layout(width: number, height: number): void {
-    const { left, right, top, bottom } = this.insets;
-    const availW = width - left - right - PAD_X * 2;
-    const availH = height - top - bottom - PAD_TOP - PAD_BOTTOM;
+    let x0: number;
+    let y0: number;
+    let availW: number;
+    let availH: number;
+    if (this.screen) {
+      const r = this.screen;
+      x0 = r.x + PAD_SCREEN;
+      y0 = r.y + PAD_SCREEN;
+      availW = r.width - PAD_SCREEN * 2;
+      availH = r.height - PAD_SCREEN * 2;
+    } else {
+      const { left, right, top, bottom } = this.insets;
+      x0 = left + PAD_X;
+      y0 = top + PAD_TOP;
+      availW = width - left - right - PAD_X * 2;
+      availH = height - top - bottom - PAD_TOP - PAD_BOTTOM;
+    }
     const s = Math.max(0.5, Math.min(availW / PITCH_W, availH / PITCH_L));
     this.scale = s;
-    this.ox = left + PAD_X + (availW - PITCH_W * s) / 2;
-    this.oy = top + PAD_TOP + (availH - PITCH_L * s) / 2;
+    this.ox = x0 + (availW - PITCH_W * s) / 2;
+    this.oy = y0 + (availH - PITCH_L * s) / 2;
     this.draw();
   }
 

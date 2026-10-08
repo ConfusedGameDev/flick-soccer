@@ -20,6 +20,7 @@ import { DiceView } from './ui/DiceView';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 import { KitEditor } from './ui/KitEditor';
+import { applyScreens, onSegmentsChange, readScreens } from './ui/segments';
 
 /** Native-only niceties: dark status bar over the pitch. Nothing here matters on the web. */
 async function nativeSetup(): Promise<void> {
@@ -57,9 +58,9 @@ async function boot(): Promise<void> {
     if ((e.target as HTMLElement).closest('button')) sfx.click();
   });
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
-  const dice = new DiceView(overlay, () => sfx.dice());
+  const dice = new DiceView(overlay, () => sfx.dice(), () => sfx.kick(0.8));
   const cutscene = new Cutscene(overlay);
-  const kitEditor = new KitEditor(overlay);
+  const kitEditor = new KitEditor(overlay, document.getElementById('stage'));
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
   const pool = poolData as PoolPlayer[];
@@ -74,6 +75,9 @@ async function boot(): Promise<void> {
   );
   const local = new LocalController({ hud, preview, pieces, dice });
   const layout = () => {
+    // Dual-screen (M9): the HUD overlay is pinned to the pane screen by CSS; the pitch takes the other.
+    const screens = applyScreens(readScreens());
+    pitch.screen = screens.posture === 'single' ? null : screens.pitch;
     pitch.layout(app.screen.width, app.screen.height);
     pieces.redraw();
     if (!player.playing && match.phase !== 'BUILD') {
@@ -94,6 +98,7 @@ async function boot(): Promise<void> {
 
   app.stage.addChild(pitch.root, pieces.root, preview.root);
   app.renderer.on('resize', layout);
+  onSegmentsChange(layout);
   layout();
 
   app.ticker.add((t) => {

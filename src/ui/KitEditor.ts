@@ -9,7 +9,11 @@ type Tool = 'pencil' | 'fill';
  * mode, plus shorts and socks colours. Returns the kit, or null on cancel.
  */
 export class KitEditor {
-  constructor(private readonly overlay: HTMLElement) {}
+  /** `stage` is the dual-screen host over the pitch screen (M9); the big preview goes there. */
+  constructor(
+    private readonly overlay: HTMLElement,
+    private readonly stage: HTMLElement | null = null,
+  ) {}
 
   run(initial?: Kit): Promise<{ kit: Kit; deleted?: boolean } | null> {
     return new Promise((resolve) => {
@@ -55,6 +59,10 @@ export class KitEditor {
           </div>
         </div>`;
       this.overlay.appendChild(root);
+      // On two screens the grid stays on the pane and this blown-up preview takes the pitch screen.
+      const big = document.createElement('div');
+      big.className = 'ke-stage';
+      this.stage?.appendChild(big);
 
       const nameInput = root.querySelector<HTMLInputElement>('[data-name]')!;
       nameInput.value = kit.name;
@@ -64,7 +72,9 @@ export class KitEditor {
 
       const cellPx = () => grid.width / n;
       const sizeGrid = () => {
-        const side = Math.min(window.innerWidth - 32, window.innerHeight * 0.55, 420);
+        // The editor is sized to its screen (the pane on a dual-screen device), so measure it, not the window.
+        const r = root.getBoundingClientRect();
+        const side = Math.min(r.width - 32, r.height * 0.55, 420);
         const cell = Math.max(8, Math.floor(side / n));
         grid.width = cell * n;
         grid.height = cell * n;
@@ -120,7 +130,16 @@ export class KitEditor {
         preview.appendChild(kitPreview(kit, 8));
         preview.appendChild(spriteCanvas('stand', kit, false, 6));
         preview.appendChild(spriteCanvas('run1', kit, false, 6));
+        big.innerHTML = '';
+        const title = document.createElement('div');
+        title.className = 'ke-stage-title';
+        title.textContent = nameInput.value.trim() || kit.name;
+        const row = document.createElement('div');
+        row.className = 'ke-stage-row';
+        row.append(kitPreview(kit, 8), spriteCanvas('stand', kit, false, 6), spriteCanvas('run1', kit, false, 6), spriteCanvas('run2', kit, false, 6), spriteCanvas('stand', kit, true, 6));
+        big.append(title, row);
       };
+      nameInput.addEventListener('input', refreshPreview);
 
       const swatches = (host: HTMLElement, get: () => number, set: (i: number) => void) => {
         host.innerHTML = '';
@@ -227,6 +246,7 @@ export class KitEditor {
       const close = (result: { kit: Kit; deleted?: boolean } | null) => {
         window.removeEventListener('resize', sizeGrid);
         root.remove();
+        big.remove();
         resolve(result);
       };
       root.querySelector('[data-cancel]')!.addEventListener('click', () => close(null));

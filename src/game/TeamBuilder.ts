@@ -21,6 +21,7 @@ import { dist } from '../engine/vec';
 import { PLAYER_RADIUS_M, type PiecesView } from '../render/PiecesView';
 import type { PitchView } from '../render/PitchView';
 import type { Hud } from '../ui/Hud';
+import { isDualScreen } from '../ui/segments';
 
 type EraFilter = Era | 'all';
 type PosFilter = Position | 'all';
@@ -97,8 +98,9 @@ export class TeamBuilder {
       const posChips = panel.querySelector<HTMLElement>('[data-pos]')!;
 
       // Make room for the panel: beside the pitch in landscape, under it in portrait.
+      // On two screens the panel fills the pane screen (CSS) and the pitch ignores insets.
       const applyInsets = () => {
-        const landscape = window.innerWidth > window.innerHeight;
+        const landscape = window.innerWidth > window.innerHeight && !isDualScreen();
         panel.classList.toggle('side', landscape);
         const r = panel.getBoundingClientRect();
         pitch.insets = landscape ? { left: r.width, right: 0, top: 0, bottom: 0 } : { left: 0, right: 0, top: 0, bottom: r.height };

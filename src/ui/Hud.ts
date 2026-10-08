@@ -1,6 +1,15 @@
 import { BOOSTER_INFO } from '../engine/dice';
-import type { Booster, MatchState } from '../engine/types';
+import type { Booster, MatchState, PlayerStats, Team } from '../engine/types';
 import { TURNS_PER_HALF } from '../engine/pitch';
+import { hex, type Kit } from '../render/kits';
+
+const STAT_LABELS: [keyof PlayerStats, string][] = [
+  ['pass', 'PAS'],
+  ['shot', 'SHT'],
+  ['speed', 'SPD'],
+  ['tackle', 'TKL'],
+  ['keeping', 'GK'],
+];
 
 export interface ExtrasSpec {
   canRoll: boolean;
@@ -29,6 +38,9 @@ export class Hud {
   private readonly coverBtn: HTMLButtonElement;
 
   private readonly extras: HTMLElement;
+  /** Both elevens, shown on the pane screen of a dual-screen device (CSS hides it otherwise). */
+  private readonly lineup: HTMLElement;
+  private kits: Partial<Record<Team, Kit>> = {};
 
   onUndo: () => void = () => {};
   onConfirm: () => void = () => {};
@@ -50,6 +62,7 @@ export class Hud {
         </div>
         <button class="mute" data-mute title="Sound">🔊</button>
       </div>
+      <div class="lineup" data-lineup></div>
       <div class="bar bottom">
         <div class="extras" data-extras></div>
         <div class="actions">
@@ -76,6 +89,7 @@ export class Hud {
     this.coverText = overlay.querySelector('[data-cover-text]')!;
     this.coverBtn = overlay.querySelector('[data-cover-btn]')!;
     this.extras = overlay.querySelector('[data-extras]')!;
+    this.lineup = overlay.querySelector('[data-lineup]')!;
 
     this.undoBtn.addEventListener('click', () => this.onUndo());
     this.confirmBtn.addEventListener('click', () => this.onConfirm());
@@ -95,6 +109,32 @@ export class Hud {
     this.score.textContent = `Home ${state.score.home} – ${state.score.away} Away`;
     this.clock.textContent =
       state.status === 'full-time' ? 'Full time' : `Half ${state.half} · Turn ${state.turn}/${TURNS_PER_HALF}`;
+    this.renderLineup(state);
+  }
+
+  /** Kit colours for the lineup headers. */
+  setKits(kits: Partial<Record<Team, Kit>>): void {
+    this.kits = { ...kits };
+  }
+
+  private renderLineup(state: MatchState): void {
+    const carrier = state.possession.playerId;
+    const parts: string[] = [];
+    for (const team of ['home', 'away'] as const) {
+      const kit = this.kits[team];
+      const swatch = kit ? `<i style="background:${hex(kit.jersey)}"></i>` : '<i></i>';
+      const tag = state.possession.team === team ? ' · in possession' : '';
+      parts.push(`<div class="lineup-head">${swatch}<b>${team === 'home' ? 'Home' : 'Away'}</b><span>${tag}</span></div>`);
+      for (const p of state.players) {
+        if (p.team !== team) continue;
+        const stats = STAT_LABELS.map(([k, l]) => `<i title="${l}">${l}<b>${p.stats[k]}</b></i>`).join('');
+        parts.push(`<div class="draft-row lineup-row${p.id === carrier ? ' picked' : ''}">
+          <span class="pos${p.keeper ? ' GK' : ''}">${p.number}</span>
+          <span class="who"><b>${p.name}</b><small>${p.keeper ? 'Keeper' : p.id === carrier ? 'On the ball' : ''}</small></span>
+          <span class="stats">${stats}</span></div>`);
+      }
+    }
+    this.lineup.innerHTML = parts.join('');
   }
 
   /** Seconds left to plan, or null to hide. */
