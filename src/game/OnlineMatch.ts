@@ -204,8 +204,9 @@ export class OnlineMatch {
         rounds: m.rounds.map((r) => [r[i]]),
         caption: `${teamName(team)} rolled ${last[i]}${again}`,
         flick: team === this.side,
-        hint: 'Pull back and release your die',
+        hint: 'Shoot the ball at your die',
         again: 'Tie! Roll again…',
+        kit: this.deps.pieces.currentKits[team],
       });
     }
     await hud.showCover(
@@ -286,7 +287,8 @@ export class OnlineMatch {
       rounds: roll.pairs,
       caption: `${DiceView.caption(roll)} (banked for ${teamName(team)}'s next turn)`,
       flick: team === this.side,
-      hint: 'Pull back and release',
+      hint: 'Shoot the ball at the dice',
+      kit: this.deps.pieces.currentKits[team],
     });
   }
 

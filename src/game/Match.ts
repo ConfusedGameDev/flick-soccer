@@ -238,8 +238,9 @@ export class Match {
         rounds: k.rounds.map((r) => [r[i]]),
         caption: `${teamName(team)} rolled ${last[i]}${again}`,
         flick: !this.isCpu(team),
-        hint: `${teamName(team)}, pull back and release your die`,
+        hint: `${teamName(team)}, shoot the ball at your die`,
         again: 'Tie! Roll again…',
+        kit: this.kits[team],
       });
     }
     this.state = initialMatch(k.winner, this.squads);
@@ -327,7 +328,8 @@ export class Match {
       rounds: roll.pairs,
       caption: `${DiceView.caption(roll)} (banked for ${teamName(team)}'s next turn)`,
       flick: !this.isCpu(team),
-      hint: `${teamName(team)}, pull back and release`,
+      hint: `${teamName(team)}, shoot the ball at the dice`,
+      kit: this.kits[team],
     });
   }
 

@@ -58,7 +58,7 @@ async function boot(): Promise<void> {
     if ((e.target as HTMLElement).closest('button')) sfx.click();
   });
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
-  const dice = new DiceView(overlay, () => sfx.dice());
+  const dice = new DiceView(overlay, () => sfx.dice(), () => sfx.kick(0.8));
   const cutscene = new Cutscene(overlay);
   const kitEditor = new KitEditor(overlay, document.getElementById('stage'));
   const pitch = new PitchView();

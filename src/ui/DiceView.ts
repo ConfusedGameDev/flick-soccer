@@ -1,9 +1,17 @@
 import type { DiceRoll } from '../engine/types';
+import { KITS, type Kit } from '../render/kits';
+import { spriteCanvas } from '../render/sprites';
 
 const TUMBLE_MS = 900;
 /** Fraction of the tumble during which faces still shuffle. */
 const SHUFFLE_UNTIL = 0.6;
 const PAIR_GAP_MS = 500;
+/** Idle face cycling while the dice hover, Mario Party style. */
+const SPIN_MS = 90;
+/** Ball flight from the player's feet to the dice. */
+const SHOT_MS = 320;
+/** Ball drop back to the feet after a hit. */
+const RETURN_MS = 450;
 
 export interface DiceShow {
   title: string;
@@ -11,22 +19,27 @@ export interface DiceShow {
   caption: string;
   /** Dice values per round; each round is shown in turn (doubles roll again). */
   rounds: number[][];
-  /** When true the viewer must flick the dice to start; otherwise they roll by themselves. */
+  /** When true the viewer must shoot the ball at the dice to start; otherwise the shot is automatic. */
   flick: boolean;
-  /** Label on the dice while waiting for the flick. */
+  /** Label under the stage while waiting for the shot. */
   hint?: string;
   /** Caption between rounds (doubles or a kickoff tie). */
   again?: string;
+  /** Kit of the player taking the shot; the first preset when not given. */
+  kit?: Kit;
 }
 
 /**
- * Dice overlay. The outcome is decided by the engine; the flick is theater:
- * pull back and release to tumble the dice, which then land on the given values.
+ * Dice overlay in the spirit of Mario Party's dice block: the dice hover and
+ * cycle their faces above a player with the ball at their feet. Pull back from
+ * the ball and release to shoot it up; the hit sends the dice tumbling and they
+ * land on the values the engine already decided. The shot is pure theater.
  */
 export class DiceView {
   constructor(
     private readonly overlay: HTMLElement,
     private readonly onRoll?: () => void,
+    private readonly onKick?: () => void,
   ) {}
 
   show(spec: DiceShow): Promise<void> {
@@ -35,29 +48,50 @@ export class DiceView {
       root.className = 'dice';
       root.innerHTML = `
         <div class="dice-title">${spec.title}</div>
-        <div class="dice-tray" data-tray>
-          ${spec.rounds[0].map(() => '<div class="die" data-value="1"></div>').join('')}
+        <div class="dice-stage" data-stage>
+          <div class="dice-tray" data-tray>
+            ${spec.rounds[0].map(() => '<div class="die" data-value="1"></div>').join('')}
+          </div>
+          <div class="dice-shadow"></div>
+          <div class="dice-player" data-player></div>
+          <div class="dice-ball" data-ball></div>
         </div>
-        <div class="dice-hint" data-hint>${spec.flick ? (spec.hint ?? 'Pull back and release to roll') : ''}</div>
+        <div class="dice-hint" data-hint>${spec.flick ? (spec.hint ?? 'Pull back from the ball and release to shoot the dice') : ''}</div>
         <div class="dice-caption" data-caption></div>
         <button class="primary hidden" data-ok>OK</button>`;
       this.overlay.appendChild(root);
 
+      const stage = root.querySelector<HTMLElement>('[data-stage]')!;
       const tray = root.querySelector<HTMLElement>('[data-tray]')!;
       const dice = Array.from(root.querySelectorAll<HTMLElement>('.die'));
+      const playerHost = root.querySelector<HTMLElement>('[data-player]')!;
+      const ball = root.querySelector<HTMLElement>('[data-ball]')!;
       const hint = root.querySelector<HTMLElement>('[data-hint]')!;
       const caption = root.querySelector<HTMLElement>('[data-caption]')!;
       const ok = root.querySelector<HTMLButtonElement>('[data-ok]')!;
 
-      const setFaces = (values: number[]) => dice.forEach((d, i) => d.setAttribute('data-value', String(values[i] ?? 1)));
-      setFaces(spec.rounds[0]);
+      const kit = spec.kit ?? KITS[0];
+      const setPose = (pose: 'stand' | 'run2') => {
+        playerHost.innerHTML = '';
+        playerHost.appendChild(spriteCanvas(pose, kit, false, 5));
+      };
+      setPose('stand');
 
-      const tumble = (values: number[], dir: { x: number; y: number }) =>
+      const setFaces = (values: number[]) => dice.forEach((d, i) => d.setAttribute('data-value', String(values[i] ?? 1)));
+
+      // Hovering dice cycle 1→6 in step, like the block over Mario's head.
+      let face = 0;
+      const spinner = setInterval(() => {
+        face = (face % 6) + 1;
+        setFaces(dice.map((_, i) => ((face + i * 2) % 6) + 1));
+      }, SPIN_MS);
+
+      const tumble = (values: number[], dx: number) =>
         new Promise<void>((done) => {
           this.onRoll?.();
+          root.classList.remove('landed');
           root.classList.add('rolling');
-          tray.style.setProperty('--dx', `${dir.x}px`);
-          tray.style.setProperty('--dy', `${dir.y}px`);
+          tray.style.setProperty('--dx', `${dx}px`);
           // Faces shuffle only while the dice are clearly airborne; the real
           // values are locked in before the CSS tumble settles, so the number
           // you see land is the number that counts.
@@ -83,15 +117,36 @@ export class DiceView {
           spin();
         });
 
-      const play = async (dir: { x: number; y: number }) => {
+      /** Kick the ball up at the dice; resolves on impact. The ball drops back by itself. */
+      const shoot = (dx: number) =>
+        new Promise<void>((hit) => {
+          this.onKick?.();
+          setPose('run2');
+          const tr = tray.getBoundingClientRect();
+          const br = ball.getBoundingClientRect();
+          const rise = br.top + br.height / 2 - (tr.top + tr.height * 0.6);
+          ball.style.transition = `transform ${SHOT_MS}ms cubic-bezier(0.3, 0.6, 0.6, 1)`;
+          ball.style.transform = `translate(${dx * 0.3}px, ${-rise}px) rotate(540deg)`;
+          setTimeout(() => {
+            hit();
+            setPose('stand');
+            ball.style.transition = `transform ${RETURN_MS}ms cubic-bezier(0.4, 0, 0.8, 1)`;
+            ball.style.transform = 'translate(0, 0) rotate(720deg)';
+            setTimeout(() => (ball.style.transform = ''), RETURN_MS);
+          }, SHOT_MS);
+        });
+
+      const play = async (dx: number) => {
         hint.textContent = '';
+        root.classList.add('armed');
         for (let i = 0; i < spec.rounds.length; i++) {
           if (i > 0) {
             caption.textContent = spec.again ?? 'Doubles! Roll again…';
-            await new Promise((r) => setTimeout(r, PAIR_GAP_MS));
-            root.classList.remove('landed');
+            await new Promise((r) => setTimeout(r, PAIR_GAP_MS + RETURN_MS));
           }
-          await tumble(spec.rounds[i], i === 0 ? dir : { x: dir.x * 0.6, y: dir.y * 0.6 });
+          await shoot(i === 0 ? dx : dx * 0.5);
+          if (i === 0) clearInterval(spinner);
+          await tumble(spec.rounds[i], i === 0 ? dx : dx * 0.5);
         }
         caption.textContent = spec.caption;
         ok.classList.remove('hidden');
@@ -106,11 +161,11 @@ export class DiceView {
       };
 
       if (!spec.flick) {
-        setTimeout(() => play({ x: 24, y: -40 }), 400);
+        setTimeout(() => void play(8), 500);
         return;
       }
 
-      // Flick gesture on the tray: direction of travel is opposite the pull.
+      // Pull-back shot: drag anywhere on the stage, the ball follows a little, release to shoot.
       let pointerId: number | null = null;
       let start = { x: 0, y: 0 };
       const down = (e: PointerEvent) => {
@@ -118,7 +173,7 @@ export class DiceView {
         pointerId = e.pointerId;
         start = { x: e.clientX, y: e.clientY };
         try {
-          tray.setPointerCapture(e.pointerId);
+          stage.setPointerCapture(e.pointerId);
         } catch {
           /* ignore */
         }
@@ -126,28 +181,29 @@ export class DiceView {
       };
       const move = (e: PointerEvent) => {
         if (e.pointerId !== pointerId) return;
-        tray.style.transform = `translate(${(e.clientX - start.x) * 0.4}px, ${(e.clientY - start.y) * 0.4}px)`;
+        ball.style.transition = 'none';
+        ball.style.transform = `translate(${(e.clientX - start.x) * 0.35}px, ${Math.max(0, e.clientY - start.y) * 0.35}px)`;
       };
       const up = (e: PointerEvent) => {
         if (e.pointerId !== pointerId) return;
         pointerId = null;
-        tray.style.transform = '';
         const dx = start.x - e.clientX;
         const dy = start.y - e.clientY;
-        if (Math.hypot(dx, dy) < 12) return;
-        tray.removeEventListener('pointerdown', down);
-        tray.removeEventListener('pointermove', move);
-        tray.removeEventListener('pointerup', up);
-        tray.removeEventListener('pointercancel', up);
-        // Travel is capped so the dice settle near the tray, whatever the pull.
-        const len = Math.hypot(dx, dy);
-        const travel = Math.min(44, len * 0.5);
-        void play({ x: (dx / len) * travel, y: (dy / len) * travel });
+        if (Math.hypot(dx, dy) < 12) {
+          ball.style.transform = '';
+          return;
+        }
+        stage.removeEventListener('pointerdown', down);
+        stage.removeEventListener('pointermove', move);
+        stage.removeEventListener('pointerup', up);
+        stage.removeEventListener('pointercancel', up);
+        // The ball always reaches the dice; the pull only bends the shot sideways a little.
+        void play(Math.max(-40, Math.min(40, dx * 0.4)));
       };
-      tray.addEventListener('pointerdown', down);
-      tray.addEventListener('pointermove', move);
-      tray.addEventListener('pointerup', up);
-      tray.addEventListener('pointercancel', up);
+      stage.addEventListener('pointerdown', down);
+      stage.addEventListener('pointermove', move);
+      stage.addEventListener('pointerup', up);
+      stage.addEventListener('pointercancel', up);
     });
   }
 

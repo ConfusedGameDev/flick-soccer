@@ -82,7 +82,7 @@ There are no offside or fouls in the PoC.
 A single die that is flicked with physics (§3.1).
 
 ### 4.2 Trading a flick for a roll
-A player can give up one flick to roll 2d6. The dice are flicked the same way as the kickoff die **(proposed)**.
+A player can give up one flick to roll 2d6. Rolling works like a Mario Party dice block: the dice hover and cycle their faces above one of your players with the ball at their feet; pull back from the ball and release to shoot it up, and the hit sends the dice tumbling onto the numbers the engine already decided. The kickoff die rolls the same way.
 
 - **Sum gives a success bonus this turn (proposed):** each point of the sum adds 2% to your own odds.
   - Attacker: less chance of interception, better shot accuracy.

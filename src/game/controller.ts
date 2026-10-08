@@ -207,6 +207,7 @@ export class LocalController implements PlanController {
       rounds: roll.pairs,
       caption: DiceView.caption(roll),
       flick: true,
+      kit: this.deps.pieces.currentKits[s.team],
     });
     this.busy = false;
     if (this.session !== s) return; // timed out while the dice were up
