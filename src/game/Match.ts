@@ -6,13 +6,14 @@ import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
 import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
-import type { DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
+import type { Booster, DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Sfx } from '../audio/Sfx';
 import { KITS, kitPreview, loadCustomKits, saveCustomKits, type Kit } from '../render/kits';
 import type { KitEditor } from '../ui/KitEditor';
+import type { Store } from '../ui/Store';
 import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
 import { DiceView } from '../ui/DiceView';
 import type { AutoMasher, Duel } from '../ui/Duel';
@@ -21,6 +22,7 @@ import type { Coach } from '../ui/Coach';
 import { CpuController, teamName, type LocalController, type PlanController } from './controller';
 import type { TeamBuilder } from './TeamBuilder';
 import { Tutor, setTutorialState, tutorialState } from './Tutorial';
+import { RUN_STAGES, applyResult, clearRun, loadRun, newRun, opponentFor, saveRun, type RunState } from './run';
 
 export type Phase =
   | 'MENU'
@@ -36,7 +38,7 @@ export type Phase =
   | 'OVER'
   | 'ONLINE';
 
-export type Mode = 'tutorial' | 'hotseat' | 'cpu-easy' | 'cpu-normal' | 'online-create' | 'online-join';
+export type Mode = 'tutorial' | 'run' | 'hotseat' | 'cpu-easy' | 'cpu-normal' | 'online-create' | 'online-join';
 export type Setup = 'quick' | 'draft';
 
 export interface MatchDeps {
@@ -54,6 +56,7 @@ export interface MatchDeps {
   cutscene: Cutscene;
   kitEditor: KitEditor;
   coach: Coach;
+  store: Store;
 }
 
 /** Set by main.ts after construction (it needs this Match's kit picker). */
@@ -78,6 +81,8 @@ export class Match {
   private tutor: Tutor | null = null;
   /** Set when the tutorial's player chose to leave the match early. */
   private quit = false;
+  /** Boosters each side starts the next match with (the season run carries them over). */
+  private startBoosters: Partial<Record<Team, Booster[]>> = {};
   private controllers: Record<Team, PlanController>;
 
   constructor(private readonly deps: MatchDeps) {
@@ -94,6 +99,10 @@ export class Match {
         }
         continue;
       }
+      if (this.mode === 'run') {
+        await this.seasonRun();
+        continue;
+      }
       if (this.mode === 'tutorial') {
         // Straight to the pitch: preset kits and plain squads, the coach does the talking.
         this.tutor = new Tutor(this.deps.coach, this.deps.local);
@@ -106,14 +115,85 @@ export class Match {
         await this.pickKits();
         await this.teams();
       }
-      await this.kickoff();
-      this.deps.sfx.crowdStart();
-      while (this.state.status !== 'full-time' && !this.quit) await this.runTurn();
-      if (!this.quit) await this.fullTime();
-      this.deps.sfx.crowdStop();
+      await this.playMatch();
       this.tutor?.retire();
       this.tutor = null;
-      this.quit = false;
+    }
+  }
+
+  /** Kickoff dice, the turns and the full-time card, for whatever squads and kits are set. */
+  private async playMatch(button = 'Back to menu'): Promise<void> {
+    await this.kickoff();
+    this.deps.sfx.crowdStart();
+    while (this.state.status !== 'full-time' && !this.quit) await this.runTurn();
+    if (!this.quit) await this.fullTime(button);
+    this.deps.sfx.crowdStop();
+    this.quit = false;
+    this.startBoosters = {};
+  }
+
+  /**
+   * The season run: a ladder of CPU clubs, coins from results and the store
+   * between matches. The run is saved after every step, so it can be resumed.
+   */
+  private async seasonRun(): Promise<void> {
+    const { hud, builder, pool, pieces, local, store } = this.deps;
+    let run: RunState | null = loadRun();
+    if (run && !run.over) {
+      const pick = await hud.showMenu<'continue' | 'new'>('Season run', `A run is in progress: match ${run.stage + 1} of ${RUN_STAGES}, 🪙 ${run.coins}.`, [
+        { key: 'continue', label: 'Continue the run' },
+        { key: 'new', label: 'Start a new run' },
+      ]);
+      if (pick === 'new') run = null;
+    } else {
+      run = null;
+    }
+    if (!run) {
+      const kit = await this.chooseKit('home', new Set(), 'Your run: pick a kit');
+      const seed = newSeed();
+      this.setPhase('BUILD');
+      const squad = await builder.run('Your run: build your team', pool, seed);
+      run = newRun(seed, squad, kit.id);
+      saveRun(run);
+    }
+    for (;;) {
+      const opponent = opponentFor(pool, run);
+      if (run.results.length > 0) {
+        const next = await store.run(run, pool, opponent);
+        if (!next) return;
+        run = next;
+        saveRun(run);
+      }
+      const home = [...KITS, ...loadCustomKits()].find((k) => k.id === run!.kitId) ?? KITS[0];
+      const away = KITS.filter((k) => k.id !== home.id)[(run.seed + run.stage) % (KITS.length - 1)];
+      this.kits = { home, away };
+      pieces.setKits({ ...this.kits });
+      hud.setKits(this.kits);
+      this.squads = { home: run.squad, away: opponent.squad };
+      this.startBoosters = { home: run.boosters };
+      this.seed = newSeed();
+      local.setSeed(this.seed);
+      this.controllers = { home: local, away: new CpuController(opponent.difficulty, hud, (s) => cpuSeed(this.seed, s)) };
+      await hud.showCover(
+        `Match ${run.stage + 1} of ${RUN_STAGES}: ${opponent.name}`,
+        `${opponent.difficulty === 'easy' ? 'An easy opponent' : 'A sharp opponent'} drafted with ${opponent.budget} points. Win to move up the ladder; a draw replays the stage; a loss ends the run.`,
+        'Kick off',
+      );
+      await this.playMatch('Continue');
+      run = applyResult(run, this.state.score, opponent.name, this.state.meta.home.boosters);
+      saveRun(run);
+      if (run.over) {
+        const wins = run.results.filter((r) => r.outcome === 'win').length;
+        await hud.showCover(
+          run.over === 'won' ? 'Champions!' : 'Run over',
+          run.over === 'won'
+            ? `You climbed all ${RUN_STAGES} stages with ${run.coins} coins to spare.`
+            : `${opponent.name} ended the run after ${wins} win${wins === 1 ? '' : 's'}.`,
+          'Back to menu',
+        );
+        clearRun();
+        return;
+      }
     }
   }
 
@@ -161,13 +241,14 @@ export class Match {
     }
     this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Pick a mode', [
       { key: 'tutorial', label: 'How to play · tutorial' },
+      { key: 'run', label: 'Season run' },
       { key: 'hotseat', label: '2 players · same device' },
       { key: 'cpu-easy', label: 'vs CPU · easy' },
       { key: 'cpu-normal', label: 'vs CPU · normal' },
       { key: 'online-create', label: 'Online · create a match' },
       { key: 'online-join', label: 'Online · join with a code' },
     ]);
-    if (this.mode === 'online-create' || this.mode === 'online-join') return;
+    if (this.mode === 'online-create' || this.mode === 'online-join' || this.mode === 'run') return;
     if (this.mode === 'tutorial') {
       cpuEasy();
     } else if (this.mode === 'hotseat') {
@@ -282,7 +363,7 @@ export class Match {
         kit: this.kits[team],
       });
     }
-    this.state = initialMatch(k.winner, this.squads);
+    this.state = initialMatch(k.winner, this.squads, this.startBoosters);
     this.snap();
     await hud.showCover(
       `${teamName(k.winner)} attack first`,
@@ -463,13 +544,13 @@ export class Match {
     await hud.waitNext();
   }
 
-  private async fullTime(): Promise<void> {
+  private async fullTime(button = 'Back to menu'): Promise<void> {
     this.setPhase('OVER');
     this.deps.hud.setScoreboard(this.state);
     const { home, away } = this.state.score;
     const verdict = home === away ? 'A draw!' : `${home > away ? 'Home' : 'Away'} win!`;
     this.deps.hud.setStatus('Full time', verdict);
-    await this.deps.hud.showCover('Full time', `Home ${home} – ${away} Away. ${verdict}`, 'Back to menu');
+    await this.deps.hud.showCover('Full time', `Home ${home} – ${away} Away. ${verdict}`, button);
   }
 
   onEvent(e: TimelineEvent): void {

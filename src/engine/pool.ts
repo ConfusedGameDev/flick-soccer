@@ -144,13 +144,12 @@ export function makeSquad(players: readonly PoolPlayer[], formation: FormationNa
  * while keeping enough budget for the rest. Deterministic for a seed; the
  * seed shuffles ties so two CPU teams are not clones.
  */
-export function cpuSquad(pool: readonly PoolPlayer[], formation: FormationName, seed: number): Squad {
+export function cpuSquad(pool: readonly PoolPlayer[], formation: FormationName, seed: number, budget = BUDGET): Squad {
   const rng = mulberry32(seed);
   const slots = FORMATIONS[formation];
   // Reserve enough for the cheapest possible fill of the remaining slots.
   const MIN = Math.min(...pool.map(cost));
   const picked: PoolPlayer[] = [];
-  let budget = BUDGET;
   // Quality for the slot, with a little noise so two CPU squads differ.
   const value = (p: PoolPlayer, role: Position) => {
     const s = role === 'GK' ? p.keeping * 3 : role === 'DF' ? p.tackle * 2 + p.speed : role === 'MF' ? p.pass * 2 + p.tackle : p.shot * 2 + p.speed;

@@ -172,16 +172,21 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 | **M7** | Mobile | Capacitor build and the CI pipeline from Claw Island | Signed builds reach TestFlight and the Play internal track |
 | **M8** | Online 1v1 | Server, room codes, server-resolved turns, server-decided dispute balls, reconnects | Two devices finish a match online |
 | **M9** | Dual-screen (iPhone Duo) layouts | Detect the two-screen posture (Viewport Segments API) and snap panels to the hinge: lineup/pool on one screen and the pitch on the other in the team builder and during planning; sprite preview on one screen and the paint grid on the other in the kit editor. No engine changes: `PitchView.insets` and the existing side panels already split the layout. **Done:** `ui/segments.ts` reads the segments (Viewport Segments API, `visualViewport.segments`, `getWindowSegments`, or the CSS `viewport-segment-*` env values) and publishes `html[data-posture="book"\|"laptop"]` plus `--pane-*`/`--pitch-*` variables; the HUD overlay is pinned to the pane screen (book: left, laptop: bottom) and the pitch fills the other. The pane shows a lineup panel during the match, the draft pool in the team builder, and the kit editor's grid; the pitch screen shows the pitch, or the blown-up kit preview while painting. `?segments=book` / `?segments=laptop` fakes a hinge for testing. | On a dual-screen device each mode uses both screens with no content under the hinge; single-screen layouts are unchanged |
-| **M10+** | Upgrade store / run mode | §9 | Design after M8 |
+| **M10** | Season run (first slice) | §9: a five-club ladder with rising draft budgets, coins from results, and a store between matches (training, scouts, booster packs); runs are saved and resumable | A run can be won or lost; the store changes the next match |
+| **M11+** | Tactics cards | §9: the passive-rule "jokers"; need engine hooks | Design after M10 |
 
-## 9. After M8: upgrade store ideas (not committed)
+## 9. Season run and upgrade store
 
-- **Season run:** a ladder of CPU clubs that get stronger as you go.
-- **Currency:** earn coins from wins and goals and spend them between matches.
-- **Store items:**
-  - Player training (+1 to a stat).
-  - Scouting for new players.
-  - Extra booster slots.
+**Built (M10, first slice):**
+
+- **Season run:** draft a team with the usual 100 points, then climb a ladder of 5 CPU clubs drafted with 80, 92, 104, 116 and 130 points (the first two on easy, the rest on normal). A win moves you up, a draw replays the stage, a loss ends the run. Winning the fifth match wins the run.
+- **Currency:** 5 coins for a win, 2 for a draw, plus 1 per goal scored.
+- **Store, between matches:** training (+1 to one stat of one player, 3 coins, stats cap at 5); three scouted players per stage (a signing costs about half their draft price and replaces your cheapest player in that position); booster packs (4 coins, one random booster, hand limit 2). Unused boosters carry over into the next match.
+- The run is saved after every step and can be resumed or abandoned from the menu.
+
+**Ideas still open:**
+
+- Extra booster slots.
   - **Tactics cards**, the Balatro "jokers": passive rules such as "Catenaccio: your defenders get 3 flicks once per half" or "Clásicos: +10% pass success for each classic-era player passing in a chain".
 - Synergies between eras, clubs and positions give builds their identity.
 

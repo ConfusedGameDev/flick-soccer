@@ -21,6 +21,7 @@ import { DiceView } from './ui/DiceView';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 import { KitEditor } from './ui/KitEditor';
+import { Store } from './ui/Store';
 import { applyScreens, onSegmentsChange, readScreens } from './ui/segments';
 
 /** Native-only niceties: dark status bar over the pitch. Nothing here matters on the web. */
@@ -62,6 +63,7 @@ async function boot(): Promise<void> {
   const dice = new DiceView(overlay, () => sfx.dice(), () => sfx.kick(0.8));
   const cutscene = new Cutscene(overlay);
   const coach = new Coach(overlay);
+  const store = new Store(overlay);
   const kitEditor = new KitEditor(overlay, document.getElementById('stage'));
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
@@ -90,7 +92,7 @@ async function boot(): Promise<void> {
     }
   };
   const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
-  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor, coach });
+  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor, coach, store });
   // Match server: VITE_SERVER_URL overrides; dev talks to `npm run server:dev`, production to Fly.
   const serverUrl = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? (import.meta.env.DEV ? 'ws://localhost:8787' : 'wss://flick-soccer-match.fly.dev');
   online = new OnlineMatch({ serverUrl, hud, duel, dice, cutscene, sfx, builder, pool, pieces, preview, player, local, pickKit: () => match.chooseKit('home', new Set(), 'Pick your kit') });
