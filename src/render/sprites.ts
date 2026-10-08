@@ -251,14 +251,16 @@ export function lookFor(name: string): Look {
 }
 
 const templateCache = new Map<string, string[]>();
+const BLANK = '.'.repeat(SPRITE_W);
 
-/** Rows for a pose with a look's hair style applied. */
-function template(pose: Pose, look: Look): string[] {
+/** Rows for a pose with a look's hair style applied; always SPRITE_H rows of SPRITE_W letters. */
+export function templateRows(pose: Pose, look: Look): string[] {
   const key = `${pose}:${look.style}`;
   let rows = templateCache.get(key);
   if (!rows) {
     if (pose === 'slide') {
-      rows = BODIES.slide;
+      // The slide has no separate head block: pad the figure down to the bottom of the frame.
+      rows = [...Array<string>(SPRITE_H - BODIES.slide.length).fill(BLANK), ...BODIES.slide];
     } else {
       const head = (pose === 'cheer' ? CHEER_HEAD : HEAD).map((r) => r.split(''));
       for (const [y, x, ch] of STYLES[look.style] ?? []) {
@@ -282,7 +284,7 @@ function jerseyColor(kit: Kit, keeper: boolean, pose: Pose, x: number, y: number
 
 /** Paint one pose at integer scale `k` onto a 2D context at (x, y) = top-left. */
 export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look = DEFAULT_LOOK): void {
-  const rows = template(pose, look);
+  const rows = templateRows(pose, look);
   const [skin, skinShade] = SKINS[look.skin] ?? SKINS[1];
   const [hair, hairHi] = HAIRS[look.hair] ?? HAIRS[0];
   for (let j = 0; j < SPRITE_H; j++) {
