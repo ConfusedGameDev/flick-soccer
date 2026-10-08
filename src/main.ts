@@ -15,6 +15,7 @@ import { PiecesView } from './render/PiecesView';
 import { PitchView } from './render/PitchView';
 import { PlanPreview } from './render/PlanPreview';
 import { TimelinePlayer } from './render/TimelinePlayer';
+import { Coach } from './ui/Coach';
 import { Cutscene } from './ui/Cutscene';
 import { DiceView } from './ui/DiceView';
 import { Duel } from './ui/Duel';
@@ -60,6 +61,7 @@ async function boot(): Promise<void> {
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
   const dice = new DiceView(overlay, () => sfx.dice(), () => sfx.kick(0.8));
   const cutscene = new Cutscene(overlay);
+  const coach = new Coach(overlay);
   const kitEditor = new KitEditor(overlay, document.getElementById('stage'));
   const pitch = new PitchView();
   const preview = new PlanPreview(pitch);
@@ -88,7 +90,7 @@ async function boot(): Promise<void> {
     }
   };
   const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
-  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor });
+  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor, coach });
   // Match server: VITE_SERVER_URL overrides; dev talks to `npm run server:dev`, production to Fly.
   const serverUrl = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? (import.meta.env.DEV ? 'ws://localhost:8787' : 'wss://flick-soccer-match.fly.dev');
   online = new OnlineMatch({ serverUrl, hud, duel, dice, cutscene, sfx, builder, pool, pieces, preview, player, local, pickKit: () => match.chooseKit('home', new Set(), 'Pick your kit') });

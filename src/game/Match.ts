@@ -17,8 +17,10 @@ import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
 import { DiceView } from '../ui/DiceView';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
-import { CpuController, teamName, type PlanController } from './controller';
+import type { Coach } from '../ui/Coach';
+import { CpuController, teamName, type LocalController, type PlanController } from './controller';
 import type { TeamBuilder } from './TeamBuilder';
+import { Tutor, setTutorialState, tutorialState } from './Tutorial';
 
 export type Phase =
   | 'MENU'
@@ -34,7 +36,7 @@ export type Phase =
   | 'OVER'
   | 'ONLINE';
 
-export type Mode = 'hotseat' | 'cpu-easy' | 'cpu-normal' | 'online-create' | 'online-join';
+export type Mode = 'tutorial' | 'hotseat' | 'cpu-easy' | 'cpu-normal' | 'online-create' | 'online-join';
 export type Setup = 'quick' | 'draft';
 
 export interface MatchDeps {
@@ -47,10 +49,11 @@ export interface MatchDeps {
   preview: PlanPreview;
   player: TimelinePlayer;
   /** The human on this device. */
-  local: PlanController & { setSeed(seed: number): void };
+  local: LocalController;
   sfx: Sfx;
   cutscene: Cutscene;
   kitEditor: KitEditor;
+  coach: Coach;
 }
 
 /** Set by main.ts after construction (it needs this Match's kit picker). */
@@ -71,6 +74,10 @@ export class Match {
   seed = newSeed();
   lastResult: TurnResult | null = null;
   online: OnlineRunner | null = null;
+  /** The first-time tutorial's coach, only in tutorial mode. */
+  private tutor: Tutor | null = null;
+  /** Set when the tutorial's player chose to leave the match early. */
+  private quit = false;
   private controllers: Record<Team, PlanController>;
 
   constructor(private readonly deps: MatchDeps) {
@@ -87,13 +94,26 @@ export class Match {
         }
         continue;
       }
-      await this.pickKits();
-      await this.teams();
+      if (this.mode === 'tutorial') {
+        // Straight to the pitch: preset kits and plain squads, the coach does the talking.
+        this.tutor = new Tutor(this.deps.coach, this.deps.local);
+        this.kits = { home: KITS[0], away: KITS[1] };
+        this.deps.coach.setKit(this.kits.home);
+        this.deps.pieces.setKits({ ...this.kits });
+        this.deps.hud.setKits(this.kits);
+        this.squads = { home: defaultSquad('home'), away: defaultSquad('away') };
+      } else {
+        await this.pickKits();
+        await this.teams();
+      }
       await this.kickoff();
       this.deps.sfx.crowdStart();
-      while (this.state.status !== 'full-time') await this.runTurn();
-      await this.fullTime();
+      while (this.state.status !== 'full-time' && !this.quit) await this.runTurn();
+      if (!this.quit) await this.fullTime();
       this.deps.sfx.crowdStop();
+      this.tutor?.retire();
+      this.tutor = null;
+      this.quit = false;
     }
   }
 
@@ -124,7 +144,23 @@ export class Match {
     hud.setPlanning(null);
     hud.setScoreboard(this.state);
     local.setSeed(this.seed);
+    const cpuEasy = () => {
+      this.controllers = { home: local, away: new CpuController('easy', hud, (s) => cpuSeed(this.seed, s)) };
+    };
+    if (tutorialState() === 'new') {
+      setTutorialState('offered');
+      const pick = await hud.showMenu<'tutorial' | 'skip'>('Welcome!', 'First time here? A short guided match teaches flicks, defending and the dice.', [
+        { key: 'tutorial', label: 'Play the tutorial' },
+        { key: 'skip', label: 'Skip, I know the game' },
+      ]);
+      if (pick === 'tutorial') {
+        this.mode = 'tutorial';
+        cpuEasy();
+        return;
+      }
+    }
     this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Pick a mode', [
+      { key: 'tutorial', label: 'How to play · tutorial' },
       { key: 'hotseat', label: '2 players · same device' },
       { key: 'cpu-easy', label: 'vs CPU · easy' },
       { key: 'cpu-normal', label: 'vs CPU · normal' },
@@ -132,7 +168,9 @@ export class Match {
       { key: 'online-join', label: 'Online · join with a code' },
     ]);
     if (this.mode === 'online-create' || this.mode === 'online-join') return;
-    if (this.mode === 'hotseat') {
+    if (this.mode === 'tutorial') {
+      cpuEasy();
+    } else if (this.mode === 'hotseat') {
       this.controllers = { home: local, away: local };
     } else {
       const difficulty: Difficulty = this.mode === 'cpu-easy' ? 'easy' : 'normal';
@@ -230,6 +268,7 @@ export class Match {
     this.snap();
     const k = kickoffRoll(mulberry32(kickoffSeed(this.seed)));
     const again = k.rounds.length > 1 ? ' (ties rolled again)' : '';
+    await this.tutor?.beat('kickoff');
     for (const team of ['home', 'away'] as const) {
       const i = team === 'home' ? 0 : 1;
       const last = k.rounds[k.rounds.length - 1];
@@ -349,6 +388,10 @@ export class Match {
       );
     }
     this.setPhase('PLAN_ATTACK');
+    if (this.tutor && !this.isCpu(attackTeam)) {
+      hud.setStatus(`${teamName(attackTeam)} attack`, 'The coach has a word…');
+      await this.tutor.beat('attack');
+    }
     const attackPlan = await this.controllers[attackTeam].plan(this.state, attackTeam, 'attack');
 
     if (this.hotSeat) {
@@ -359,9 +402,14 @@ export class Match {
       );
     }
     this.setPhase('PLAN_DEFENSE');
+    if (this.tutor && !this.isCpu(defenseTeam)) {
+      hud.setStatus(`${teamName(defenseTeam)} defend`, 'The coach has a word…');
+      await this.tutor.beat('defense');
+    }
     const defensePlan = await this.controllers[defenseTeam].plan(this.state, defenseTeam, 'defense');
 
     this.setPhase('RESOLVE');
+    await this.tutor?.beat('resolve');
     hud.setPlanning(null);
     hud.setStatus(turnLabel, 'Both plans play out…');
     preview.clear();
@@ -376,9 +424,11 @@ export class Match {
 
     const free = result.events.find((e) => e.type === 'dice' && e.free);
     if (free && free.type === 'dice') await this.showFreeRoll(free.team, free.roll, 'overtake');
+    await this.tutor?.beat('resolved');
 
     if (this.state.status === 'duel') {
       this.setPhase('DUEL');
+      await this.tutor?.beat('duel');
       hud.setStatus('Dead ball!', 'Mash to win it');
       const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher());
       const { state, roll } = resolveDuel(this.state, winner, duelSeed(this.seed, this.state));
@@ -406,6 +456,10 @@ export class Match {
       `${turnLabel} done`,
       next === attackTeam ? `${teamName(next)} keep the ball` : `${teamName(next)} take over the attack`,
     );
+    if ((await this.tutor?.beat('review')) === 'quit') {
+      this.quit = true;
+      return;
+    }
     await hud.waitNext();
   }
 

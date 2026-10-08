@@ -60,6 +60,17 @@ interface Session {
   resolve: (plan: Plan) => void;
 }
 
+/** What the tutorial sees while a human plans. */
+export interface DraftInfo {
+  role: Role;
+  used: number;
+  left: number;
+  /** Boosters usable this turn (held or fresh). */
+  boosters: number;
+  /** Attack only: the last pass lands in open space, so the chain ends in a dead ball. */
+  dead: boolean;
+}
+
 export interface LocalDeps {
   hud: Hud;
   preview: PlanPreview;
@@ -76,6 +87,10 @@ export class LocalController implements PlanController {
   private busy = false;
   /** The match seed; trade rolls derive from it and the clock, exactly as the server would roll. */
   private seed = 0;
+  /** Called after every change to the draft during planning, and with null on confirm (tutorial). */
+  onDraft: ((info: DraftInfo | null) => void) | null = null;
+  /** False disables the planning clock (tutorial). */
+  timed = true;
 
   constructor(private readonly deps: LocalDeps) {}
 
@@ -105,7 +120,7 @@ export class LocalController implements PlanController {
         moving: new Set(),
         dice: null,
         booster: null,
-        deadline: performance.now() + PLAN_SECONDS * 1000,
+        deadline: this.timed ? performance.now() + PLAN_SECONDS * 1000 : Infinity,
         resolve,
       };
       const { hud } = this.deps;
@@ -242,11 +257,16 @@ export class LocalController implements PlanController {
     if (s.dice) plan.dice = s.dice;
     if (s.booster) plan.booster = s.booster;
     s.resolve(plan);
+    this.onDraft?.(null);
   }
 
   private tick(): void {
     const s = this.session;
     if (!s) return;
+    if (!this.timed) {
+      this.deps.hud.setTimer(null);
+      return;
+    }
     const left = Math.max(0, Math.ceil((s.deadline - performance.now()) / 1000));
     this.deps.hud.setTimer(left);
     if (left === 0) this.confirm();
@@ -302,5 +322,12 @@ export class LocalController implements PlanController {
     const flickable = s.state.players.filter((p) => this.kindFor(p.id) !== null).map((p) => p.id);
     const carrier = s.role === 'attack' && s.projected.possession.playerId >= 0 ? s.projected.possession.playerId : null;
     pieces.setHighlights(carrier, flickable);
+    this.onDraft?.({
+      role: s.role,
+      used: s.draft.length,
+      left,
+      boosters: this.available().length,
+      dead: s.role === 'attack' && s.draft.length > 0 && s.projected.possession.playerId < 0,
+    });
   }
 }

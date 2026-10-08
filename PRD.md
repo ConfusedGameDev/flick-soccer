@@ -18,6 +18,8 @@ All three modes run on one shared match engine. The only difference between them
 | **Same-device (hot-seat)** | Two humans on one screen | P1 plans, then a "pass the device" cover screen appears, P2 plans, then the turn resolves |
 | **Online 1v1** | Two humans on separate devices | The server collects both plans and resolves the turn |
 
+**Tutorial:** on first launch the menu offers a guided match against the easy CPU. A coach card explains the kickoff roll, attacking, defending, the resolution, the dice and boosters, and the dispute ball as each comes up, reacting to the player's own flicks, and leaves after three turns. It stays in the menu as "How to play".
+
 ## 3. Match rules
 
 ### 3.1 Match flow

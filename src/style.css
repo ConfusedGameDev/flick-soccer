@@ -804,6 +804,99 @@ button:disabled {
   }
 }
 
+/* Tutorial coach: a speech bubble under the top bar. z-index 0 keeps it above in-flow
+   panels but under covers, dice and cards (z-index 1+). */
+.coach {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 460px);
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  z-index: 0;
+}
+
+.coach-avatar {
+  flex: 0 0 auto;
+  line-height: 0;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.4));
+}
+
+.coach-avatar canvas {
+  image-rendering: pixelated;
+}
+
+.coach-bubble {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  background: var(--cream);
+  color: var(--ink);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.coach-bubble::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  bottom: 22px;
+  border: 8px solid transparent;
+  border-right-color: var(--cream);
+  border-left: 0;
+}
+
+.coach-title {
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.coach-text {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.coach-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.coach-buttons:empty {
+  display: none;
+}
+
+.coach-buttons button {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 14px;
+  background: rgba(16, 38, 26, 0.12);
+}
+
+.coach-buttons button.primary {
+  background: var(--accent);
+}
+
+.coach.pop {
+  animation: coach-in 0.25s ease-out;
+}
+
+@keyframes coach-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* Menu options with a kit preview */
 .prompt {
   display: flex;
