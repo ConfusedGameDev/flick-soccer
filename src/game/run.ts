@@ -2,7 +2,8 @@ import type { Difficulty } from '../engine/cpu';
 import { BOOSTERS, MAX_BOOSTERS } from '../engine/dice';
 import { FORMATION_NAMES, STAT_KEYS, cost, cpuSquad, type PoolPlayer, type Squad, type Stats } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
-import type { Booster, Score } from '../engine/types';
+import { MAX_TACTICS, TACTICS, TACTIC_INFO } from '../engine/tactics';
+import type { Booster, Score, Tactic } from '../engine/types';
 
 // The season run (M10, first slice): a ladder of CPU clubs that get stronger,
 // coins from results, and a store between matches. Pure: no DOM here, so it
@@ -18,6 +19,7 @@ export const TRAIN_COST = 3;
 export const PACK_COST = 4;
 export const MAX_STAT = 5;
 export const SCOUT_OFFERS = 3;
+export const TACTIC_OFFERS = 2;
 
 export type Outcome = 'win' | 'draw' | 'loss';
 
@@ -38,6 +40,8 @@ export interface RunState {
   kitId: string;
   /** Boosters carried into the next match (unused ones carry over). */
   boosters: Booster[];
+  /** Tactics cards in play for every match of the run. */
+  tactics: Tactic[];
   results: RunResult[];
   over: 'won' | 'lost' | null;
 }
@@ -52,7 +56,7 @@ export interface Opponent {
 const stageSeed = (run: RunState, salt = 0): number => (Math.imul(run.seed ^ ((run.stage + 1) * 0x9e3779b9), 0x85ebca6b) + salt) >>> 0;
 
 export function newRun(seed: number, squad: Squad, kitId: string): RunState {
-  return { seed, stage: 0, coins: 0, squad, kitId, boosters: [], results: [], over: null };
+  return { seed, stage: 0, coins: 0, squad, kitId, boosters: [], tactics: [], results: [], over: null };
 }
 
 /** Most common club in a squad, as a team name. */
@@ -136,6 +140,24 @@ export function buyPack(run: RunState): RunState | null {
   return { ...run, coins: run.coins - PACK_COST, boosters: [...run.boosters, booster] };
 }
 
+/** Two tactics cards on offer this stage, never ones already held. */
+export function tacticOffers(run: RunState): Tactic[] {
+  const rng = mulberry32(stageSeed(run, 23));
+  const free = TACTICS.filter((t) => !run.tactics.includes(t));
+  for (let i = free.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [free[i], free[j]] = [free[j], free[i]];
+  }
+  return free.slice(0, TACTIC_OFFERS);
+}
+
+/** Buy a tactics card for the rest of the run. */
+export function buyTactic(run: RunState, t: Tactic): RunState | null {
+  const price = TACTIC_INFO[t].price;
+  if (run.coins < price || run.tactics.includes(t) || run.tactics.length >= MAX_TACTICS) return null;
+  return { ...run, coins: run.coins - price, tactics: [...run.tactics, t] };
+}
+
 // ---------------------------------------------------------------------------
 // Persistence (guarded: the engine tests run without a window)
 // ---------------------------------------------------------------------------
@@ -147,7 +169,9 @@ export function loadRun(): RunState | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const run = JSON.parse(raw) as RunState;
-    return run && Array.isArray(run.squad?.players) && run.squad.players.length ? run : null;
+    if (!run || !Array.isArray(run.squad?.players) || !run.squad.players.length) return null;
+    run.tactics ??= [];
+    return run;
   } catch {
     return null;
   }

@@ -1,6 +1,8 @@
 import { BOOSTER_INFO } from '../engine/dice';
+import { MAX_TACTICS, TACTIC_INFO } from '../engine/tactics';
+import type { Tactic } from '../engine/types';
 import { STAT_KEYS, cost, type PoolPlayer, type Stats } from '../engine/pool';
-import { MAX_STAT, PACK_COST, RUN_STAGES, TRAIN_COST, buyPack, hire, hireCost, scoutOffers, train, type Opponent, type RunState } from '../game/run';
+import { MAX_STAT, PACK_COST, RUN_STAGES, TRAIN_COST, buyPack, buyTactic, hire, hireCost, scoutOffers, tacticOffers, train, type Opponent, type RunState } from '../game/run';
 
 const STAT_LABELS: Record<keyof Stats, string> = { pass: 'PAS', shot: 'SHT', speed: 'SPD', tackle: 'TKL', keeping: 'GK' };
 
@@ -17,6 +19,7 @@ export class Store {
     return new Promise((resolve) => {
       let run = initial;
       const offers = scoutOffers(pool, run);
+      const cards = tacticOffers(run);
       const root = document.createElement('div');
       root.className = 'store';
       this.overlay.appendChild(root);
@@ -70,6 +73,19 @@ export class Store {
                 .join('') || '<div class="store-empty">Everyone has signed. Nice squad.</div>'}
             </div>
             <div class="store-section">
+              <div class="store-label">Tactics · passive rules for the whole run (max ${MAX_TACTICS})</div>
+              <div class="store-cards">
+                ${run.tactics.map((t) => `<div class="store-card owned"><b>${TACTIC_INFO[t].name}</b><span>${TACTIC_INFO[t].text}</span></div>`).join('')}
+                ${cards
+                  .filter((t) => !run.tactics.includes(t))
+                  .map(
+                    (t) =>
+                      `<div class="store-card"><b>${TACTIC_INFO[t].name}</b><span>${TACTIC_INFO[t].text}</span><button class="primary small" data-tactic="${t}" ${run.coins < TACTIC_INFO[t].price || run.tactics.length >= MAX_TACTICS ? 'disabled' : ''}>🪙 ${TACTIC_INFO[t].price}</button></div>`,
+                  )
+                  .join('')}
+              </div>
+            </div>
+            <div class="store-section">
               <div class="store-label">Boosters · carried into the next match (max 2)</div>
               <div class="store-boosters">
                 ${run.boosters.map((b) => `<span class="store-booster" title="${BOOSTER_INFO[b].text}">${BOOSTER_INFO[b].name}</span>`).join('')}
@@ -95,6 +111,15 @@ export class Store {
           b.addEventListener('click', () => {
             const offer = offers.find((o) => o.id === b.dataset.hire);
             const r = offer ? hire(run, offer) : null;
+            if (r) {
+              run = r;
+              render();
+            }
+          }),
+        );
+        root.querySelectorAll<HTMLButtonElement>('[data-tactic]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const r = buyTactic(run, b.dataset.tactic as Tactic);
             if (r) {
               run = r;
               render();

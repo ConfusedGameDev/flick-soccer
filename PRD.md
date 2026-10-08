@@ -173,7 +173,7 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 | **M8** | Online 1v1 | Server, room codes, server-resolved turns, server-decided dispute balls, reconnects | Two devices finish a match online |
 | **M9** | Dual-screen (iPhone Duo) layouts | Detect the two-screen posture (Viewport Segments API) and snap panels to the hinge: lineup/pool on one screen and the pitch on the other in the team builder and during planning; sprite preview on one screen and the paint grid on the other in the kit editor. No engine changes: `PitchView.insets` and the existing side panels already split the layout. **Done:** `ui/segments.ts` reads the segments (Viewport Segments API, `visualViewport.segments`, `getWindowSegments`, or the CSS `viewport-segment-*` env values) and publishes `html[data-posture="book"\|"laptop"]` plus `--pane-*`/`--pitch-*` variables; the HUD overlay is pinned to the pane screen (book: left, laptop: bottom) and the pitch fills the other. The pane shows a lineup panel during the match, the draft pool in the team builder, and the kit editor's grid; the pitch screen shows the pitch, or the blown-up kit preview while painting. `?segments=book` / `?segments=laptop` fakes a hinge for testing. | On a dual-screen device each mode uses both screens with no content under the hinge; single-screen layouts are unchanged |
 | **M10** | Season run (first slice) | §9: a five-club ladder with rising draft budgets, coins from results, and a store between matches (training, scouts, booster packs); runs are saved and resumable | A run can be won or lost; the store changes the next match |
-| **M11+** | Tactics cards | §9: the passive-rule "jokers"; need engine hooks | Design after M10 |
+| **M11** | Tactics cards (first set) | §9: six passive rules bought in the run store and carried for the whole run, wired through `engine/tactics.ts` | Cards change odds, reach, speed and flick counts in the engine, the CPU and the planning UI alike |
 
 ## 9. Season run and upgrade store
 
@@ -183,6 +183,8 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 - **Currency:** 5 coins for a win, 2 for a draw, plus 1 per goal scored.
 - **Store, between matches:** training (+1 to one stat of one player, 3 coins, stats cap at 5); three scouted players per stage (a signing costs about half their draft price and replaces your cheapest player in that position); booster packs (4 coins, one random booster, hand limit 2). Unused boosters carry over into the next match.
 - The run is saved after every step and can be resumed or abandoned from the menu.
+
+- **Tactics cards (M11):** passive rules bought in the store (two on offer per stage, hold up to three) that apply to every match of the run. Catenaccio: three defensive flicks. Tiki-taka: each completed pass makes the next 5% harder to intercept, up to 15%. Clásicos: a pass between two classic-era players is 10% harder to intercept. Cannon: shots 10% harder to save or block. Iron wall: keeper reach ×1.3. Engine room: slides, runs and dives 20% faster. They live in `TeamMeta.tactics`, so the CPU opponent could carry them too.
 
 **Ideas still open:**
 

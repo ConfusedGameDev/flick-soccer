@@ -6,7 +6,7 @@ import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
 import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
-import type { Booster, DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
+import type { Booster, DiceRoll, MatchState, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
@@ -83,6 +83,8 @@ export class Match {
   private quit = false;
   /** Boosters each side starts the next match with (the season run carries them over). */
   private startBoosters: Partial<Record<Team, Booster[]>> = {};
+  /** Tactics cards in play for the next match (season run). */
+  private startTactics: Partial<Record<Team, Tactic[]>> = {};
   private controllers: Record<Team, PlanController>;
 
   constructor(private readonly deps: MatchDeps) {
@@ -130,6 +132,7 @@ export class Match {
     this.deps.sfx.crowdStop();
     this.quit = false;
     this.startBoosters = {};
+    this.startTactics = {};
   }
 
   /**
@@ -171,6 +174,7 @@ export class Match {
       hud.setKits(this.kits);
       this.squads = { home: run.squad, away: opponent.squad };
       this.startBoosters = { home: run.boosters };
+      this.startTactics = { home: run.tactics };
       this.seed = newSeed();
       local.setSeed(this.seed);
       this.controllers = { home: local, away: new CpuController(opponent.difficulty, hud, (s) => cpuSeed(this.seed, s)) };
@@ -363,7 +367,7 @@ export class Match {
         kit: this.kits[team],
       });
     }
-    this.state = initialMatch(k.winner, this.squads, this.startBoosters);
+    this.state = initialMatch(k.winner, this.squads, this.startBoosters, this.startTactics);
     this.snap();
     await hud.showCover(
       `${teamName(k.winner)} attack first`,

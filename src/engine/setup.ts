@@ -1,6 +1,6 @@
 import { PITCH_L, PITCH_W } from './pitch';
 import { defaultSquad, stats, type Squad } from './pool';
-import type { Booster, MatchState, PlayerState, Team, TeamMeta, Vec2 } from './types';
+import type { Booster, MatchState, PlayerState, Tactic, Team, TeamMeta, Vec2 } from './types';
 
 /** Mirror a home-frame position for the away side, which defends the far goal. */
 export const mirror = (p: Vec2): Vec2 => ({ x: PITCH_W - p.x, y: PITCH_L - p.y });
@@ -20,6 +20,7 @@ function placeTeam(team: Team, firstId: number, squad: Squad): PlayerState[] {
       number: i + 1,
       keeper: p.position === 'GK' && i === squad.players.findIndex((q) => q.position === 'GK'),
       name: p.short,
+      era: p.era,
       stats: stats(p),
       kickoff,
       pos: { ...kickoff },
@@ -35,7 +36,12 @@ export const keeperOf = (players: readonly PlayerState[], team: Team): PlayerSta
  * squads are all-3s baseline players. `boosters` seeds a side's hand (the
  * season run carries boosters between matches).
  */
-export function initialMatch(kickoff: Team = 'home', squads?: Record<Team, Squad>, boosters?: Partial<Record<Team, Booster[]>>): MatchState {
+export function initialMatch(
+  kickoff: Team = 'home',
+  squads?: Record<Team, Squad>,
+  boosters?: Partial<Record<Team, Booster[]>>,
+  tactics?: Partial<Record<Team, Tactic[]>>,
+): MatchState {
   const home = placeTeam('home', 0, squads?.home ?? defaultSquad('home'));
   const away = placeTeam('away', home.length, squads?.away ?? defaultSquad('away'));
   const players = [...home, ...away];
@@ -49,8 +55,13 @@ export function initialMatch(kickoff: Team = 'home', squads?: Record<Team, Squad
     players,
     ball: { ...keeper.pos },
     possession: { team: kickoff, playerId: keeper.id },
-    meta: { home: emptyMeta(boosters?.home), away: emptyMeta(boosters?.away) },
+    meta: { home: emptyMeta(boosters?.home, tactics?.home), away: emptyMeta(boosters?.away, tactics?.away) },
   };
 }
 
-export const emptyMeta = (boosters: Booster[] = []): TeamMeta => ({ blocked: 0, bonus: 0, boosters: [...boosters] });
+export const emptyMeta = (boosters: Booster[] = [], tactics?: Tactic[]): TeamMeta => ({
+  blocked: 0,
+  bonus: 0,
+  boosters: [...boosters],
+  ...(tactics && tactics.length ? { tactics: [...tactics] } : {}),
+});

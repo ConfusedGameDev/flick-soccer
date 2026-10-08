@@ -194,6 +194,7 @@ export class TeamBuilder {
             number: slot + 1,
             keeper: p.position === 'GK' && slots.findIndex((q) => q?.position === 'GK') === slot,
             name: p.short,
+            era: p.era,
             stats: stats(p),
             kickoff: { ...positions[slot] },
             pos: { ...positions[slot] },

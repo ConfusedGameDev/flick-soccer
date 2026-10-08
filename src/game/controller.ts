@@ -1,6 +1,7 @@
 import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
-import { MAX_FLICKS, PLAN_SECONDS } from '../engine/pitch';
+import { PLAN_SECONDS } from '../engine/pitch';
+import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
 import { rollSeed } from '../engine/seeds';
 import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget } from '../engine/sim';
@@ -139,7 +140,7 @@ export class LocalController implements PlanController {
   private get max(): number {
     const s = this.session;
     if (!s) return 0;
-    return MAX_FLICKS[s.role] - (s.dice ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0);
+    return maxFlicksFor(s.state.meta[s.team], s.role) - (s.dice ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0);
   }
 
   /** Boosters available this turn: held ones plus a fresh pack from this turn's roll. */

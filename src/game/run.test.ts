@@ -11,11 +11,13 @@ import {
   TRAIN_COST,
   applyResult,
   buyPack,
+  buyTactic,
   hire,
   hireCost,
   newRun,
   opponentFor,
   scoutOffers,
+  tacticOffers,
   train,
   WIN_COINS,
 } from './run';
@@ -77,6 +79,21 @@ describe('season run', () => {
     const cheapest = run.squad.players.filter((p) => p.position === offer.position).sort((a, b) => cost(a) - cost(b))[0];
     expect(r.squad.players.some((p) => p.id === cheapest.id)).toBe(false);
     expect(hire({ ...run, coins: 0 }, offer)).toBeNull();
+  });
+
+  it('tactics cards are offered, bought once each and capped', () => {
+    let run = { ...start(), coins: 100 };
+    const offers = tacticOffers(run);
+    expect(offers.length).toBe(2);
+    run = buyTactic(run, offers[0])!;
+    expect(run.tactics).toEqual([offers[0]]);
+    expect(buyTactic(run, offers[0])).toBeNull();
+    expect(tacticOffers(run).includes(offers[0])).toBe(false);
+    run = buyTactic(run, tacticOffers(run)[0])!;
+    run = buyTactic(run, tacticOffers(run)[0])!;
+    expect(run.tactics.length).toBe(3);
+    expect(buyTactic(run, tacticOffers(run)[0])).toBeNull();
+    expect(buyTactic({ ...start(), coins: 0 }, 'cannon')).toBeNull();
   });
 
   it('booster packs respect the coin cost and the hand limit', () => {

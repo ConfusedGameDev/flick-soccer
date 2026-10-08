@@ -22,7 +22,6 @@ import {
   HOLD_CHANCE,
   INTERCEPT_CHANCE,
   KEEPER_REACH,
-  MAX_FLICKS,
   MAX_TURN_SECONDS,
   PASS_RANGE,
   PITCH_L,
@@ -46,6 +45,7 @@ import {
 } from './pitch';
 import { DICE_BLOCK_TURNS, MAX_BOOSTERS, MAX_DICE_BONUS, rollDice } from './dice';
 import { statFactor, statOdds } from './pool';
+import { keeperReachMul, maxFlicksFor, moveSpeedMul, passChanceShift, shotChanceShift } from './tactics';
 import { mulberry32 } from './rng';
 import { keeperOf } from './setup';
 import { add, dist, lerp, normalize, scale } from './vec';
@@ -180,6 +180,10 @@ interface BallSegment {
   rolled: Set<number>;
   /** Unstoppable-pass booster: nobody gets a roll on this segment. */
   unstoppable: boolean;
+  /** Index of this pass or shot in the attacker's chain (tiki-taka builds on completed passes). */
+  chainPos: number;
+  /** Kicker and intended receiver are both classic-era players (clásicos). */
+  classic: boolean;
 }
 
 /** How a turn's chain of play ended; drives the restart. */
@@ -229,7 +233,8 @@ export function resolveTurn(
     away: { ...state.meta.away, boosters: [...state.meta.away.boosters] },
   };
   const mods: Record<Team, TurnMods> = { home: { bonus: 0, booster: null }, away: { bonus: 0, booster: null } };
-  const maxFlicks = { attack: MAX_FLICKS.attack as number, defense: MAX_FLICKS.defense as number };
+  // Tactics cards (catenaccio) set the base; dice and boosters adjust from there.
+  const maxFlicks = { attack: maxFlicksFor(state.meta[attackTeam], 'attack'), defense: maxFlicksFor(state.meta[defenseTeam], 'defense') };
   const sides = [
     [attackPlan, attackTeam, 'attack'],
     [defensePlan, defenseTeam, 'defense'],
@@ -262,7 +267,7 @@ export function resolveTurn(
       }
     }
   }
-  const speedMul = (p: PlayerState) => (mods[p.team].booster === 'double-speed' ? 2 : 1) * statFactor(p.stats.speed);
+  const speedMul = (p: PlayerState) => (mods[p.team].booster === 'double-speed' ? 2 : 1) * statFactor(p.stats.speed) * moveSpeedMul(state.meta[p.team]);
   const rangeMul = (p: PlayerState, kind: 'slide' | 'run' | 'dive') =>
     (kind !== 'run' && mods[p.team].booster === 'longer-slide' ? 1.5 : 1) * moveRange(p, kind);
   const superKeeper = mods[defenseTeam].booster === 'super-keeper';
@@ -357,7 +362,9 @@ export function resolveTurn(
       const speed = shot ? SHOT_SPEED : BALL_SPEED;
       const unstoppable = !shot && unstoppableLeft;
       if (unstoppable) unstoppableLeft = false;
-      seg = { shot, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable };
+      const receiver = !shot && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
+      const classic = kicker.era === 'classic' && receiver?.era === 'classic';
+      seg = { shot, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, classic };
       events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
@@ -380,7 +387,7 @@ export function resolveTurn(
       let stopped = false;
       for (const p of players) {
         if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
-        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * statFactor(p.stats.keeping) : TACKLE_REACH;
+        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * statFactor(p.stats.keeping) * keeperReachMul(state.meta[defenseTeam]) : TACKLE_REACH;
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
         let chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
@@ -388,6 +395,8 @@ export function resolveTurn(
         // Stats: the stopper's tackle/keeping against the kicker's pass/shot.
         chance += statOdds(p.keeper ? p.stats.keeping : p.stats.tackle);
         chance -= statOdds(seg.shot ? seg.kicker.stats.shot : seg.kicker.stats.pass);
+        // Tactics cards: cannon on shots; tiki-taka and clásicos on passes.
+        chance += seg.shot ? shotChanceShift(state.meta[attackTeam]) : passChanceShift(state.meta[attackTeam], seg.chainPos, seg.classic);
         if (p.keeper && superKeeper) chance += 0.25;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {

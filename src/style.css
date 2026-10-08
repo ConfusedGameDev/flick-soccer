@@ -907,6 +907,44 @@ button:disabled {
   font-size: 13px;
 }
 
+.store-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.store-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+}
+
+.store-card b {
+  font-size: 14px;
+}
+
+.store-card span {
+  opacity: 0.8;
+  line-height: 1.3;
+}
+
+.store-card button {
+  align-self: flex-end;
+  margin-top: 4px;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.store-card.owned {
+  background: rgba(255, 212, 71, 0.18);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .store-empty {
   opacity: 0.7;
   font-size: 13px;

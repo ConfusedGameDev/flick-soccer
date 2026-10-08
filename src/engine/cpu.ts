@@ -13,6 +13,7 @@ import {
 } from './pitch';
 import { BOOSTER_INFO, rollDice } from './dice';
 import { mulberry32 } from './rng';
+import { maxFlicksFor } from './tactics';
 import { findReceiver, goalLineCrossing, kickRange, passTarget, resolveTurn } from './sim';
 import { keeperOf } from './setup';
 import type { Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
@@ -294,7 +295,7 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
 
   const rng = mulberry32(seed);
   const extras = cpuExtras(state, team, 'defense', seed);
-  const maxFlicks = MAX_FLICKS.defense - (extras.dice ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
+  const maxFlicks = maxFlicksFor(state.meta[team], 'defense') - (extras.dice ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
   let best: Plan = { team, flicks: [], ...extras };
   let bestScore = Infinity;
   const candidates = [

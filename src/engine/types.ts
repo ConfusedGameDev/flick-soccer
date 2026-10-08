@@ -25,6 +25,7 @@ export interface PlayerState {
   keeper: boolean;
   /** Short display name (surname). */
   name: string;
+  era: 'classic' | 'modern';
   stats: PlayerStats;
   /** Where this player stands at a kickoff (world frame). */
   kickoff: Vec2;
@@ -67,7 +68,12 @@ export interface TeamMeta {
   bonus: number;
   /** Held boosters, at most MAX_BOOSTERS. */
   boosters: Booster[];
+  /** Tactics cards in play for the whole match (season run); absent means none. */
+  tactics?: Tactic[];
 }
+
+/** Passive rules a team carries through a season run; effects live in engine/tactics.ts. */
+export type Tactic = 'catenaccio' | 'tiki-taka' | 'clasicos' | 'cannon' | 'iron-wall' | 'engine-room';
 
 export interface MatchState {
   /** 1-based turn within the current half. */
