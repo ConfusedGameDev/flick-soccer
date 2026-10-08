@@ -159,6 +159,7 @@ export class Match {
       this.kits[team] = kit;
     }
     pieces.setKits({ ...this.kits });
+    hud.setKits(this.kits);
   }
 
   /** The kit menu for a human: presets and painted kits, with the editor reachable from it. */

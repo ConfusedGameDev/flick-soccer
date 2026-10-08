@@ -175,6 +175,7 @@ export class OnlineMatch {
     this.side = m.side;
     this.deps.local.setSeed(m.seed);
     this.deps.pieces.setKits({ ...m.kits });
+    this.deps.hud.setKits(m.kits);
   }
 
   private async chooseSquad(): Promise<Squad> {

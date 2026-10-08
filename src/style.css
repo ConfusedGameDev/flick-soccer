@@ -138,11 +138,22 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 16px;
   padding: 24px;
   text-align: center;
   background: var(--ink);
+  overflow-y: auto;
+}
+
+/* Centre when there is room, scroll from the top when there is not (small panes on a dual screen). */
+.cover::before,
+.cover::after {
+  content: '';
+  margin: auto;
+}
+
+.cover > * {
+  flex-shrink: 0;
 }
 
 .cover h1 {
@@ -946,4 +957,159 @@ button:disabled {
   100% {
     opacity: 0;
   }
+}
+
+/* ---- Dual-screen (M9) ----
+   `html[data-posture="book"|"laptop"]` and the --pane-… and --pitch-… variables are
+   set by ui/segments.ts. The #overlay is pinned to the pane screen and made a
+   containing block, so every fixed overlay (bars, menus, dice, duel, cards,
+   kit editor) stays on that screen; the canvas pitch takes the other one and
+   #stage hosts anything that should appear over it (the kit preview). */
+.lineup,
+#stage {
+  display: none;
+}
+
+html[data-posture] #overlay {
+  inset: auto;
+  left: var(--pane-x);
+  top: var(--pane-y);
+  width: var(--pane-w);
+  height: var(--pane-h);
+  contain: layout;
+}
+
+html[data-posture] #stage {
+  display: block;
+  position: fixed;
+  left: var(--pitch-x);
+  top: var(--pitch-y);
+  width: var(--pitch-w);
+  height: var(--pitch-h);
+  pointer-events: none;
+  contain: layout;
+}
+
+/* The pane is a column: top bar, panel (lineup or draft pool), bottom bar. */
+html[data-posture] .bar.top {
+  order: 0;
+}
+
+html[data-posture] .bar.bottom {
+  order: 10;
+}
+
+html[data-posture] .lineup {
+  order: 5;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+html[data-posture] #overlay.building .lineup {
+  display: none;
+}
+
+/* Fixed covers must stack above the in-flow lineup (Chrome paints the scrollable panel over them otherwise). */
+.cover,
+.dice,
+.duel {
+  z-index: 1;
+}
+
+.toast {
+  z-index: 3;
+}
+
+.lineup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 2px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.9;
+}
+
+.lineup-head i {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.lineup-head span {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+}
+
+.lineup-row {
+  grid-template-columns: 36px 1fr auto;
+}
+
+.lineup-row .pos {
+  font-size: 13px;
+}
+
+/* Team builder: the pool fills the pane between the bars. */
+html[data-posture] .draft-panel {
+  position: static;
+  order: 5;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  border: 0;
+}
+
+html[data-posture] #overlay.building .bar.bottom {
+  position: static;
+}
+
+html[data-posture] .draft-panel .draft-row .stats {
+  display: flex;
+}
+
+/* Kit editor: grid and palettes on the pane, blown-up preview on the pitch screen. */
+.ke-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: var(--ink);
+}
+
+.ke-stage-title {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.ke-stage-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+}
+
+.ke-stage canvas {
+  image-rendering: pixelated;
+  height: calc(var(--pitch-h) * 0.3);
+  width: auto;
+}
+
+html[data-posture='book'] .ke-body {
+  flex-direction: column;
+  align-items: center;
 }
