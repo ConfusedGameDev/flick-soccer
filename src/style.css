@@ -1419,13 +1419,16 @@ html[data-posture] .draft-panel .draft-row .stats {
 
 .ke-stage-row {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: flex-end;
-  gap: 32px;
+  gap: 24px;
+  max-width: 92%;
 }
 
 .ke-stage canvas {
   image-rendering: pixelated;
-  height: calc(var(--pitch-h) * 0.3);
+  height: calc(var(--pitch-h) * 0.22);
   width: auto;
 }
 

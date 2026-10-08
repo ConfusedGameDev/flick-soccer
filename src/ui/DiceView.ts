@@ -71,9 +71,9 @@ export class DiceView {
       const ok = root.querySelector<HTMLButtonElement>('[data-ok]')!;
 
       const kit = spec.kit ?? KITS[0];
-      const setPose = (pose: 'stand' | 'run2') => {
+      const setPose = (pose: 'stand' | 'kick') => {
         playerHost.innerHTML = '';
-        playerHost.appendChild(spriteCanvas(pose, kit, false, 5));
+        playerHost.appendChild(spriteCanvas(pose, kit, false, 3));
       };
       setPose('stand');
 
@@ -121,7 +121,7 @@ export class DiceView {
       const shoot = (dx: number) =>
         new Promise<void>((hit) => {
           this.onKick?.();
-          setPose('run2');
+          setPose('kick');
           const tr = tray.getBoundingClientRect();
           const br = ball.getBoundingClientRect();
           const rise = br.top + br.height / 2 - (tr.top + tr.height * 0.6);

@@ -44,7 +44,7 @@ export class Coach {
   setKit(kit: Kit): void {
     this.kit = kit;
     this.avatar.innerHTML = '';
-    this.avatar.appendChild(spriteCanvas('stand', kit, true, 4));
+    this.avatar.appendChild(spriteCanvas('stand', kit, true, 3));
   }
 
   /** Show a card with buttons; resolves with the tapped key. `text` may contain simple HTML. */

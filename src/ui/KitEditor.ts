@@ -128,15 +128,15 @@ export class KitEditor {
         syncColors();
         preview.innerHTML = '';
         preview.appendChild(kitPreview(kit, 8));
-        preview.appendChild(spriteCanvas('stand', kit, false, 6));
-        preview.appendChild(spriteCanvas('run1', kit, false, 6));
+        preview.appendChild(spriteCanvas('stand', kit, false, 4));
+        preview.appendChild(spriteCanvas('run1', kit, false, 4));
         big.innerHTML = '';
         const title = document.createElement('div');
         title.className = 'ke-stage-title';
         title.textContent = nameInput.value.trim() || kit.name;
         const row = document.createElement('div');
         row.className = 'ke-stage-row';
-        row.append(kitPreview(kit, 8), spriteCanvas('stand', kit, false, 6), spriteCanvas('run1', kit, false, 6), spriteCanvas('run2', kit, false, 6), spriteCanvas('stand', kit, true, 6));
+        row.append(kitPreview(kit, 8), spriteCanvas('stand', kit, false, 5), spriteCanvas('run1', kit, false, 5), spriteCanvas('kick', kit, false, 5), spriteCanvas('stand', kit, true, 5));
         big.append(title, row);
       };
       nameInput.addEventListener('input', refreshPreview);

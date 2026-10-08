@@ -6,7 +6,7 @@ import { SPRITE_H, ballTexture, spriteTexture, type Pose } from './sprites';
 
 export const PLAYER_RADIUS_M = 1.3;
 /** How tall a player sprite is in world meters; larger than life, as in 16-bit football games. */
-const SPRITE_HEIGHT_M = 4.2;
+const SPRITE_HEIGHT_M = 5;
 const RUN_FRAME_MS = 130;
 
 const CARRIER_RING = 0xffd447;

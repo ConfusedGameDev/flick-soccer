@@ -13,7 +13,7 @@ export interface CutsceneSpec {
 }
 
 const CAPTIONS: Record<CutsceneKind, { title: string; pose: Pose; major: boolean }> = {
-  goal: { title: '¡GOOOL!', pose: 'run2', major: true },
+  goal: { title: '¡GOOOL!', pose: 'kick', major: true },
   save: { title: '¡ATAJADA!', pose: 'slide', major: true },
   overtake: { title: '¡ROBO!', pose: 'slide', major: false },
   duel: { title: '¡BALÓN GANADO!', pose: 'run1', major: false },
@@ -45,7 +45,7 @@ export class Cutscene {
           <div class="cs-sub">${spec.name} · ${spec.team}</div>
         </div>`;
       const figure = root.querySelector<HTMLElement>('[data-figure]')!;
-      const k = Math.max(8, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 40));
+      const k = Math.max(5, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 64));
       const canvas = spriteCanvas(pose, spec.kit, !!spec.keeper, k);
       figure.appendChild(canvas);
       this.overlay.appendChild(root);
