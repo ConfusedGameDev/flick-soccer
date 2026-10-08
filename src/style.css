@@ -1,9 +1,22 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/press-start-2p.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   --ink: #10261a;
+  --ink-2: #183223;
+  --ink-3: #22422f;
   --cream: #f4f1e6;
   --accent: #ffd447;
+  --accent-2: #ff6b3d;
+  --line: rgba(255, 255, 255, 0.16);
   --home: #e8e8e8;
   --away: #5a5a5a;
+  --font-display: 'Press Start 2P', 'Courier New', monospace;
+  /* A faint halftone, like the stands, for big dark surfaces. */
+  --dither: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.3px);
 }
 
 * {
@@ -1419,4 +1432,464 @@ html[data-posture] .draft-panel .draft-row .stats {
 html[data-posture='book'] .ke-body {
   flex-direction: column;
   align-items: center;
+}
+
+
+/* =============================================================================
+   Theme (UI pass): SNES-broadcast look. Pixel display font for titles, scores
+   and buttons, bevelled buttons, one panel style, a TV-style scorebug. These
+   rules come last on purpose so they win over the component defaults above.
+   ============================================================================= */
+
+/* ---- Buttons: chunky bevel, pixel label ---- */
+button {
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 10px 14px;
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.16),
+    inset 0 2px 0 rgba(255, 255, 255, 0.55),
+    0 3px 0 #000;
+  transition: transform 0.05s;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.16),
+    inset 0 2px 0 rgba(255, 255, 255, 0.55),
+    0 1px 0 #000;
+}
+
+button.primary {
+  background: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+}
+
+/* Small controls keep the bevel but a smaller label. */
+.chip,
+.extras button,
+.ke-tools button,
+.draft-foot button,
+.coach-buttons button,
+.store-row .cost button.small,
+.store-card button,
+.ke-actions button,
+.dice [data-ok],
+.menu-row button {
+  font-size: 9px;
+  padding: 8px 10px;
+}
+
+.chip {
+  min-height: 36px;
+  border-color: rgba(0, 0, 0, 0.6);
+  background: var(--ink-3);
+  color: var(--cream);
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.25),
+    0 2px 0 #000;
+}
+
+.chip.active {
+  background: var(--accent);
+  color: var(--ink);
+}
+
+.extras button {
+  min-height: 40px;
+}
+
+.mute {
+  font-size: 16px;
+  padding: 0;
+}
+
+/* Rows in the draft and store are buttons/cards, not pixel buttons. */
+.draft-row,
+.draft-row:active:not(:disabled) {
+  font-family: inherit;
+  font-size: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  transform: none;
+  transition: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  line-height: 1.25;
+}
+
+.draft-row.picked {
+  background: rgba(255, 212, 71, 0.18);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.draft-row .pos {
+  font-family: var(--font-display);
+  font-size: 8px;
+  line-height: 1;
+  padding: 6px 0;
+  border-radius: 3px;
+}
+
+.draft-row .cost {
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+
+.draft-row .stats {
+  font-family: var(--font-display);
+  font-size: 6px;
+  letter-spacing: 0;
+}
+
+.draft-row .stats b {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* Store stat buttons: tiny labels, number in body font. */
+.store-row .stats button.stat,
+.store-row .stats button.stat:active:not(:disabled) {
+  font-family: var(--font-display);
+  font-size: 6px;
+  text-transform: uppercase;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 3px;
+  box-shadow: none;
+  transform: none;
+  padding: 4px 4px 3px;
+  background: var(--ink-3);
+  color: var(--cream);
+}
+
+.store-row .stats button.stat b {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.store-row .stats button.stat:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Swatches and duel pads are their own thing. */
+.swatch,
+.swatch:active:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+  border-width: 2px;
+  padding: 0;
+}
+
+.swatch.active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.duel-pad,
+.duel-pad:active:not(:disabled) {
+  font-family: var(--font-display);
+  font-size: 14px;
+  transform: none;
+  box-shadow: none;
+  border: 3px solid rgba(0, 0, 0, 0.5);
+}
+
+.duel-pad small {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  text-transform: none;
+}
+
+/* ---- Panels: dithered dark surfaces with a crisp edge ---- */
+.draft-panel,
+.store,
+.kit-editor {
+  background: var(--dither) 0 0 / 6px 6px, var(--ink-2);
+}
+
+.draft-head,
+.store-head,
+.ke-head {
+  border-bottom: 2px solid var(--line);
+}
+
+.draft-foot {
+  border-top: 2px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.draft-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.draft-sub {
+  font-size: 12px;
+}
+
+.draft-budget {
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+
+.store-label,
+.lineup-head,
+.ke-label {
+  font-family: var(--font-display);
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+.lineup-head b {
+  font-size: 8px;
+}
+
+.store-card {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.store-card b {
+  font-family: var(--font-display);
+  font-size: 9px;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.store-booster {
+  font-family: var(--font-display);
+  font-size: 8px;
+  border-radius: 4px;
+}
+
+/* ---- HUD bars and the scorebug ---- */
+.label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  line-height: 1.5;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.sub {
+  font-size: 12px;
+}
+
+.scoreboard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  text-shadow: none;
+}
+
+.score {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  line-height: 1;
+  background: var(--ink);
+  border: 2px solid var(--cream);
+  border-radius: 3px;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.score i {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #000;
+  border-radius: 2px;
+}
+
+.score span {
+  font-size: 8px;
+  opacity: 0.85;
+}
+
+.score b {
+  color: var(--accent);
+  font-weight: 400;
+  min-width: 1em;
+  text-align: center;
+}
+
+.score em {
+  font-style: normal;
+  opacity: 0.6;
+}
+
+.clock,
+.timer {
+  font-family: var(--font-display);
+  font-size: 7px;
+  line-height: 1.4;
+  text-shadow: 1px 1px 0 #000;
+  opacity: 0.9;
+}
+
+.timer.urgent {
+  font-size: 8px;
+}
+
+.bonus {
+  font-family: var(--font-display);
+  font-size: 8px;
+}
+
+/* ---- Covers, menus and the title screen ---- */
+.cover {
+  background: var(--dither) 0 0 / 6px 6px, var(--ink);
+}
+
+.cover h1 {
+  font-family: var(--font-display);
+  font-size: clamp(14px, 4.2vw, 22px);
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-shadow: 3px 3px 0 #000;
+  max-width: 24ch;
+}
+
+.cover p {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* The main menu lets the pitch show through. */
+#overlay.title .cover {
+  background: var(--dither) 0 0 / 6px 6px, rgba(13, 36, 22, 0.86);
+}
+
+#overlay.title .cover h1 {
+  font-size: clamp(18px, 5.2vw, 30px);
+  line-height: 1.45;
+  text-shadow:
+    3px 3px 0 #000,
+    6px 6px 0 rgba(0, 0, 0, 0.35);
+}
+
+#overlay.title .cover p {
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.menu button {
+  text-align: center;
+  padding: 12px 14px;
+}
+
+.prompt-input {
+  font-family: var(--font-display);
+  font-size: 14px;
+  text-align: center;
+  border-radius: 4px;
+}
+
+/* ---- Toasts, dice, duel, cards, coach ---- */
+.toast {
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.5;
+  text-transform: uppercase;
+  padding: 10px 16px;
+  border: 2px solid var(--cream);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.85);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.toast.big {
+  font-size: 18px;
+  border-color: var(--accent);
+}
+
+.dice-title,
+.duel-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1.5;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.dice-caption {
+  font-family: var(--font-display);
+  font-size: 9px;
+  line-height: 1.6;
+  color: var(--accent);
+}
+
+.dice-hint {
+  font-size: 13px;
+}
+
+.die {
+  border-radius: 8px;
+  border: 2px solid var(--ink);
+}
+
+.duel-count {
+  font-family: var(--font-display);
+}
+
+.cs-title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+}
+
+.cs-sub {
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
+.coach-bubble {
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+}
+
+.coach-title {
+  font-family: var(--font-display);
+  font-size: 9px;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.lineup-row .pos {
+  font-size: 8px;
+}
+
+/* Under the title screen only the mute button stays; the pitch shows through. */
+#overlay.title .bar.top > :not(.mute),
+#overlay.title .bar.bottom,
+#overlay.title .lineup {
+  visibility: hidden;
+}
+
+#overlay.title .bar.top {
+  background: none;
 }

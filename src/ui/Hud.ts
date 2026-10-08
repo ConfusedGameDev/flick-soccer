@@ -106,7 +106,11 @@ export class Hud {
   }
 
   setScoreboard(state: MatchState): void {
-    this.score.textContent = `Home ${state.score.home} – ${state.score.away} Away`;
+    const chip = (team: Team) => {
+      const kit = this.kits[team];
+      return `<i style="background:${kit ? hex(kit.jersey) : 'rgba(255,255,255,0.3)'}"></i>`;
+    };
+    this.score.innerHTML = `${chip('home')}<span>HOM</span><b>${state.score.home}</b><em>–</em><b>${state.score.away}</b><span>AWY</span>${chip('away')}`;
     this.clock.textContent =
       state.status === 'full-time' ? 'Full time' : `Half ${state.half} · Turn ${state.turn}/${TURNS_PER_HALF}`;
     this.renderLineup(state);

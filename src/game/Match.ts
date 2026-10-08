@@ -243,7 +243,8 @@ export class Match {
         return;
       }
     }
-    this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Pick a mode', [
+    hud.overlay.classList.add('title');
+    this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Turn-based flick football', [
       { key: 'tutorial', label: 'How to play · tutorial' },
       { key: 'run', label: 'Season run' },
       { key: 'hotseat', label: '2 players · same device' },
@@ -252,6 +253,7 @@ export class Match {
       { key: 'online-create', label: 'Online · create a match' },
       { key: 'online-join', label: 'Online · join with a code' },
     ]);
+    hud.overlay.classList.remove('title');
     if (this.mode === 'online-create' || this.mode === 'online-join' || this.mode === 'run') return;
     if (this.mode === 'tutorial') {
       cpuEasy();
@@ -296,8 +298,8 @@ export class Match {
           const options = [...KITS, ...custom].filter((k) => !taken.has(k.id));
           const id = await hud.showMenu<string>(title, 'Classic 1990 colours, or paint your own', [
             ...options.map((k) => ({ key: k.id, label: k.name, icon: kitPreview(k, 3) })),
-            { key: '__new', label: '✎ Paint a new kit' },
-            ...(custom.length ? [{ key: '__edit', label: '✎ Edit a painted kit' }] : []),
+            { key: '__new', label: 'Paint a new kit' },
+            ...(custom.length ? [{ key: '__edit', label: 'Edit a painted kit' }] : []),
           ]);
           if (id === '__new') {
             const r = await kitEditor.run();
