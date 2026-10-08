@@ -73,25 +73,59 @@ export class PitchView {
 
     const tl = this.toScreen({ x: 0, y: PITCH_L });
 
-    // Stands: a band of crowd around the pitch, rows of little pixel heads.
+    // Stands: a dark terrace around the pitch filled with rows of fans (a
+    // skin-tone head over a shirt in a crowd colour), behind a strip of
+    // advertising boards in flat 16-bit colours.
     const band = Math.min(6 * s, 40);
-    g.rect(tl.x - band, tl.y - band, PITCH_W * s + band * 2, PITCH_L * s + band * 2).fill(0x24303a);
-    const step = Math.max(3, Math.round(s * 0.9));
-    const palette = [0xd9a066, 0xe8e8e8, 0xd42b2b, 0x1f58c7, 0xf1b63a, 0x8b5a2b];
-    const px = Math.max(1, Math.floor(step * 0.5));
-    let seed = 7;
-    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-    const dot = (x: number, y: number) => g.rect(x, y, px, px).fill(palette[Math.floor(rnd() * palette.length)]);
+    const boards = Math.max(3, Math.min(1.2 * s, 9));
     const x0 = tl.x - band;
     const y0 = tl.y - band;
     const w = PITCH_W * s + band * 2;
     const h = PITCH_L * s + band * 2;
-    for (let y = y0 + 2; y < y0 + h - 2; y += step) {
-      for (let x = x0 + 2; x < x0 + w - 2; x += step) {
-        const inside = x > tl.x - px && x < tl.x + PITCH_W * s && y > tl.y - px && y < tl.y + PITCH_L * s;
-        if (!inside) dot(x, y);
+    g.rect(x0, y0, w, h).fill(0x1c2630);
+    const px = Math.max(1, Math.floor(Math.min(s * 0.45, 3)));
+    const stepX = px * 2 + 1;
+    const stepY = px * 3 + 1;
+    const skins = [0xf1c9a5, 0xe2a978, 0xb9784b, 0x7a4a2e];
+    const shirts = [0xe8e8e8, 0xd42b2b, 0x1f58c7, 0xf1b63a, 0x2d9a4c, 0x8b5a2b, 0xc9c9c9, 0x4a2a7a];
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const innerL = tl.x - boards;
+    const innerR = tl.x + PITCH_W * s + boards;
+    const innerT = tl.y - boards;
+    const innerB = tl.y + PITCH_L * s + boards;
+    for (let y = y0 + 2; y < y0 + h - stepY; y += stepY) {
+      for (let x = x0 + 2; x < x0 + w - stepX; x += stepX) {
+        const inside = x + stepX > innerL && x < innerR && y + stepY > innerT && y < innerB;
+        if (inside) continue;
+        // A few empty seats and a little jitter so the rows do not read as a grid.
+        if (rnd() < 0.08) continue;
+        const jx = Math.floor(rnd() * 2);
+        g.rect(x + jx, y, px, px).fill(skins[Math.floor(rnd() * skins.length)]);
+        g.rect(x + jx - (px > 1 ? 1 : 0), y + px, px + (px > 1 ? 2 : 0), px * 2).fill(shirts[Math.floor(rnd() * shirts.length)]);
       }
     }
+    // Advertising boards: alternating blocks with a thin dark gap, around all four sides.
+    const boardColors = [0xd42b2b, 0xf4f1e6, 0x1f58c7, 0xffd447];
+    const seg = Math.max(12, Math.round(8 * s));
+    const sides: [number, number, number, number, boolean][] = [
+      [innerL, innerT, innerR - innerL, boards, true],
+      [innerL, innerB - boards, innerR - innerL, boards, true],
+      [innerL, innerT, boards, innerB - innerT, false],
+      [innerR - boards, innerT, boards, innerB - innerT, false],
+    ];
+    sides.forEach(([bx, by, bw, bh, horizontal], side) => {
+      g.rect(bx, by, bw, bh).fill(0x0d1116);
+      const len = horizontal ? bw : bh;
+      let i = 0;
+      for (let d = 0; d < len; d += seg, i++) {
+        const l = Math.min(seg - 2, len - d);
+        if (l <= 2) break;
+        const c = boardColors[(i + side) % boardColors.length];
+        if (horizontal) g.rect(bx + d, by + 1, l, bh - 2).fill(c);
+        else g.rect(bx + 1, by + d, bw - 2, l).fill(c);
+      }
+    });
 
     // Grass, with mowing stripes.
     g.rect(tl.x, tl.y, PITCH_W * s, PITCH_L * s).fill(0x3c8f47);
@@ -108,6 +142,20 @@ export class PitchView {
     const c = this.toScreen({ x: PITCH_W / 2, y: PITCH_L / 2 });
     g.circle(c.x, c.y, 9.15 * s).stroke(line);
     g.circle(c.x, c.y, 0.3 * s).fill(0xffffff);
+
+    // Corner flags: a pole with a small pennant, leaning away from the pitch.
+    const flag = Math.max(3, 1.2 * s);
+    for (const cx of [0, PITCH_W]) {
+      for (const cy of [0, PITCH_L]) {
+        const p = this.toScreen({ x: cx, y: cy });
+        const dx = cx === 0 ? -1 : 1;
+        g.moveTo(p.x, p.y).lineTo(p.x + dx * flag * 0.4, p.y - flag).stroke({ width: Math.max(1, 0.12 * s), color: 0xf4f1e6 });
+        g.moveTo(p.x + dx * flag * 0.4, p.y - flag)
+          .lineTo(p.x + dx * flag * 1.1, p.y - flag * 0.75)
+          .lineTo(p.x + dx * flag * 0.35, p.y - flag * 0.55)
+          .fill(0xffd447);
+      }
+    }
 
     // Boxes and goals at both ends.
     for (const end of [0, PITCH_L]) {

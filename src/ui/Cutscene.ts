@@ -1,5 +1,5 @@
 import { hex, type Kit } from '../render/kits';
-import { spriteCanvas, type Pose } from '../render/sprites';
+import { lookFor, spriteCanvas, type Pose } from '../render/sprites';
 
 export type CutsceneKind = 'goal' | 'save' | 'overtake' | 'duel' | 'corner' | 'throw-in';
 
@@ -13,10 +13,10 @@ export interface CutsceneSpec {
 }
 
 const CAPTIONS: Record<CutsceneKind, { title: string; pose: Pose; major: boolean }> = {
-  goal: { title: '¡GOOOL!', pose: 'kick', major: true },
+  goal: { title: '¡GOOOL!', pose: 'cheer', major: true },
   save: { title: '¡ATAJADA!', pose: 'slide', major: true },
   overtake: { title: '¡ROBO!', pose: 'slide', major: false },
-  duel: { title: '¡BALÓN GANADO!', pose: 'run1', major: false },
+  duel: { title: '¡BALÓN GANADO!', pose: 'cheer', major: false },
   corner: { title: '¡CÓRNER!', pose: 'stand', major: false },
   'throw-in': { title: 'SAQUE DE BANDA', pose: 'stand', major: false },
 };
@@ -46,7 +46,7 @@ export class Cutscene {
         </div>`;
       const figure = root.querySelector<HTMLElement>('[data-figure]')!;
       const k = Math.max(5, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 64));
-      const canvas = spriteCanvas(pose, spec.kit, !!spec.keeper, k);
+      const canvas = spriteCanvas(pose, spec.kit, !!spec.keeper, k, lookFor(spec.name));
       figure.appendChild(canvas);
       this.overlay.appendChild(root);
 

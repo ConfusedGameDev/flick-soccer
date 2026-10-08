@@ -2,7 +2,7 @@ import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import type { PlayerState, Team, Vec2 } from '../engine/types';
 import { KITS, type Kit } from './kits';
 import type { PitchView } from './PitchView';
-import { SPRITE_H, ballTexture, spriteTexture, type Pose } from './sprites';
+import { SPRITE_H, ballTexture, lookFor, spriteTexture, type Pose } from './sprites';
 
 export const PLAYER_RADIUS_M = 1.3;
 /** How tall a player sprite is in world meters; larger than life, as in 16-bit football games. */
@@ -74,7 +74,7 @@ export class PiecesView {
       const root = new Container();
       const shadow = new Graphics();
       const ring = new Graphics();
-      const sprite = new Sprite(spriteTexture('stand', this.kits[p.team], p.keeper));
+      const sprite = new Sprite(spriteTexture('stand', this.kits[p.team], p.keeper, lookFor(p.name)));
       sprite.anchor.set(0.5, 1);
       const name = new Text({
         text: p.name,
@@ -177,7 +177,7 @@ export class PiecesView {
       const p = this.players[i];
       if (!p) return;
       const pose: Pose = piece.sliding ? 'slide' : piece.moving ? frame : 'stand';
-      const tex = spriteTexture(pose, this.kits[p.team], p.keeper);
+      const tex = spriteTexture(pose, this.kits[p.team], p.keeper, lookFor(p.name));
       if (piece.sprite.texture !== tex) piece.sprite.texture = tex;
       piece.sprite.scale.x = this.k * piece.facing;
     });
