@@ -5,7 +5,8 @@ import { mulberry32 } from '../src/engine/rng';
 import { duelSeed, kickoffSeed, rollSeed, turnSeed } from '../src/engine/seeds';
 import { initialMatch } from '../src/engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../src/engine/sim';
-import type { MatchState, Plan, Team } from '../src/engine/types';
+import type { Flick, MatchState, Plan, Team } from '../src/engine/types';
+import { clamp01 } from '../src/engine/vec';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
 import type { Kit } from '../src/render/kits';
 
@@ -115,9 +116,23 @@ export class Room {
     }
   }
 
-  /** The server rolls the dice itself; a client's claimed roll is replaced by the real one. */
+  /**
+   * The server rolls the dice itself; a client's claimed roll is replaced by
+   * the real one. Flicks are rebuilt field by field: the timing game's
+   * accuracy and height are clamped to 0..1 (they are client-claimed, like
+   * mash presses) and the shot marker must be a real `true`.
+   */
   private sanitize(side: Team, plan: Plan): Plan {
-    const out: Plan = { team: side, flicks: plan.flicks.slice(0, 4) };
+    const flicks = (Array.isArray(plan.flicks) ? plan.flicks : []).slice(0, 4).map((f) => {
+      const out: Flick = { playerId: f.playerId, dir: f.dir, strength: f.strength };
+      if (f.shot === true) out.shot = true;
+      if (f.aim && typeof f.aim === 'object') {
+        out.aim = { accuracy: clamp01(f.aim.accuracy) };
+        if (f.aim.height !== undefined) out.aim.height = clamp01(f.aim.height);
+      }
+      return out;
+    });
+    const out: Plan = { team: side, flicks };
     if (plan.dice) out.dice = rollDice(mulberry32(rollSeed(this.seed, this.state!, side)));
     if (plan.booster) out.booster = plan.booster;
     return out;

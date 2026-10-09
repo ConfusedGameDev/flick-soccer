@@ -2,11 +2,14 @@
 // The context is created on the first user gesture (iOS requirement).
 
 const MUTE_KEY = 'flicksoccer.mute';
+/** Level of the stadium murmur loop (30% of the original 0.045) and how much it breathes. */
+const CROWD_GAIN = 0.0135;
+const CROWD_SWELL = 0.006;
 
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private crowd: { gain: GainNode; src: AudioBufferSourceNode } | null = null;
+  private crowd: { gain: GainNode; src: AudioBufferSourceNode; lfo: OscillatorNode } | null = null;
   muted = false;
 
   constructor() {
@@ -42,6 +45,16 @@ export class Sfx {
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
+  }
+
+  /** The app went to the background: stop everything, including the crowd loop, until resume(). */
+  suspend(): void {
+    if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend();
+  }
+
+  /** The app is back in front. (A tap would also resume through unlock().) */
+  resume(): void {
+    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume();
   }
 
   private get now(): number {
@@ -133,14 +146,46 @@ export class Sfx {
   }
 
   goal(): void {
-    // Crowd roar swell plus a stadium horn.
+    // Crowd roar swell plus a stadium horn, then the terraces cheering.
     this.noise(2.2, { gain: 0.5, lowpass: 1800, highpass: 200, attack: 0.25 });
     for (let i = 0; i < 3; i++) this.tone(196 + i * 2, 1.4, { type: 'sawtooth', gain: 0.05, at: 0.15 + i * 0.03 });
+    this.cheer(true);
   }
 
   save(): void {
     this.noise(1.0, { gain: 0.35, lowpass: 1200, highpass: 250, attack: 0.08 });
     this.tone(520, 0.5, { type: 'triangle', gain: 0.08, slide: -220 });
+    this.cheer(false);
+  }
+
+  /**
+   * People cheering: a few waves of band-limited noise rising one after the
+   * other, a handful of detuned "voices" and a swell of the murmur loop. `big`
+   * is the goal celebration; small is the short applause after a save.
+   */
+  private cheer(big: boolean): void {
+    if (!this.ctx || !this.master) return;
+    const waves = big ? 4 : 2;
+    for (let i = 0; i < waves; i++) {
+      const at = 0.2 + i * (big ? 0.45 : 0.3);
+      this.noise(big ? 2.6 - i * 0.3 : 1.2, { gain: (big ? 0.4 : 0.25) * (1 - i * 0.12), at, lowpass: 2200, highpass: 300, attack: big ? 0.3 : 0.15 });
+    }
+    // Voices: triangle tones spread over two octaves, each wobbling and sliding up a touch.
+    const voices = big ? 6 : 3;
+    for (let i = 0; i < voices; i++) {
+      const freq = 330 * Math.pow(2, (i * 5 + 1) / 12) * (1 + (Math.random() - 0.5) * 0.04);
+      this.tone(freq, big ? 1.6 : 0.8, { type: 'triangle', gain: big ? 0.03 : 0.02, at: 0.25 + i * 0.07, slide: freq * 0.08, vibrato: 6 });
+    }
+    // Lift the ambience with the cheer, then let it settle back to the murmur level.
+    if (this.crowd) {
+      const g = this.crowd.gain.gain;
+      const base = CROWD_GAIN;
+      const t0 = this.now;
+      g.cancelScheduledValues(t0);
+      g.setValueAtTime(base, t0);
+      g.linearRampToValueAtTime(base * (big ? 5 : 3), t0 + 0.4);
+      g.linearRampToValueAtTime(base, t0 + (big ? 2.8 : 1.4));
+    }
   }
 
   dice(): void {
@@ -170,23 +215,28 @@ export class Sfx {
     f.frequency.value = 500;
     f.Q.value = 0.6;
     const gain = ctx.createGain();
-    gain.gain.value = 0.045;
+    gain.gain.value = CROWD_GAIN;
     const lfo = ctx.createOscillator();
     lfo.frequency.value = 0.13;
     const lg = ctx.createGain();
-    lg.gain.value = 0.02;
+    lg.gain.value = CROWD_SWELL;
     lfo.connect(lg).connect(gain.gain);
     lfo.start();
     src.connect(f).connect(gain).connect(this.master);
     src.start();
-    this.crowd = { gain, src };
+    this.crowd = { gain, src, lfo };
   }
 
   crowdStop(): void {
     if (!this.crowd || !this.ctx) return;
-    this.crowd.gain.gain.linearRampToValueAtTime(0, this.now + 0.5);
-    const src = this.crowd.src;
-    setTimeout(() => src.stop(), 600);
+    const { gain, src, lfo } = this.crowd;
+    gain.gain.cancelScheduledValues(this.now);
+    gain.gain.setValueAtTime(gain.gain.value, this.now);
+    gain.gain.linearRampToValueAtTime(0, this.now + 0.5);
+    setTimeout(() => {
+      src.stop();
+      lfo.stop();
+    }, 600);
     this.crowd = null;
   }
 }

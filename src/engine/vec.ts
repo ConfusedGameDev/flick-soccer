@@ -17,3 +17,13 @@ export function normalize(a: Vec2): Vec2 {
 }
 
 export const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+
+/** Clamp a client-supplied value to 0..1; anything that is not a finite number counts as 0. */
+export const clamp01 = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? clamp(x, 0, 1) : 0);
+
+/** Rotate a vector counter-clockwise by `rad`. */
+export function rotate(a: Vec2, rad: number): Vec2 {
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return { x: a.x * c - a.y * s, y: a.x * s + a.y * c };
+}

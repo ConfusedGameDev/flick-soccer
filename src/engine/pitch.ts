@@ -1,4 +1,4 @@
-import type { Team, Vec2 } from './types';
+import type { SetPiece, Team, Vec2 } from './types';
 import { clamp } from './vec';
 
 // All distances are meters, all times seconds. The pitch runs along +y so a
@@ -48,6 +48,18 @@ export const KEEPER_REACH = 3.5;
 export const SAVE_CHANCE = 0.65;
 /** After a save, chance the keeper holds on; otherwise the ball goes out for a corner. */
 export const HOLD_CHANCE = 0.5;
+
+// ---- Set pieces: the timing game's accuracy scatters the ball ----
+/** Angular error (radians) of an aimed flick at accuracy 0; it shrinks linearly to 0 at accuracy 1. */
+export const AIM_SCATTER = 0.35;
+/** Height error of a shot at accuracy 0. */
+export const HEIGHT_SCATTER = 0.3;
+/** A shot whose height (after scatter) is above this sails over the bar: goal kick. */
+export const OVER_BAR = 0.85;
+/** The keeper's save chance drops by this much times the shot's height. */
+export const HEIGHT_SAVE_SHIFT = 0.15;
+/** Fixed distances of restart kicks; the engine overrides the taker's strength. */
+export const SET_PIECE_METERS: Record<SetPiece, number> = { corner: 36, 'throw-in': 14 };
 
 export const other = (team: Team): Team => (team === 'home' ? 'away' : 'home');
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLOCK_CHANCE,
+  HEIGHT_SAVE_SHIFT,
   HOLD_CHANCE,
   INTERCEPT_CHANCE,
   PASS_RANGE,
   PITCH_L,
   PITCH_W,
   SAVE_CHANCE,
+  SET_PIECE_METERS,
   TACKLE_REACH,
   TURNS_PER_HALF,
 } from './pitch';
@@ -50,7 +52,8 @@ function shootingState(): MatchState {
   for (const p of s.players) if (p.team === 'away' && !p.keeper) p.pos = { x: 5, y: 30 };
   return s;
 }
-const straightShot = (s: MatchState): Flick => ({ playerId: s.possession.playerId, dir: { x: 0, y: 1 }, strength: 1 });
+/** An explicit (Shoot button) shot straight at goal, no timing game: it flies exactly where aimed. */
+const straightShot = (s: MatchState): Flick => ({ playerId: s.possession.playerId, dir: { x: 0, y: 1 }, strength: 1, shot: true });
 
 describe('resolveTurn: passing', () => {
   it('is deterministic for the same state, plans and seed', () => {
@@ -252,5 +255,124 @@ describe('helpers', () => {
     const r = resolveTurn(base, attack(...many), defense(), 5);
     const looked = r.events.filter((e) => e.type === 'pass' || e.type === 'invalid-flick');
     expect(looked.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('resolveTurn: set pieces and the timing game', () => {
+  /** A roll we do not care about (the scatter draws of an aimed flick). */
+  const skip = { chance: 1, succeeds: true };
+
+  it('only the Shoot marker makes a shot; a plain drag at goal is a pass', () => {
+    const s = shootingState();
+    const drag: Flick = { ...straightShot(s), shot: undefined };
+    expect(flickKind(s, 'home', 'attack', drag)).toBe('pass');
+    expect(flickKind(s, 'home', 'attack', straightShot(s))).toBe('shot');
+    const mid = structuredClone(s);
+    mid.players[mid.possession.playerId].pos = { x: PITCH_W / 2, y: PITCH_L / 2 };
+    mid.ball = { ...mid.players[mid.possession.playerId].pos };
+    expect(flickKind(mid, 'home', 'attack', straightShot(mid))).toBe('pass');
+    // The marker means nothing on a teammate or a defender.
+    expect(flickKind(s, 'home', 'attack', { ...straightShot(s), playerId: home(9).id })).toBe('run');
+    expect(flickKind(s, 'away', 'defense', { ...straightShot(s), playerId: away(9).id })).toBe('slide');
+  });
+
+  it('a marked shot aimed wide is still a shot, and ends in a goal kick', () => {
+    const s = shootingState();
+    const wide: Flick = { ...straightShot(s), dir: normalize({ x: 1, y: 1 }) };
+    expect(flickKind(s, 'home', 'attack', wide)).toBe('shot');
+    const r = resolveTurn(s, attack(wide), defense(), 3);
+    expect(r.events.some((e) => e.type === 'shot')).toBe(true);
+    expect(r.events.some((e) => e.type === 'goal-kick')).toBe(true);
+  });
+
+  it('accuracy 1 flies exactly where aimed; accuracy 0 scatters; the same seed scatters the same way', () => {
+    const s = shootingState();
+    const perfect = resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy: 1, height: 0.5 } }), defense(), 7);
+    const shotTo = (r: ReturnType<typeof resolveTurn>) => (r.events.find((e) => e.type === 'shot') as { to: Vec2 }).to;
+    expect(shotTo(perfect).x).toBeCloseTo(PITCH_W / 2, 3);
+    // A seed whose first draw is far from the middle pushes an accuracy-0 shot off its line.
+    const seed = seedFor({ chance: 0.1, succeeds: true });
+    const wild = attack({ ...straightShot(s), aim: { accuracy: 0, height: 0.5 } });
+    const a = resolveTurn(s, wild, defense(), seed);
+    expect(Math.abs(shotTo(a).x - PITCH_W / 2)).toBeGreaterThan(1);
+    expect(resolveTurn(s, wild, defense(), seed)).toEqual(a);
+  });
+
+  it('a shot over the bar is a goal kick that the keeper never touches', () => {
+    const s = shootingState();
+    const r = resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy: 1, height: 0.95 } }), defense(), seedFor(skip, skip, { chance: SAVE_CHANCE, succeeds: true }));
+    expect(r.events.some((e) => e.type === 'save')).toBe(false);
+    expect(r.events.some((e) => e.type === 'goal')).toBe(false);
+    expect(r.events.some((e) => e.type === 'goal-kick')).toBe(true);
+  });
+
+  it('high shots are harder to save', () => {
+    const s = shootingState();
+    // A save roll (the third draw, after the two scatter draws) between the shifted and the
+    // plain save chance: saved on the ground, scored up high.
+    const seed = (() => {
+      for (let s = 1; s < 100_000; s++) {
+        const rng = mulberry32(s);
+        rng();
+        rng();
+        const roll = rng();
+        if (roll < SAVE_CHANCE && roll >= SAVE_CHANCE - HEIGHT_SAVE_SHIFT * 0.8) return s;
+      }
+      throw new Error('no seed found');
+    })();
+    const low = resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy: 1, height: 0 } }), defense(), seed);
+    const high = resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy: 1, height: 0.8 } }), defense(), seed);
+    expect(low.events.some((e) => e.type === 'save')).toBe(true);
+    expect(high.events.some((e) => e.type === 'goal')).toBe(true);
+  });
+
+  it('a perfect timing game scores more often than a botched one', () => {
+    const s = shootingState();
+    const goals = (accuracy: number) => {
+      let n = 0;
+      for (let seed = 1; seed <= 300; seed++) {
+        const r = resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy, height: 0.5 } }), defense(), seed);
+        if (r.events.some((e) => e.type === 'goal')) n++;
+      }
+      return n;
+    };
+    const perfect = goals(1);
+    expect(perfect).toBeGreaterThan(0);
+    expect(perfect).toBeGreaterThan(goals(0));
+  });
+
+  it('ignores a bogus aim on a plain pass', () => {
+    const a = attack({ ...flick(home(1).id, home(1).pos, home(2).pos), aim: { accuracy: Number.NaN } });
+    const r = resolveTurn(base, a, defense(), 42);
+    expect(r.events.some((e) => e.type === 'receive' || e.type === 'dead-ball' || e.type === 'intercept')).toBe(true);
+  });
+
+  it('hands the attacker a corner or a throw-in as a set piece, and clears it the turn after', () => {
+    const s = shootingState();
+    const corner = resolveTurn(s, attack(straightShot(s)), defense(), seedFor({ chance: SAVE_CHANCE, succeeds: true }, { chance: HOLD_CHANCE, succeeds: false }));
+    expect(corner.state.setPiece).toBe('corner');
+    // The striker on the touchline kicks it straight out.
+    const side = shootingState();
+    side.players[side.possession.playerId].pos = { x: 3, y: PITCH_L - 20 };
+    side.ball = { ...side.players[side.possession.playerId].pos };
+    const out = resolveTurn(side, attack({ playerId: side.possession.playerId, dir: { x: -1, y: 0 }, strength: 1 }), defense(), 2);
+    expect(out.events.some((e) => e.type === 'throw-in')).toBe(true);
+    expect(out.state.setPiece).toBe('throw-in');
+    // A quiet next turn drops the key entirely.
+    const next = resolveTurn(out.state, plan('away'), plan('home'), 3);
+    expect('setPiece' in next.state).toBe(false);
+  });
+
+  it('fixes the restart distance and never lets the restart flick be a shot', () => {
+    const s = shootingState();
+    const r = resolveTurn(s, attack(straightShot(s)), defense(), seedFor({ chance: SAVE_CHANCE, succeeds: true }, { chance: HOLD_CHANCE, succeeds: false }));
+    const c = r.state;
+    const taker = c.players[c.possession.playerId];
+    // Towards the goal from the corner flag, full pull: the engine still kicks SET_PIECE_METERS.
+    const kick: Flick = { playerId: taker.id, dir: normalize({ x: PITCH_W / 2 - c.ball.x, y: -12 }), strength: 1, shot: true };
+    expect(flickKind(c, 'home', 'attack', kick)).toBe('pass');
+    const t = resolveTurn(c, attack(kick), defense(), 5);
+    const pass = t.events.find((e) => e.type === 'pass') as { to: Vec2 };
+    expect(dist(c.ball, pass.to)).toBeCloseTo(SET_PIECE_METERS.corner, 0);
   });
 });

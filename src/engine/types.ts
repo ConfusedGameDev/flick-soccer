@@ -75,6 +75,9 @@ export interface TeamMeta {
 /** Passive rules a team carries through a season run; effects live in engine/tactics.ts. */
 export type Tactic = 'catenaccio' | 'tiki-taka' | 'clasicos' | 'cannon' | 'iron-wall' | 'engine-room';
 
+/** A restart the attacker takes with the set-piece scene before planning the rest of the turn. */
+export type SetPiece = 'corner' | 'throw-in';
+
 export interface MatchState {
   /** 1-based turn within the current half. */
   turn: number;
@@ -87,6 +90,19 @@ export interface MatchState {
   ball: Vec2;
   possession: Possession;
   meta: Record<Team, TeamMeta>;
+  /**
+   * Set after a corner or throw-in restart: the attacker's first chain flick
+   * is the set piece (fixed distance, never a shot). Absent on every other turn.
+   */
+  setPiece?: SetPiece;
+}
+
+/** Result of the set-piece timing game. Absent on plain drag flicks, which fly exactly where aimed. */
+export interface Aim {
+  /** 0..1; 1 is exactly the chosen line, 0 scatters by the full AIM_SCATTER. */
+  accuracy: number;
+  /** Shots only, 0..1: 0 along the ground, 1 at the bar. Above OVER_BAR after scatter sails over. */
+  height?: number;
 }
 
 /** One pull-back-and-release gesture. `dir` is a unit vector in the direction of travel. */
@@ -95,6 +111,13 @@ export interface Flick {
   dir: Vec2;
   /** 0..1, fraction of the maximum pull. */
   strength: number;
+  /**
+   * An explicit shot (the Shoot button, or the CPU). Honoured only on the ball
+   * carrier, from the attacking third, and never on a restart flick; otherwise
+   * the flick is a pass. A plain drag is always a pass.
+   */
+  shot?: boolean;
+  aim?: Aim;
 }
 
 export interface Plan {

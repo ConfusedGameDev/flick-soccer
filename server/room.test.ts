@@ -148,3 +148,19 @@ describe('Room', () => {
     expect(h.room.phase).toBe('over');
   });
 });
+
+describe('timing game fields', () => {
+  it('clamps a client-claimed aim and only honours a real shot marker', () => {
+    const h = harness();
+    h.seatBoth();
+    const attack = h.room.state!.possession.team;
+    const defend = attack === 'home' ? 'away' : 'home';
+    const carrier = h.room.state!.possession.playerId;
+    const bogus = { playerId: carrier, dir: { x: 0, y: attack === 'home' ? 1 : -1 }, strength: 0.5, shot: 'yes' as unknown as boolean, aim: { accuracy: 7, height: -2 } };
+    h.room.handle(attack, { t: 'plan', plan: { team: attack, flicks: [bogus] } });
+    h.room.handle(defend, { t: 'plan', plan: { team: defend, flicks: [] } });
+    const r = h.last('home', 'result') as Extract<ServerMessage, { t: 'result' }>;
+    expect(r.result.events.some((e) => e.type === 'shot')).toBe(false);
+    expect(r.result.events.some((e) => e.type === 'pass')).toBe(true);
+  });
+});

@@ -7,6 +7,7 @@ import type {
   MatchState,
   Plan,
   PlayerState,
+  SetPiece,
   Team,
   TeamMeta,
   TimelineEvent,
@@ -14,15 +15,19 @@ import type {
   Vec2,
 } from './types';
 import {
+  AIM_SCATTER,
   BALL_SPEED,
   BLOCK_CHANCE,
   DIVE_RANGE,
   DIVE_SPEED,
   DT,
+  HEIGHT_SAVE_SHIFT,
+  HEIGHT_SCATTER,
   HOLD_CHANCE,
   INTERCEPT_CHANCE,
   KEEPER_REACH,
   MAX_TURN_SECONDS,
+  OVER_BAR,
   PASS_RANGE,
   PITCH_L,
   PITCH_W,
@@ -30,6 +35,7 @@ import {
   RUN_RANGE,
   RUN_SPEED,
   SAVE_CHANCE,
+  SET_PIECE_METERS,
   SHOT_RANGE,
   SHOT_SPEED,
   SLIDE_RANGE,
@@ -48,7 +54,7 @@ import { statFactor, statOdds } from './pool';
 import { keeperReachMul, maxFlicksFor, moveSpeedMul, passChanceShift, shotChanceShift } from './tactics';
 import { mulberry32 } from './rng';
 import { keeperOf } from './setup';
-import { add, dist, lerp, normalize, scale } from './vec';
+import { add, clamp, clamp01, dist, lerp, normalize, rotate, scale } from './vec';
 
 // ---------------------------------------------------------------------------
 // Flick classification and geometry (shared with the client preview)
@@ -64,15 +70,24 @@ export function goalLineCrossing(team: Team, from: Vec2, dir: Vec2): Vec2 | null
   return { x: from.x + d.x * t, y: gy };
 }
 
-/** What a flick means for this side, from who was flicked and where they stand. */
+/**
+ * What a flick means for this side, from who was flicked and where they stand.
+ * A shot needs the explicit `shot` marker (the Shoot button), the attacking
+ * third and a ray that reaches the goal line; it may still go wide. A restart
+ * flick (`state.setPiece`) is always a pass.
+ */
 export function flickKind(state: MatchState, team: Team, role: 'attack' | 'defense', flick: Flick): FlickKind {
   const p = state.players[flick.playerId];
   if (!p || p.team !== team) return 'invalid';
   if (role === 'defense') return p.keeper ? 'dive' : 'slide';
   if (p.id !== state.possession.playerId) return 'run';
-  const cross = goalLineCrossing(team, state.ball, flick.dir);
-  return cross && inGoalMouth(cross.x) && inAttackingThird(team, state.ball) ? 'shot' : 'pass';
+  if (!flick.shot || state.setPiece) return 'pass';
+  return inAttackingThird(team, state.ball) && goalLineCrossing(team, state.ball, flick.dir) ? 'shot' : 'pass';
 }
+
+/** The strength the engine gives a restart flick so that it covers SET_PIECE_METERS. */
+export const setPieceStrength = (kind: SetPiece, kicker: PlayerState): number =>
+  clamp(SET_PIECE_METERS[kind] / (PASS_RANGE * kickRange(kicker, 'pass')), 0.05, 1);
 
 /**
  * Where a pass or shot from `from` lands, clipped to the pitch. `out` is true
@@ -169,6 +184,10 @@ interface Move {
 
 interface BallSegment {
   shot: boolean;
+  /** Shot height after scatter, 0..1 (0 for passes). */
+  height: number;
+  /** The shot is going over the bar: nothing for the keeper to save. */
+  over: boolean;
   /** Who kicked it; their pass/shot stat resists interception. */
   kicker: PlayerState;
   from: Vec2;
@@ -304,21 +323,24 @@ export function resolveTurn(
   // The chain is projected forward from the kickoff positions so that a flick
   // from the *next* carrier counts as a pass, not a run. This is the same
   // projection the planning preview shows.
+  // The first chain flick of a restart turn is the set piece: its distance is
+  // fixed by the engine and it can never be a shot; later flicks are ordinary.
   const chain: Flick[] = [];
   let projected: MatchState = { ...state, players, ball: { ...ball }, possession: { ...possession } };
-  for (const f of attackFlicks) {
-    const kind = flickKind(projected, attackTeam, 'attack', f);
+  for (const raw of attackFlicks) {
+    const kind = flickKind(projected, attackTeam, 'attack', raw);
     if (kind === 'invalid') {
-      events.push({ t, type: 'invalid-flick', playerId: f.playerId, reason: 'not an attacker' });
+      events.push({ t, type: 'invalid-flick', playerId: raw.playerId, reason: 'not an attacker' });
     } else if (kind === 'run') {
-      addMove(byId(f.playerId), f, 'run');
+      addMove(byId(raw.playerId), raw, 'run');
     } else {
+      const f = projected.setPiece ? { ...raw, strength: setPieceStrength(projected.setPiece, byId(raw.playerId)) } : raw;
       chain.push(f);
       const { to, out } = passTarget(projected.ball, f, kind as 'pass' | 'shot', kickRange(byId(f.playerId), kind as 'pass' | 'shot'));
       const receiver = kind === 'pass' && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
       projected = receiver
-        ? { ...projected, ball: { ...receiver.pos }, possession: { team: attackTeam, playerId: receiver.id } }
-        : { ...projected, possession: { team: attackTeam, playerId: -1 } };
+        ? { ...projected, setPiece: undefined, ball: { ...receiver.pos }, possession: { team: attackTeam, playerId: receiver.id } }
+        : { ...projected, setPiece: undefined, possession: { team: attackTeam, playerId: -1 } };
     }
   }
 
@@ -354,17 +376,28 @@ export function resolveTurn(
       }
       const from = { ...ball };
       // Re-classify against the live ball position: after a pass the carrier may now be in range.
-      const live: MatchState = { ...state, players, ball, possession };
+      // Only the first chain flick of a restart turn is the set piece.
+      const live: MatchState = { ...state, players, ball, possession, setPiece: flickIdx === 1 ? state.setPiece : undefined };
       const kind = flickKind(live, attackTeam, 'attack', f);
       const shot = kind === 'shot';
       const kicker = byId(f.playerId);
-      const { to, out } = passTarget(from, f, shot ? 'shot' : 'pass', kickRange(kicker, shot ? 'shot' : 'pass'));
+      // The timing game's accuracy scatters the line (and a shot's height). Plain
+      // flicks draw nothing from the RNG, so their resolution is unchanged.
+      let dir = f.dir;
+      let height = 0;
+      if (f.aim) {
+        const err = 1 - clamp01(f.aim.accuracy);
+        dir = rotate(f.dir, (rng() * 2 - 1) * AIM_SCATTER * err);
+        if (shot) height = clamp(clamp01(f.aim.height) + (rng() * 2 - 1) * HEIGHT_SCATTER * err, 0, 1);
+      }
+      const over = shot && height > OVER_BAR;
+      const { to, out } = passTarget(from, { ...f, dir }, shot ? 'shot' : 'pass', kickRange(kicker, shot ? 'shot' : 'pass'));
       const speed = shot ? SHOT_SPEED : BALL_SPEED;
       const unstoppable = !shot && unstoppableLeft;
       if (unstoppable) unstoppableLeft = false;
       const receiver = !shot && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
       const classic = kicker.era === 'classic' && receiver?.era === 'classic';
-      seg = { shot, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, classic };
+      seg = { shot, height, over, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, classic };
       events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
@@ -387,6 +420,8 @@ export function resolveTurn(
       let stopped = false;
       for (const p of players) {
         if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
+        // A shot sailing over the bar is out of the keeper's hands (blockers still get their roll).
+        if (p.keeper && seg.over) continue;
         const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * statFactor(p.stats.keeping) * keeperReachMul(state.meta[defenseTeam]) : TACKLE_REACH;
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
@@ -397,6 +432,8 @@ export function resolveTurn(
         chance -= statOdds(seg.shot ? seg.kicker.stats.shot : seg.kicker.stats.pass);
         // Tactics cards: cannon on shots; tiki-taka and clásicos on passes.
         chance += seg.shot ? shotChanceShift(state.meta[attackTeam]) : passChanceShift(state.meta[attackTeam], seg.chainPos, seg.classic);
+        // High shots are harder for the keeper to reach.
+        if (p.keeper && seg.shot) chance -= HEIGHT_SAVE_SHIFT * seg.height;
         if (p.keeper && superKeeper) chance += 0.25;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {
@@ -422,11 +459,11 @@ export function resolveTurn(
         if (seg.out) {
           // clipToEdge lands a hair inside the line, so use a loose tolerance.
           const onGoalLine = ball.y < 1e-3 || ball.y > PITCH_L - 1e-3;
-          if (seg.shot && onGoalLine && inGoalMouth(ball.x)) {
+          if (seg.shot && onGoalLine && inGoalMouth(ball.x) && !seg.over) {
             events.push({ t, type: 'goal', team: attackTeam });
             endChain({ kind: 'goal', team: attackTeam });
           } else if (onGoalLine) {
-            // Attacker put it over the goal line: goal kick for the defence.
+            // Attacker put it over the goal line (wide or over the bar): goal kick for the defence.
             endChain({ kind: 'goal-kick', team: defenseTeam });
           } else {
             endChain({ kind: 'throw-in', team: defenseTeam, at: ball });
@@ -458,6 +495,8 @@ export function resolveTurn(
   let status: MatchState['status'] = 'playing';
   const score = { ...state.score };
   const outcome = run.outcome;
+  // Corners and throw-ins hand the next attacker a set piece; every other turn clears it.
+  let setPiece: SetPiece | undefined;
   switch (outcome.kind) {
     case 'goal': {
       score[outcome.team]++;
@@ -473,6 +512,7 @@ export function resolveTurn(
       const taker = nearestOf(players, outcome.team, ball);
       taker.pos = { ...ball };
       possession = { team: outcome.team, playerId: taker.id };
+      setPiece = 'corner';
       events.push({ t, type: 'corner', team: outcome.team });
       break;
     }
@@ -481,6 +521,7 @@ export function resolveTurn(
       const taker = nearestOf(players, outcome.team, ball);
       taker.pos = { ...ball };
       possession = { team: outcome.team, playerId: taker.id };
+      setPiece = 'throw-in';
       events.push({ t, type: 'throw-in', team: outcome.team });
       break;
     }
@@ -519,6 +560,7 @@ export function resolveTurn(
       const k = keeperOf(players, other(state.kickoff));
       ball = { ...k.pos };
       possession = { team: k.team, playerId: k.id };
+      setPiece = undefined;
       events.push({ t, type: 'half-time' });
     } else {
       status = 'full-time';
@@ -528,11 +570,11 @@ export function resolveTurn(
 
   events.push({ t, type: 'end' });
 
-  return {
-    state: { ...state, turn, half, score, status, players, ball, possession, meta },
-    keyframes,
-    events,
-  };
+  // Drop the previous turn's set piece from the state rather than carrying an undefined key.
+  const { setPiece: _previous, ...rest } = state;
+  const next: MatchState = { ...rest, turn, half, score, status, players, ball, possession, meta };
+  if (setPiece) next.setPiece = setPiece;
+  return { state: next, keyframes, events };
 }
 
 /**

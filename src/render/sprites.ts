@@ -10,10 +10,15 @@ import { hex, shirtColorAt, type Kit } from './kits';
 // Each player gets a `Look` (skin tone, hair colour and style) derived from
 // their name, so a squad reads as eleven people rather than clones.
 
-export type Pose = 'stand' | 'run1' | 'run2' | 'kick' | 'cheer' | 'slide';
+export type Pose = 'stand' | 'run1' | 'run2' | 'kick' | 'cheer' | 'slide' | 'back';
+/** The 16x24 front-facing poses used on the pitch. */
+type FrontPose = Exclude<Pose, 'back'>;
 
 export const SPRITE_W = 16;
 export const SPRITE_H = 24;
+/** The big back-view figure of the set-piece scene. */
+export const BACK_W = 32;
+export const BACK_H = 48;
 
 export interface Look {
   /** Index into SKINS. */
@@ -116,7 +121,7 @@ const TORSO = [
   '.OjjOJJJJJJOjjO.',
 ];
 
-const BODIES: Record<Pose, string[]> = {
+const BODIES: Record<FrontPose, string[]> = {
   stand: [
     ...TORSO,
     '.OGGOJJJJJJOGGO.',
@@ -219,6 +224,62 @@ const CHEER_HEAD = [
   'OJOO.OsSSsO.OOJO',
 ];
 
+/**
+ * The set-piece figure seen from behind, 32x48: the back of the head, a wide
+ * shirt with short sleeves and the arms slightly out, shorts, socks and boots.
+ * No face; the hair style is applied by templateRows.
+ */
+const BACK: string[] = [
+  '............OOOOOOOO............',
+  '...........OHHHHHHHHO...........',
+  '..........OHHhhHHHHHHO..........',
+  '..........OHHHHHHHHHHO..........',
+  '..........OHHHHHHHHHHO..........',
+  '..........OHHHHHHHHHHO..........',
+  '..........OHHHHHHHHHhO..........',
+  '...........OHHHHHHHHO...........',
+  '............OOSSSSOO............',
+  '.............OSSSsO.............',
+  '.............OSSSsO.............',
+  '........OOOOOOCSSCOOOOOO........',
+  '......OOJJJJJJCCCCJJJJJJOO......',
+  '.....OJJJJJJJJJJJJJJJJJJJJO.....',
+  '....OJJJJJJJJJJJJJJJJJJJJJJO....',
+  '....OJJJOJJJJJJJJJJJJJJOJJJO....',
+  '....OJJJOJJJJJJJJJJJJJJOJJJO....',
+  '....OjjJOJJJJJJJJJJJJJJOJjjO....',
+  '....OjjjOJJJJJJJJJJJJJJOjjjO....',
+  '....OjjjOJJJJJJJJJJJJJJOjjjO....',
+  '....OSSSOJJJJJJJJJJJJJJOSSSO....',
+  '....OSSSOJJJJJJJJJJJJJJOSSSO....',
+  '....OSSsOJJJJJJJJJJJJJJOSsSO....',
+  '....OGGGOJjjjjjjjjjjjjJOGGGO....',
+  '....OGggOJjjjjjjjjjjjjJOGgGO....',
+  '.....OO.OjjjjjjjjjjjjjjO.OO.....',
+  '........OPPPPPPPPPPPPPPO........',
+  '........OPPPPPPPPPPPPPPO........',
+  '........OPPPPPPPPPPPPPPO........',
+  '........OPPPPPPPPPPPPPPO........',
+  '........OPPPPPPOOPPPPPPO........',
+  '........OPpPPPO..OPPPpPO........',
+  '........OPpPPPO..OPPPpPO........',
+  '........OOOOOOO..OOOOOOO........',
+  '.........OSSSSO..OSSSSO.........',
+  '.........OSSSSO..OSSSSO.........',
+  '.........OSSSsO..OSSSsO.........',
+  '.........OSSSsO..OSSSsO.........',
+  '.........OKKKKO..OKKKKO.........',
+  '.........OKKKKO..OKKKKO.........',
+  '.........OKKKkO..OKKKkO.........',
+  '.........OKKKkO..OKKKkO.........',
+  '.........OkKKkO..OkKKkO.........',
+  '.........OBBBBO..OBBBBO.........',
+  '........OBBBBBBO.OBBBBBBO.......',
+  '........OBBBBBBO.OBBBBBBO.......',
+  '........OOOOOOOO.OOOOOOOO.......',
+  '................................',
+];
+
 /** Where the jersey sits per pose, for mapping the kit pattern (top row, rows, left column, columns). */
 const JERSEY_BOX: Record<Pose, [number, number, number, number]> = {
   stand: [9, 7, 1, 14],
@@ -227,6 +288,7 @@ const JERSEY_BOX: Record<Pose, [number, number, number, number]> = {
   kick: [9, 7, 1, 14],
   cheer: [9, 7, 2, 12],
   slide: [16, 4, 4, 10],
+  back: [11, 15, 4, 24],
 };
 
 const OUTLINE = '#141420';
@@ -253,12 +315,23 @@ export function lookFor(name: string): Look {
 const templateCache = new Map<string, string[]>();
 const BLANK = '.'.repeat(SPRITE_W);
 
-/** Rows for a pose with a look's hair style applied; always SPRITE_H rows of SPRITE_W letters. */
+/**
+ * Rows for a pose with a look's hair style applied: SPRITE_H rows of SPRITE_W
+ * letters for the pitch poses, BACK_H x BACK_W for the back view.
+ */
 export function templateRows(pose: Pose, look: Look): string[] {
   const key = `${pose}:${look.style}`;
   let rows = templateCache.get(key);
   if (!rows) {
-    if (pose === 'slide') {
+    if (pose === 'back') {
+      // Seen from behind there is no face: the style only changes how much neck shows.
+      rows = BACK.map((r, y) => {
+        if (look.style === 3) return y < 8 ? r.replace(/H/g, 'S').replace(/h/g, 's') : r; // bald
+        if (look.style === 1 && y >= 6 && y < 8) return r.replace(/H/g, 'S').replace(/h/g, 's'); // buzz cut: shorter at the nape
+        if (look.style === 2 && y >= 8 && y < 11) return r.replace(/S/g, 'H').replace(/s/g, 'h'); // long: hair down the neck
+        return r;
+      });
+    } else if (pose === 'slide') {
       // The slide has no separate head block: pad the figure down to the bottom of the frame.
       rows = [...Array<string>(SPRITE_H - BODIES.slide.length).fill(BLANK), ...BODIES.slide];
     } else {
@@ -287,8 +360,8 @@ export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit,
   const rows = templateRows(pose, look);
   const [skin, skinShade] = SKINS[look.skin] ?? SKINS[1];
   const [hair, hairHi] = HAIRS[look.hair] ?? HAIRS[0];
-  for (let j = 0; j < SPRITE_H; j++) {
-    for (let i = 0; i < SPRITE_W; i++) {
+  for (let j = 0; j < rows.length; j++) {
+    for (let i = 0; i < rows[j].length; i++) {
       const c = rows[j][i];
       if (c === '.') continue;
       let fill: string;
@@ -347,9 +420,10 @@ export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit,
 
 /** A standalone canvas holding one sprite at scale `k` (cutscene cards, menus, the coach). */
 export function spriteCanvas(pose: Pose, kit: Kit, keeper: boolean, k: number, look: Look = DEFAULT_LOOK): HTMLCanvasElement {
+  const rows = templateRows(pose, look);
   const c = document.createElement('canvas');
-  c.width = SPRITE_W * k;
-  c.height = SPRITE_H * k;
+  c.width = rows[0].length * k;
+  c.height = rows.length * k;
   paintSprite(c.getContext('2d')!, pose, kit, keeper, 0, 0, k, look);
   return c;
 }

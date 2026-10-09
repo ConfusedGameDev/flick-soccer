@@ -56,7 +56,7 @@ describe('tactics cards', () => {
       for (const p of s.players) if (p.team === 'away' && !p.keeper) p.pos = { x: 5, y: 30 };
       let goals = 0;
       for (let seed = 1; seed <= 300; seed++) {
-        const r = resolveTurn(s, { team: 'home', flicks: [{ playerId: striker.id, dir: { x: 0, y: 1 }, strength: 1 }] }, { team: 'away', flicks: [] }, seed);
+        const r = resolveTurn(s, { team: 'home', flicks: [{ playerId: striker.id, dir: { x: 0, y: 1 }, strength: 1, shot: true }] }, { team: 'away', flicks: [] }, seed);
         if (r.events.some((e) => e.type === 'goal')) goals++;
       }
       return goals;

@@ -38,6 +38,7 @@ export class Tutor {
   private reviews = 0;
   private diceExplained = false;
   private boosterExplained = false;
+  private shootExplained = false;
   private duelExplained = false;
   private retired = false;
 
@@ -143,6 +144,11 @@ export class Tutor {
       this.coach.tip('You hold a booster', 'Tap it under the pitch to arm it for this turn: a longer slide, double speed, an extra flick, an unstoppable pass or a super keeper. You can hold two.');
       return;
     }
+    if (info.role === 'attack' && info.canShoot && !this.shootExplained) {
+      this.shootExplained = true;
+      this.coach.tip('In range!', 'Tap <b>Shoot</b>: lock the swinging arrow across the goal, then the height, then tap when the cursor is on the block. The closer you are, the truer the shot.');
+      return;
+    }
     if (!first) return;
     if (info.used === 0) {
       if (info.role === 'attack') this.coach.tip('Make a pass', 'Pull back from the carrier and let go.');
@@ -152,7 +158,7 @@ export class Tutor {
     } else if (info.left === 0) {
       this.coach.tip('Out of flicks', 'Tap <b>Confirm</b> to lock the plan in. Undo takes the last flick back.');
     } else if (info.used > 0 && info.role === 'attack') {
-      this.coach.tip('Chain it', `Keep passing from the receiver, flick a teammate without the ball to <b>run</b> into space, or aim at the goal from the attacking third to <b>shoot</b>. ${info.left} left; confirm any time.`);
+      this.coach.tip('Chain it', `Keep passing from the receiver, flick a teammate without the ball to <b>run</b> into space, or tap <b>Shoot</b> once the carrier is in the attacking third. ${info.left} left; confirm any time.`);
     } else if (info.used > 0) {
       this.coach.tip('One more', `${info.left} flick left: cover another lane, or dive the keeper. Confirm any time.`);
     }

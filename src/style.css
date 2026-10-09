@@ -1896,3 +1896,312 @@ button:disabled {
 #overlay.title .bar.top {
   background: none;
 }
+
+/* Set-piece scene: behind the kicker, swinging arrow, height gauge, timing bar */
+.setpiece {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+  color: var(--cream);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.sp-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.sp-top {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: max(20px, env(safe-area-inset-top)) 16px 8px;
+  text-align: center;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.sp-title {
+  font-family: var(--font-display);
+  font-size: clamp(14px, 3.2vw, 22px);
+  color: var(--accent);
+}
+
+.sp-stage {
+  font-family: var(--font-display);
+  font-size: clamp(11px, 2.4vw, 16px);
+  letter-spacing: 2px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid var(--kit);
+}
+
+.sp-hint {
+  font-size: 13px;
+  max-width: 420px;
+  min-height: 1.2em;
+  opacity: 0.9;
+}
+
+.sp-pitch {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sp-figure {
+  position: absolute;
+  left: 50%;
+  bottom: 2%;
+  margin-left: -8px;
+  transform: translateX(-100%);
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
+  transition: transform 0.18s ease-out;
+}
+
+.sp-figure canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.sp-figure.kick {
+  transform: translateX(-100%) translateY(-6px) rotate(-4deg);
+}
+
+.sp-ball {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  width: 22px;
+  height: 22px;
+  margin-left: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff 0 30%, #ddd 31% 60%, #222 61% 70%, #f4f4f4 71%);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.sp-pivot {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  margin-left: 18px;
+  width: 0;
+  height: 0;
+}
+
+.sp-arrow {
+  position: absolute;
+  left: -5px;
+  bottom: 0;
+  width: 10px;
+  height: 30vh;
+  background: var(--accent);
+  border: 2px solid #000;
+  transform-origin: 50% 100%;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.sp-arrow-head {
+  position: absolute;
+  left: 50%;
+  top: -18px;
+  width: 0;
+  height: 0;
+  border-left: 16px solid transparent;
+  border-right: 16px solid transparent;
+  border-bottom: 22px solid var(--accent);
+  transform: translateX(-50%);
+  filter: drop-shadow(0 -2px 0 #000);
+}
+
+.sp-arrow.locked {
+  background: var(--accent-2);
+}
+
+.sp-arrow.locked .sp-arrow-head {
+  border-bottom-color: var(--accent-2);
+}
+
+.sp-arrow.dim {
+  opacity: 0.55;
+}
+
+.sp-post {
+  position: absolute;
+  left: -2px;
+  bottom: 0;
+  width: 4px;
+  height: 31vh;
+  background: rgba(255, 255, 255, 0.35);
+  transform-origin: 50% 100%;
+}
+
+.sp-post.left {
+  transform: rotate(calc(-1 * var(--post-deg)));
+}
+
+.sp-post.right {
+  transform: rotate(var(--post-deg));
+}
+
+/* Only a shot aims at a goal mouth. */
+.setpiece.corner .sp-post,
+.setpiece.throw-in .sp-post {
+  display: none;
+}
+
+.sp-gauge {
+  position: absolute;
+  right: 8%;
+  bottom: 12%;
+  width: 36px;
+  height: 56%;
+}
+
+.sp-gauge-bar {
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  background: linear-gradient(to top, #3c8f47 0, #3c8f47 var(--over), var(--accent-2) var(--over), var(--accent-2) 100%);
+  border: 2px solid #000;
+}
+
+.sp-gauge-arrow {
+  position: absolute;
+  left: -6px;
+  width: 48px;
+  margin-bottom: -12px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--accent);
+  text-align: center;
+  text-shadow: 2px 2px 0 #000;
+  transition: color 0.1s;
+}
+
+.sp-gauge-arrow.over {
+  color: var(--accent-2);
+}
+
+.sp-gauge-arrow.locked {
+  color: var(--cream);
+}
+
+.sp-gauge-label {
+  position: absolute;
+  left: -4px;
+  top: -18px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  color: var(--accent-2);
+  text-shadow: 1px 1px 0 #000;
+}
+
+.sp-bottom {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px max(18px, env(safe-area-inset-bottom));
+}
+
+.sp-bar {
+  position: relative;
+  width: min(520px, 86vw);
+  height: 26px;
+  background: var(--ink-3);
+  border: 3px solid #000;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+
+.sp-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  border-left: 2px solid #000;
+  border-right: 2px solid #000;
+}
+
+.sp-cursor {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  width: 6px;
+  margin-left: -3px;
+  background: var(--cream);
+  border: 2px solid #000;
+}
+
+.sp-cursor.locked {
+  background: var(--accent-2);
+}
+
+.sp-result {
+  font-family: var(--font-display);
+  font-size: clamp(14px, 3.6vw, 26px);
+  min-height: 1.4em;
+  text-shadow: 3px 3px 0 #000;
+}
+
+.sp-result.perfect {
+  color: var(--accent);
+  animation: sp-pop 0.4s ease-out;
+}
+
+.sp-result.good {
+  color: var(--cream);
+}
+
+.sp-result.poor {
+  color: var(--accent-2);
+}
+
+.sp-tap {
+  font-size: 12px;
+  opacity: 0.75;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.setpiece.flying .sp-tap,
+.setpiece.flying .sp-pivot,
+.setpiece.flying .sp-gauge,
+.setpiece.flying .sp-bar {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.sp-bar.hidden,
+.sp-gauge.hidden {
+  visibility: hidden;
+}
+
+@keyframes sp-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

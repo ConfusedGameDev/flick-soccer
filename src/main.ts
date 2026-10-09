@@ -1,4 +1,5 @@
 import './style.css';
+import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Application } from 'pixi.js';
@@ -21,6 +22,7 @@ import { DiceView } from './ui/DiceView';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 import { KitEditor } from './ui/KitEditor';
+import { SetPiece } from './ui/SetPiece';
 import { Store } from './ui/Store';
 import { applyScreens, onSegmentsChange, readScreens } from './ui/segments';
 
@@ -32,6 +34,21 @@ async function nativeSetup(): Promise<void> {
     if (Capacitor.getPlatform() === 'android') await StatusBar.setBackgroundColor({ color: '#0d2416' });
   } catch {
     /* plugin missing or unsupported: ignore */
+  }
+}
+
+/**
+ * Silence the game while it is in the background. The page's visibility
+ * covers browsers and iOS; the Android WebView does not reliably report it
+ * when the activity pauses, so the App plugin's state change is wired too.
+ */
+function lifecycle(sfx: Sfx): void {
+  document.addEventListener('visibilitychange', () => (document.hidden ? sfx.suspend() : sfx.resume()));
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    void App.addListener('appStateChange', ({ isActive }) => (isActive ? sfx.resume() : sfx.suspend()));
+  } catch {
+    /* plugin missing: the visibility listener still applies */
   }
 }
 
@@ -49,6 +66,7 @@ async function boot(): Promise<void> {
 
   const overlay = document.getElementById('overlay')!;
   const sfx = new Sfx();
+  lifecycle(sfx);
   const hud = new Hud(overlay);
   hud.setMuted(sfx.muted);
   hud.onMute = () => {
@@ -61,6 +79,7 @@ async function boot(): Promise<void> {
   });
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
   const dice = new DiceView(overlay, () => sfx.dice(), () => sfx.kick(0.8));
+  const setPiece = new SetPiece(overlay, { tick: () => sfx.click(), kick: () => sfx.kick(1) });
   const cutscene = new Cutscene(overlay);
   const coach = new Coach(overlay);
   const store = new Store(overlay);
@@ -77,7 +96,7 @@ async function boot(): Promise<void> {
     (players, ball) => pieces.setPositions(players, ball),
     (e) => (match.phase === 'ONLINE' ? online.onEvent(e) : match.onEvent(e)),
   );
-  const local = new LocalController({ hud, preview, pieces, dice });
+  const local = new LocalController({ hud, preview, pieces, dice, setPiece });
   const layout = () => {
     // Dual-screen (M9): the HUD overlay is pinned to the pane screen by CSS; the pitch takes the other.
     const screens = applyScreens(readScreens());

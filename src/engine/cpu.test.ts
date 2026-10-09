@@ -22,6 +22,10 @@ function validPlan(state: MatchState, plan: Plan, role: 'attack' | 'defense'): v
   expect(plan.flicks.length).toBeLessThanOrEqual(MAX_FLICKS[role]);
   for (const f of plan.flicks) {
     expect(state.players[f.playerId].team).toBe(plan.team);
+    if (f.aim) {
+      expect(f.aim.accuracy).toBeGreaterThanOrEqual(0);
+      expect(f.aim.accuracy).toBeLessThanOrEqual(1);
+    }
     expect(f.strength).toBeGreaterThan(0);
     expect(f.strength).toBeLessThanOrEqual(1);
     expect(Math.hypot(f.dir.x, f.dir.y)).toBeCloseTo(1, 5);
@@ -71,7 +75,9 @@ describe('cpu defense', () => {
     const d = planDefense(s, 'away', 'normal', 4);
     expect(d.flicks.length).toBeGreaterThan(0);
     // Against the striker's best shot, the chosen defense should not be worse than standing still.
-    const shot = planAttack(s, 'home', 'normal', 3);
+    // Compare on the shot's intended line: the CPU's own timing-game aim would scatter it.
+    const aimed = planAttack(s, 'home', 'normal', 3);
+    const shot: Plan = { ...aimed, flicks: aimed.flicks.map(({ aim: _aim, ...f }) => f) };
     const seed = (() => {
       for (let i = 1; i < 1000; i++) if (mulberry32(i)() >= SAVE_CHANCE) return i;
       return 1;
@@ -79,5 +85,35 @@ describe('cpu defense', () => {
     const idle = scoreTurn(s, resolveTurn(s, shot, { team: 'away', flicks: [] }, seed), 'home');
     const planned = scoreTurn(s, resolveTurn(s, shot, d, seed), 'home');
     expect(planned).toBeLessThanOrEqual(idle + 1e-9);
+  });
+});
+
+describe('cpu timing game', () => {
+  it('marks its shots and plays the timing game on them', () => {
+    const s = shootingState();
+    for (const difficulty of ['easy', 'normal'] as const) {
+      const a = planAttack(s, 'home', difficulty, 3);
+      validPlan(s, a, 'attack');
+      const shot = a.flicks.find((f) => f.shot);
+      expect(shot).toBeDefined();
+      expect(shot!.aim!.accuracy).toBeGreaterThanOrEqual(0);
+      expect(shot!.aim!.accuracy).toBeLessThanOrEqual(1);
+      expect(shot!.aim!.height).toBeGreaterThanOrEqual(0);
+      expect(shot!.aim!.height).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('takes a corner as an aimed pass, never a shot', () => {
+    const s = shootingState();
+    s.setPiece = 'corner';
+    const taker = s.players[s.possession.playerId];
+    taker.pos = { x: PITCH_W, y: PITCH_L };
+    s.ball = { ...taker.pos };
+    const a = planAttack(s, 'home', 'normal', 9);
+    validPlan(s, a, 'attack');
+    const first = a.flicks.find((f) => f.playerId === taker.id)!;
+    expect(first.shot).toBeUndefined();
+    expect(first.aim?.accuracy).toBeGreaterThanOrEqual(0);
+    expect(first.aim?.height).toBeUndefined();
   });
 });

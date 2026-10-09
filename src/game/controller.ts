@@ -1,16 +1,46 @@
 import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
-import { PLAN_SECONDS } from '../engine/pitch';
+import { GOAL_W, PITCH_W, PLAN_SECONDS, SHOT_RANGE, attackDir, inAttackingThird, targetGoalY } from '../engine/pitch';
 import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
 import { rollSeed } from '../engine/seeds';
-import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget } from '../engine/sim';
-import type { Booster, DiceRoll, Flick, MatchState, Plan, Team, Vec2 } from '../engine/types';
+import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength } from '../engine/sim';
+import type { Booster, DiceRoll, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
+import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
 import type { PiecesView } from '../render/PiecesView';
 import type { DragPreview, GhostFlick, PlanPreview } from '../render/PlanPreview';
 import { DiceView } from '../ui/DiceView';
 import type { Hud } from '../ui/Hud';
+import { GOAL_FRACTION, type SetPiece, type SetPieceSpec } from '../ui/SetPiece';
+
+/** The kicker's right-hand side when facing `d` (screen-right in the set-piece scene). */
+const rightOf = (d: Vec2): Vec2 => ({ x: d.y, y: -d.x });
+
+/** Turn the scene's -1..1 sweep value into a direction, `rad` either side of `d`. */
+function sweep(d: Vec2, x: number, rad: number): Vec2 {
+  const a = x * rad;
+  return normalize(add(scale(d, Math.cos(a)), scale(rightOf(d), Math.sin(a))));
+}
+
+/** How the scene frames a restart: where the kicker faces, how far the arrow swings and where the goal shows. */
+function restartFrame(state: MatchState, team: Team, kind: SetPieceKind): { d: Vec2; rad: number; goal: SetPieceSpec['goal'] } {
+  const ball = state.ball;
+  const goalCentre = { x: PITCH_W / 2, y: targetGoalY(team) };
+  if (kind === 'corner') {
+    const d = normalize(sub({ x: goalCentre.x, y: goalCentre.y - attackDir(team) * 12 }, ball));
+    const toGoal = sub(goalCentre, ball);
+    const side = toGoal.x * rightOf(d).x + toGoal.y * rightOf(d).y;
+    return { d, rad: (35 * Math.PI) / 180, goal: side > 0 ? 'right' : 'left' };
+  }
+  return { d: { x: ball.x < PITCH_W / 2 ? 1 : -1, y: 0 }, rad: (70 * Math.PI) / 180, goal: 'none' };
+}
+
+const HINTS: Record<SetPieceSpec['kind'], string> = {
+  shot: 'Tap to lock the arrow across the goal, then the height, then tap on the block.',
+  corner: 'Tap to lock the arrow, then tap when the cursor is on the block.',
+  'throw-in': 'Tap to lock the arrow, then tap when the cursor is on the block.',
+};
 
 export type Role = 'attack' | 'defense';
 
@@ -57,6 +87,10 @@ interface Session {
   moving: Set<number>;
   dice: DiceRoll | null;
   booster: Booster | null;
+  /** Leading flicks Undo may not take back (the restart flick of a set-piece turn). */
+  locked: number;
+  /** The set-piece scene is up and its flick is not in the draft yet. */
+  pendingRestart: boolean;
   deadline: number;
   resolve: (plan: Plan) => void;
 }
@@ -70,6 +104,8 @@ export interface DraftInfo {
   boosters: number;
   /** Attack only: the last pass lands in open space, so the chain ends in a dead ball. */
   dead: boolean;
+  /** Attack only: the Shoot button is live (carrier in the attacking third and in range). */
+  canShoot: boolean;
 }
 
 export interface LocalDeps {
@@ -77,6 +113,7 @@ export interface LocalDeps {
   preview: PlanPreview;
   pieces: PiecesView;
   dice: DiceView;
+  setPiece: SetPiece;
 }
 
 /** A human planning on this device with the flick gesture and the HUD buttons. */
@@ -121,6 +158,8 @@ export class LocalController implements PlanController {
         moving: new Set(),
         dice: null,
         booster: null,
+        locked: 0,
+        pendingRestart: false,
         deadline: this.timed ? performance.now() + PLAN_SECONDS * 1000 : Infinity,
         resolve,
       };
@@ -128,12 +167,97 @@ export class LocalController implements PlanController {
       hud.onUndo = () => this.undo();
       hud.onConfirm = () => this.confirm();
       hud.onRoll = () => void this.roll();
+      hud.onShoot = () => void this.shoot();
       hud.onBooster = (b) => this.toggleBooster(b);
       if (this.gesture) this.gesture.enabled = true;
       this.timer = setInterval(() => this.tick(), 250);
       this.tick();
       this.refresh();
+      // A corner or throw-in starts with the set-piece scene; the rest of the turn is planned after.
+      if (role === 'attack' && state.setPiece) void this.takeSetPiece();
     });
+  }
+
+  /** The Shoot button is live: the projected carrier stands in the attacking third within range of goal. */
+  private canShoot(): boolean {
+    const s = this.session;
+    if (!s || s.role !== 'attack' || this.busy || s.draft.length >= this.max) return false;
+    const id = s.projected.possession.playerId;
+    if (id < 0 || s.projected.setPiece) return false;
+    const ball = s.projected.ball;
+    if (!inAttackingThird(s.team, ball)) return false;
+    return dist(ball, { x: PITCH_W / 2, y: targetGoalY(s.team) }) <= SHOT_RANGE * kickRange(s.state.players[id], 'shot');
+  }
+
+  /** Shoot: the scene picks the line across the goal, the height and the timing; the flick carries them to the engine. */
+  private async shoot(): Promise<void> {
+    const s = this.session;
+    if (!s || !this.canShoot()) return;
+    const kicker = s.state.players[s.projected.possession.playerId];
+    const from = { ...s.projected.ball };
+    this.busy = true;
+    if (this.gesture) this.gesture.enabled = false;
+    const res = await this.deps.setPiece.run({
+      kind: 'shot',
+      kit: this.deps.pieces.currentKits[s.team],
+      keeper: kicker.keeper,
+      name: kicker.name,
+      stat: kicker.stats.shot,
+      goal: 'ahead',
+      hint: this.hint('shot'),
+    });
+    this.busy = false;
+    if (this.session !== s) return; // timed out while the scene was up
+    if (this.gesture) this.gesture.enabled = true;
+    if (res) {
+      // The sweep maps onto the goal mouth: ±GOAL_FRACTION are the posts, beyond is wide.
+      const target = { x: PITCH_W / 2 + (res.x * attackDir(s.team) * (GOAL_W / 2)) / GOAL_FRACTION, y: targetGoalY(s.team) };
+      s.draft.push({ playerId: kicker.id, dir: normalize(sub(target, from)), strength: 1, shot: true, aim: { accuracy: res.accuracy, height: res.height ?? 0.5 } });
+    }
+    this.rebuild();
+    this.refresh();
+  }
+
+  /** A corner or throw-in: the scene produces the first flick, which then stays locked in the draft. */
+  private async takeSetPiece(): Promise<void> {
+    const s = this.session;
+    if (!s || !s.state.setPiece) return;
+    const kind = s.state.setPiece;
+    const taker = s.state.players[s.state.possession.playerId];
+    const { d, rad, goal } = restartFrame(s.state, s.team, kind);
+    s.pendingRestart = true;
+    this.busy = true;
+    if (this.gesture) this.gesture.enabled = false;
+    const res = await this.deps.setPiece.run({
+      kind,
+      kit: this.deps.pieces.currentKits[s.team],
+      keeper: taker.keeper,
+      name: taker.name,
+      stat: taker.stats.pass,
+      goal,
+      hint: this.hint(kind),
+    });
+    this.busy = false;
+    if (this.session !== s) return; // the deadline confirmed with the fallback flick
+    if (this.gesture) this.gesture.enabled = true;
+    s.pendingRestart = false;
+    s.draft.unshift(this.restartFlick(s, res ? sweep(d, res.x, rad) : d, res?.accuracy ?? 0));
+    s.locked = 1;
+    this.rebuild();
+    this.refresh();
+  }
+
+  private restartFlick(s: Session, dir: Vec2, accuracy: number): Flick {
+    const taker = s.state.players[s.state.possession.playerId];
+    return { playerId: taker.id, dir, strength: setPieceStrength(s.state.setPiece!, taker), aim: { accuracy } };
+  }
+
+  private readonly hinted = new Set<SetPieceSpec['kind']>();
+  /** The coaching line, the first time each kind of scene opens. */
+  private hint(kind: SetPieceSpec['kind']): string | undefined {
+    if (this.hinted.has(kind)) return undefined;
+    this.hinted.add(kind);
+    return HINTS[kind];
   }
 
   /** Flicks allowed this turn: base, minus one for a traded roll, plus one for the booster. */
@@ -206,7 +330,7 @@ export class LocalController implements PlanController {
 
   private undo(): void {
     const s = this.session;
-    if (!s || s.draft.length === 0) return;
+    if (!s || s.draft.length <= s.locked) return;
     s.draft.pop();
     this.rebuild();
     this.refresh();
@@ -237,7 +361,7 @@ export class LocalController implements PlanController {
     if (!s) return;
     s.booster = s.booster === b ? null : b;
     // Dropping an extra flick may leave one flick too many.
-    while (s.draft.length > this.max) s.draft.pop();
+    while (s.draft.length > Math.max(this.max, s.locked)) s.draft.pop();
     this.rebuild();
     this.refresh();
   }
@@ -250,6 +374,10 @@ export class LocalController implements PlanController {
     this.timer = null;
     if (this.gesture) this.gesture.enabled = false;
     const { hud, preview, pieces } = this.deps;
+    // The clock ran out with the scene up: close it. A restart still has to be taken,
+    // straight ahead with no accuracy; an unfinished shot is simply not taken.
+    if (this.busy) this.deps.setPiece.cancel();
+    if (s.pendingRestart) s.draft.unshift(this.restartFlick(s, restartFrame(s.state, s.team, s.state.setPiece!).d, 0));
     hud.setPlanning(null);
     hud.setTimer(null);
     preview.clear();
@@ -284,9 +412,10 @@ export class LocalController implements PlanController {
       s.ghosts.push(g);
       if (g.kind === 'pass' || g.kind === 'shot') {
         const receiver = g.receiver ? findReceiver(s.state.players, s.team, g.to, f.playerId) : null;
+        // Mirrors the engine: only the first chain flick is the set piece.
         s.projected = receiver
-          ? { ...s.projected, ball: { ...receiver.pos }, possession: { team: s.team, playerId: receiver.id } }
-          : { ...s.projected, possession: { team: s.team, playerId: -1 } };
+          ? { ...s.projected, setPiece: undefined, ball: { ...receiver.pos }, possession: { team: s.team, playerId: receiver.id } }
+          : { ...s.projected, setPiece: undefined, possession: { team: s.team, playerId: -1 } };
       } else {
         s.moving.add(f.playerId);
       }
@@ -299,15 +428,18 @@ export class LocalController implements PlanController {
     const left = this.max - s.draft.length;
     const flicks = `${left} flick${left === 1 ? '' : 's'} left`;
     let sub: string;
+    const canShoot = this.canShoot();
     if (left === 0) sub = 'Confirm when ready';
     else if (s.role === 'attack') {
       sub =
         s.projected.possession.playerId < 0
           ? 'The chain is finished; you can still flick a teammate to run'
-          : 'Pull back from the carrier to pass or shoot, or from a teammate to run';
+          : canShoot
+            ? 'Tap Shoot, or pull back from the carrier to pass or from a teammate to run'
+            : 'Pull back from the carrier to pass, or from a teammate to run';
     } else sub = 'Pull back from a defender to tackle, or from the keeper to dive';
     hud.setStatus(`${teamName(s.team)} ${s.role === 'attack' ? 'attacks' : 'defends'} · ${flicks}`, sub);
-    hud.setPlanning({ canUndo: s.draft.length > 0, canConfirm: true });
+    hud.setPlanning({ canUndo: s.draft.length > s.locked, canConfirm: true });
 
     const meta = s.state.meta[s.team];
     hud.setExtras({
@@ -317,6 +449,7 @@ export class LocalController implements PlanController {
       bonus: Math.min(MAX_DICE_BONUS, meta.bonus + (s.dice?.bonus ?? 0)),
       boosters: this.available().map((b) => ({ ...b, usable: BOOSTER_INFO[b.booster].roles.includes(s.role) })),
       armed: s.booster,
+      shoot: s.role === 'attack' ? { enabled: canShoot } : null,
     });
 
     preview.draw(s.ghosts, null);
@@ -329,6 +462,7 @@ export class LocalController implements PlanController {
       left,
       boosters: this.available().length,
       dead: s.role === 'attack' && s.draft.length > 0 && s.projected.possession.playerId < 0,
+      canShoot,
     });
   }
 }

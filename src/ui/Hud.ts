@@ -20,6 +20,8 @@ export interface ExtrasSpec {
   bonus: number;
   boosters: { booster: Booster; usable: boolean; fresh?: boolean }[];
   armed: Booster | null;
+  /** The Shoot button (attack only): shown when set, enabled when the carrier is in range of goal. */
+  shoot?: { enabled: boolean } | null;
 }
 
 /** DOM overlay: scoreboard, status text, planning buttons, the pass-the-device cover and toasts. */
@@ -45,6 +47,7 @@ export class Hud {
   onUndo: () => void = () => {};
   onConfirm: () => void = () => {};
   onRoll: () => void = () => {};
+  onShoot: () => void = () => {};
   onBooster: (b: Booster) => void = () => {};
   onMute: () => void = () => {};
 
@@ -175,6 +178,15 @@ export class Hud {
   setExtras(spec: ExtrasSpec | null): void {
     this.extras.innerHTML = '';
     if (!spec) return;
+    if (spec.shoot) {
+      const shoot = document.createElement('button');
+      shoot.className = 'shoot';
+      shoot.textContent = '⚽ Shoot';
+      shoot.title = spec.shoot.enabled ? 'Take a shot: aim, pick the height and hit the timing bar' : 'Get the carrier into the attacking third, in range of goal';
+      shoot.disabled = !spec.shoot.enabled;
+      shoot.addEventListener('click', () => this.onShoot());
+      this.extras.appendChild(shoot);
+    }
     const roll = document.createElement('button');
     roll.textContent = spec.rolled ? '🎲 Rolled' : spec.blocked > 0 ? `🎲 Blocked (${spec.blocked})` : '🎲 Roll (−1 flick)';
     roll.disabled = !spec.canRoll;

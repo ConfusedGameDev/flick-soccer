@@ -5,6 +5,7 @@ import {
   PASS_RANGE,
   PITCH_L,
   PITCH_W,
+  SET_PIECE_METERS,
   SHOT_RANGE,
   SLIDE_RANGE,
   inAttackingThird,
@@ -14,10 +15,10 @@ import {
 import { BOOSTER_INFO, rollDice } from './dice';
 import { mulberry32 } from './rng';
 import { maxFlicksFor } from './tactics';
-import { findReceiver, goalLineCrossing, kickRange, passTarget, resolveTurn } from './sim';
+import { findReceiver, flickKind, kickRange, passTarget, resolveTurn, setPieceStrength } from './sim';
 import { keeperOf } from './setup';
-import type { Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
-import { add, clamp, dist, normalize, scale, sub } from './vec';
+import type { Aim, Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
+import { add, clamp, dist, normalize, rotate, scale, sub } from './vec';
 
 // The CPU plans by sampling candidate plans and scoring them with the real
 // engine over a few seeds. Attack: pick the chain with the best expected
@@ -36,17 +37,21 @@ interface Params {
   noise: number;
   /** Button presses per second in a dispute duel (client-side). */
   mashRate: number;
+  /** Timing-game accuracy of its shots and set pieces: mean ± spread, clamped to 0..1. */
+  aim: { mean: number; spread: number };
+  /** Range of shot heights it picks (above OVER_BAR risks going over). */
+  height: { min: number; max: number };
 }
 
 export const CPU_PARAMS: Record<Difficulty, Params> = {
-  easy: { attackSamples: 18, defenseSamples: 12, predictions: 2, seeds: 2, noise: 0.22, mashRate: 5.5 },
-  normal: { attackSamples: 60, defenseSamples: 36, predictions: 3, seeds: 3, noise: 0, mashRate: 8.5 },
+  easy: { attackSamples: 18, defenseSamples: 12, predictions: 2, seeds: 2, noise: 0.22, mashRate: 5.5, aim: { mean: 0.55, spread: 0.3 }, height: { min: 0.25, max: 0.85 } },
+  normal: { attackSamples: 60, defenseSamples: 36, predictions: 3, seeds: 3, noise: 0, mashRate: 8.5, aim: { mean: 0.82, spread: 0.18 }, height: { min: 0.4, max: 0.75 } },
 };
 
 type Rng = () => number;
 
 /** Flick that sends the ball (or a player) from `from` toward `to`, covering `meters` of the given range. */
-function aim(playerId: number, from: Vec2, to: Vec2, range: number, meters = dist(from, to)): Flick {
+function toward(playerId: number, from: Vec2, to: Vec2, range: number, meters = dist(from, to)): Flick {
   return { playerId, dir: normalize(sub(to, from)), strength: clamp(meters / range, 0.05, 1) };
 }
 
@@ -100,21 +105,23 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
     const runner = mates[Math.floor(rng() * mates.length)];
     if (runner.id !== carrier && !runner.keeper) {
       const ahead = { x: clamp(runner.pos.x + (rng() - 0.5) * 16, 2, PITCH_W - 2), y: clamp(goalY, 2, PITCH_L - 2) };
-      flicks.push(aim(runner.id, runner.pos, ahead, 14, 8 + rng() * 6));
+      flicks.push(toward(runner.id, runner.pos, ahead, 14, 8 + rng() * 6));
       used.add(runner.id);
     }
   }
 
+  // The first chain flick of a restart turn is the set piece: a pass of fixed length, never a shot.
+  let restart = state.setPiece;
   while (flicks.length < maxFlicks) {
-    const live: MatchState = { ...state, ball, possession: { team, playerId: carrier } };
+    const live: MatchState = { ...state, ball, possession: { team, playerId: carrier }, setPiece: restart };
     const options: { flick: Flick; weight: number; next: PlayerState | null }[] = [];
 
-    if (inAttackingThird(team, ball)) {
+    if (!restart && inAttackingThird(team, ball)) {
       for (const dx of [-GOAL_W * 0.38, 0, GOAL_W * 0.38]) {
         const target = { x: PITCH_W / 2 + dx, y: goalY };
         // A shot must reach the line to count, so never offer one from out of range.
         if (dist(ball, target) > SHOT_RANGE * kickRange(state.players[carrier], 'shot')) continue;
-        options.push({ flick: aim(carrier, ball, target, 1, 1), weight: 6 + 40 / (1 + dist(ball, target) / 10), next: null });
+        options.push({ flick: { ...toward(carrier, ball, target, 1, 1), shot: true }, weight: 6 + 40 / (1 + dist(ball, target) / 10), next: null });
       }
     }
     const reach = PASS_RANGE * kickRange(state.players[carrier], 'pass');
@@ -124,7 +131,8 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
       if (d > reach || d < 3) continue;
       // Slight error so the sample space isn't just "perfect passes".
       const target = add(m.pos, { x: (rng() - 0.5) * 2, y: (rng() - 0.5) * 2 });
-      const flick = aim(carrier, ball, target, reach);
+      // On a restart the engine fixes the distance; sample what it will actually do.
+      const flick = restart ? toward(carrier, ball, target, reach, SET_PIECE_METERS[restart]) : toward(carrier, ball, target, reach);
       const { to, out } = passTarget(ball, flick, 'pass', kickRange(state.players[carrier], 'pass'));
       const receiver = out ? null : findReceiver(live.players, team, to, carrier);
       if (!receiver) continue;
@@ -144,6 +152,7 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
       }
     }
     flicks.push(chosen.flick);
+    restart = undefined;
     if (!chosen.next) break; // a shot ends the chain
     used.add(chosen.next.id);
     carrier = chosen.next.id;
@@ -153,21 +162,37 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
   return { team, flicks };
 }
 
+/** Jitter a plan's directions and strengths; everything else (dice, booster, shot markers) is kept. */
 function addNoise(plan: Plan, noise: number, rng: Rng): Plan {
   if (noise === 0) return plan;
   return {
-    team: plan.team,
-    flicks: plan.flicks.map((f) => {
-      const a = (rng() - 0.5) * 2 * noise;
-      const c = Math.cos(a);
-      const s = Math.sin(a);
-      return {
-        playerId: f.playerId,
-        dir: { x: f.dir.x * c - f.dir.y * s, y: f.dir.x * s + f.dir.y * c },
-        strength: clamp(f.strength * (1 + (rng() - 0.5) * noise), 0.05, 1),
-      };
-    }),
+    ...plan,
+    flicks: plan.flicks.map((f) => ({
+      ...f,
+      dir: rotate(f.dir, (rng() - 0.5) * 2 * noise),
+      strength: clamp(f.strength * (1 + (rng() - 0.5) * noise), 0.05, 1),
+    })),
   };
+}
+
+/**
+ * The CPU's result in the timing game: every shot, and the restart flick of a
+ * set-piece turn, gets an accuracy (and shots a height) drawn around the
+ * difficulty's skill. Plans are evaluated on the perfect line and the aim is
+ * attached afterwards, like the noise.
+ */
+function applyAim(plan: Plan, state: MatchState, params: Params, rng: Rng): Plan {
+  let restart = !!state.setPiece;
+  const flicks = plan.flicks.map((f) => {
+    const chain = f.playerId === state.possession.playerId || f.shot;
+    const setPiece = restart && f.playerId === state.possession.playerId;
+    if (setPiece) restart = false;
+    if (!f.shot && !setPiece) return f;
+    const aim: Aim = { accuracy: clamp(params.aim.mean + (rng() * 2 - 1) * params.aim.spread, 0, 1) };
+    if (f.shot && chain) aim.height = params.height.min + rng() * (params.height.max - params.height.min);
+    return { ...f, aim };
+  });
+  return { ...plan, flicks };
 }
 
 /** The `count` best attacking plans (best first) with their expected scores. */
@@ -212,7 +237,7 @@ export function planAttack(state: MatchState, team: Team, difficulty: Difficulty
   const params = CPU_PARAMS[difficulty];
   const extras = cpuExtras(state, team, 'attack', seed);
   const best = rankAttacks(state, team, params, seed, 1, extras)[0]?.plan ?? { team, flicks: [], ...extras };
-  return addNoise(best, params.noise, mulberry32(seed ^ 0x5bd1e995));
+  return applyAim(addNoise(best, params.noise, mulberry32(seed ^ 0x5bd1e995)), state, params, mulberry32(seed ^ 0x1b873593));
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +259,13 @@ function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: bo
   const segs: { a: Vec2; b: Vec2; shot: boolean }[] = [];
   let ball = state.ball;
   let carrier = state.possession.playerId;
-  for (const f of plan.flicks) {
-    if (f.playerId !== carrier) continue; // a run
-    const cross = goalLineCrossing(team, ball, f.dir);
-    const shot = !!cross && Math.abs(cross.x - PITCH_W / 2) <= GOAL_W / 2 && inAttackingThird(team, ball);
+  let restart = state.setPiece;
+  for (const raw of plan.flicks) {
+    if (raw.playerId !== carrier) continue; // a run
+    const live: MatchState = { ...state, ball, possession: { team, playerId: carrier }, setPiece: restart };
+    const shot = flickKind(live, team, 'attack', raw) === 'shot';
+    const f = restart ? { ...raw, strength: setPieceStrength(restart, state.players[carrier]) } : raw;
+    restart = undefined;
     const { to, out } = passTarget(ball, f, shot ? 'shot' : 'pass', kickRange(state.players[carrier], shot ? 'shot' : 'pass'));
     segs.push({ a: ball, b: to, shot });
     if (shot) break;
@@ -263,7 +291,7 @@ function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rn
     if (shots.length && !used.has(keeper.id) && rng() < 0.6) {
       const s = shots[Math.floor(rng() * shots.length)];
       const target = { x: s.b.x, y: keeper.pos.y };
-      flicks.push(aim(keeper.id, keeper.pos, target, DIVE_RANGE));
+      flicks.push(toward(keeper.id, keeper.pos, target, DIVE_RANGE));
       used.add(keeper.id);
       continue;
     }
@@ -281,7 +309,7 @@ function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rn
     if (choice.dd > SLIDE_RANGE * 1.4) break;
     // Aim a little along the lane so the slide meets the ball rather than trailing it.
     const target = add(choice.at, scale(normalize(sub(seg.b, seg.a)), (rng() - 0.3) * 3));
-    flicks.push(aim(choice.d.id, choice.d.pos, target, SLIDE_RANGE));
+    flicks.push(toward(choice.d.id, choice.d.pos, target, SLIDE_RANGE));
     used.add(choice.d.id);
   }
   return { team, flicks };
