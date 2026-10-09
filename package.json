@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pool": "node scripts/build-pool.mjs",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
     "server:typecheck": "tsc -p server"

@@ -180,7 +180,7 @@ export class OnlineMatch {
 
   private async chooseSquad(): Promise<Squad> {
     const { hud, builder, pool } = this.deps;
-    const setup = await hud.showMenu<'draft' | 'quick'>('Your team', 'Draft from the Liga MX pool, or play with a plain squad', [
+    const setup = await hud.showMenu<'draft' | 'quick'>('Your team', 'Pick a league and draft its best players, or play with a plain squad', [
       { key: 'draft', label: 'Draft a team (100 points)' },
       { key: 'quick', label: 'Quick squad' },
     ]);

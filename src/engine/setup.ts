@@ -20,7 +20,7 @@ function placeTeam(team: Team, firstId: number, squad: Squad): PlayerState[] {
       number: i + 1,
       keeper: p.position === 'GK' && i === squad.players.findIndex((q) => q.position === 'GK'),
       name: p.short,
-      era: p.era,
+      club: p.club,
       stats: stats(p),
       kickoff,
       pos: { ...kickoff },

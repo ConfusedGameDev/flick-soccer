@@ -202,8 +202,8 @@ interface BallSegment {
   unstoppable: boolean;
   /** Index of this pass or shot in the attacker's chain (tiki-taka builds on completed passes). */
   chainPos: number;
-  /** Kicker and intended receiver are both classic-era players (clásicos). */
-  classic: boolean;
+  /** Kicker and intended receiver play for the same club (chemistry). */
+  clubmates: boolean;
 }
 
 /** How a turn's chain of play ended; drives the restart. */
@@ -398,8 +398,8 @@ export function resolveTurn(
       const unstoppable = !shot && unstoppableLeft;
       if (unstoppable) unstoppableLeft = false;
       const receiver = !shot && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
-      const classic = kicker.era === 'classic' && receiver?.era === 'classic';
-      seg = { shot, height, over, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, classic };
+      const clubmates = kicker.club !== '' && receiver?.club === kicker.club;
+      seg = { shot, height, over, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, clubmates };
       events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
@@ -433,7 +433,7 @@ export function resolveTurn(
         chance += statOdds(p.keeper ? p.stats.keeping : p.stats.tackle);
         chance -= statOdds(seg.shot ? seg.kicker.stats.shot : seg.kicker.stats.pass);
         // Tactics cards: cannon on shots; tiki-taka and clásicos on passes.
-        chance += seg.shot ? shotChanceShift(state.meta[attackTeam]) : passChanceShift(state.meta[attackTeam], seg.chainPos, seg.classic);
+        chance += seg.shot ? shotChanceShift(state.meta[attackTeam]) : passChanceShift(state.meta[attackTeam], seg.chainPos, seg.clubmates);
         // High shots are harder for the keeper to reach.
         if (p.keeper && seg.shot) chance -= HEIGHT_SAVE_SHIFT * seg.height;
         // Placement: a shot past the keeper is harder to stop than one straight at him.

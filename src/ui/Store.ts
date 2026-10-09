@@ -1,7 +1,7 @@
 import { BOOSTER_INFO } from '../engine/dice';
 import { MAX_TACTICS, TACTIC_INFO } from '../engine/tactics';
 import type { Tactic } from '../engine/types';
-import { STAT_KEYS, cost, type PoolPlayer, type Stats } from '../engine/pool';
+import { LEAGUE_INFO, STAT_KEYS, cost, type PoolPlayer, type Stats } from '../engine/pool';
 import { MAX_STAT, PACK_COST, RUN_STAGES, TRAIN_COST, buyPack, buyTactic, hire, hireCost, scoutOffers, tacticOffers, train, type Opponent, type RunState } from '../game/run';
 
 const STAT_LABELS: Record<keyof Stats, string> = { pass: 'PAS', shot: 'SHT', speed: 'SPD', tackle: 'TKL', keeping: 'GK' };
@@ -27,7 +27,7 @@ export class Store {
       const row = (p: PoolPlayer, right: string, statCells: string) => `
         <div class="draft-row store-row">
           <span class="pos ${p.position}">${p.position}</span>
-          <span class="who"><b>${p.name}</b><small>${p.club ? `${p.club} · ` : ''}${p.era === 'classic' ? 'Classic' : 'Modern'}</small></span>
+          <span class="who"><b>${p.name}</b><small>${p.club ? `${p.club} · ` : ''}${LEAGUE_INFO[p.league].name}</small></span>
           <span class="stats">${statCells}</span>
           <span class="cost">${right}</span>
         </div>`;

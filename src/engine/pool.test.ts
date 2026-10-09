@@ -5,11 +5,14 @@ import {
   BUDGET,
   FORMATIONS,
   FORMATION_NAMES,
+  LEAGUES,
+  POOL_PER_LEAGUE,
   SQUAD_SIZE,
   autoAssign,
   cost,
   cpuSquad,
   defaultSquad,
+  leaguePool,
   makeSquad,
   squadCost,
   squadProblem,
@@ -24,11 +27,14 @@ import type { MatchState } from './types';
 const pool = raw as PoolPlayer[];
 
 describe('player pool', () => {
-  it('has 26 classic and 26 modern players with legal stats', () => {
-    expect(pool).toHaveLength(52);
-    expect(pool.filter((p) => p.era === 'classic')).toHaveLength(26);
-    expect(pool.filter((p) => p.era === 'modern')).toHaveLength(26);
-    expect(new Set(pool.map((p) => p.id)).size).toBe(52);
+  it('has the 26 best players of each of the five leagues with legal stats', () => {
+    expect(pool).toHaveLength(LEAGUES.length * POOL_PER_LEAGUE);
+    for (const league of LEAGUES) {
+      const lp = leaguePool(pool, league);
+      expect(lp).toHaveLength(POOL_PER_LEAGUE);
+      expect(lp.filter((p) => p.position === 'GK').length).toBeGreaterThanOrEqual(2);
+    }
+    expect(new Set(pool.map((p) => p.id)).size).toBe(pool.length);
     for (const p of pool) {
       for (const k of ['pass', 'shot', 'speed', 'tackle', 'keeping'] as const) {
         expect(p[k]).toBeGreaterThanOrEqual(1);
@@ -44,9 +50,9 @@ describe('player pool', () => {
       expect(cost(p)).toBeGreaterThanOrEqual(3);
       expect(cost(p)).toBeLessThanOrEqual(15);
     }
-    const hugo = pool.find((p) => p.id === 'hsanchez')!;
-    const beltran = pool.find((p) => p.id === 'beltran')!;
-    expect(cost(hugo)).toBeGreaterThan(cost(beltran));
+    const holland = pool.find((p) => p.id === 'holland')!;
+    const anten = pool.find((p) => p.id === 'anten')!;
+    expect(cost(holland)).toBeGreaterThan(cost(anten));
     // An average eleven roughly fits the budget.
     const avg = pool.reduce((s, p) => s + cost(p), 0) / pool.length;
     expect(avg * SQUAD_SIZE).toBeGreaterThan(BUDGET * 0.8);
@@ -65,14 +71,19 @@ describe('squads', () => {
     expect(squadProblem(expensive)).toMatch(/Over budget/);
   });
 
-  it('cpuSquad is legal, deterministic and uses most of the budget', () => {
-    for (const f of FORMATION_NAMES) {
-      const s = cpuSquad(pool, f, 7);
-      expect(squadProblem(s.players)).toBeNull();
-      expect(s.players[0].position).toBe('GK');
-      expect(squadCost(s.players)).toBeGreaterThan(BUDGET * 0.75);
-      expect(squadCost(s.players)).toBeLessThanOrEqual(BUDGET);
-      expect(cpuSquad(pool, f, 7)).toEqual(s);
+  it('cpuSquad is legal, deterministic and uses most of the budget in every league', () => {
+    for (const league of LEAGUES) {
+      const lp = leaguePool(pool, league);
+      for (const f of FORMATION_NAMES) {
+        const s = cpuSquad(lp, f, 7);
+        expect(squadProblem(s.players)).toBeNull();
+        expect(s.players[0].position).toBe('GK');
+        expect(squadCost(s.players)).toBeGreaterThan(BUDGET * 0.75);
+        expect(squadCost(s.players)).toBeLessThanOrEqual(BUDGET);
+        expect(cpuSquad(lp, f, 7)).toEqual(s);
+      }
+      // The run's first opponent drafts with 80 points, which every league must afford.
+      expect(squadCost(cpuSquad(lp, '4-4-2', 3, 80).players)).toBeLessThanOrEqual(80);
     }
     const distinct = new Set([1, 2, 3, 4, 5, 6].map((seed) => cpuSquad(pool, '4-4-2', seed).players.map((p) => p.id).join()));
     expect(distinct.size).toBeGreaterThan(2);

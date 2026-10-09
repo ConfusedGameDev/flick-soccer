@@ -13,7 +13,7 @@ export const MAX_TACTICS = 3;
 /** Interception chance drops this much per pass already completed in the chain, up to the cap. */
 export const TIKI_TAKA_STEP = 0.05;
 export const TIKI_TAKA_CAP = 0.15;
-/** A pass between two classic-era players is this much harder to intercept. */
+/** A pass between two club-mates is this much harder to intercept (chemistry). */
 export const CLASICOS_BONUS = 0.1;
 /** Shots are this much harder to save or block. */
 export const CANNON_BONUS = 0.1;
@@ -25,7 +25,7 @@ export const ENGINE_ROOM_SPEED = 1.2;
 export const TACTIC_INFO: Record<Tactic, { name: string; text: string; price: number }> = {
   catenaccio: { name: 'Catenaccio', text: 'Three defensive flicks every turn instead of two.', price: 10 },
   'tiki-taka': { name: 'Tiki-taka', text: 'Each completed pass in a chain makes the next one 5% harder to intercept (up to 15%).', price: 8 },
-  clasicos: { name: 'Clásicos', text: 'A pass between two classic-era players is 10% harder to intercept.', price: 6 },
+  clasicos: { name: 'Chemistry', text: 'A pass between two club-mates is 10% harder to intercept.', price: 6 },
   cannon: { name: 'Cannon', text: 'Your shots are 10% harder to save or block.', price: 8 },
   'iron-wall': { name: 'Iron wall', text: 'Your keeper reaches 30% further.', price: 8 },
   'engine-room': { name: 'Engine room', text: 'Your slides, runs and dives are 20% faster.', price: 8 },
@@ -39,10 +39,10 @@ export function maxFlicksFor(meta: TeamMeta | undefined, role: 'attack' | 'defen
 }
 
 /** Shift to a defender's interception chance on a pass (negative favours the attacker). */
-export function passChanceShift(meta: TeamMeta | undefined, chainPos: number, classicPair: boolean): number {
+export function passChanceShift(meta: TeamMeta | undefined, chainPos: number, clubmates: boolean): number {
   let shift = 0;
   if (hasTactic(meta, 'tiki-taka')) shift -= Math.min(TIKI_TAKA_CAP, Math.max(0, chainPos) * TIKI_TAKA_STEP);
-  if (classicPair && hasTactic(meta, 'clasicos')) shift -= CLASICOS_BONUS;
+  if (clubmates && hasTactic(meta, 'clasicos')) shift -= CLASICOS_BONUS;
   return shift;
 }
 
