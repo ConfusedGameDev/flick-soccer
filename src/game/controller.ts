@@ -5,7 +5,7 @@ import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
 import { rollSeed } from '../engine/seeds';
 import { keeperOf } from '../engine/setup';
-import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength } from '../engine/sim';
+import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength, spotTaken } from '../engine/sim';
 import type { Booster, DiceRoll, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
 import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
@@ -88,6 +88,8 @@ interface Session {
   projected: MatchState;
   /** Players already given a movement flick this turn. */
   moving: Set<number>;
+  /** Where those movement flicks end; another move may not end there. */
+  reserved: Vec2[];
   dice: DiceRoll | null;
   booster: Booster | null;
   /** Leading flicks Undo may not take back (the restart flick of a set-piece turn). */
@@ -159,6 +161,7 @@ export class LocalController implements PlanController {
         ghosts: [],
         projected: state,
         moving: new Set(),
+        reserved: [],
         dice: null,
         booster: null,
         locked: 0,
@@ -317,7 +320,9 @@ export class LocalController implements PlanController {
       return { kind, from: s.projected.ball, to, receiver: receiver?.pos, bad: out || !receiver };
     }
     const rangeMul = (s.booster === 'longer-slide' && kind !== 'run' ? 1.5 : 1) * moveRange(player, kind);
-    return { kind, from, to: moveTarget(from, flick, kind, rangeMul) };
+    const to = moveTarget(from, flick, kind, rangeMul);
+    // A move may not end on another player (or where a team-mate is already sent).
+    return { kind, from, to, bad: spotTaken(to, s.state.players, id, s.reserved) };
   }
 
   private drag(id: number, flick: Flick, pull: Vec2): void {
@@ -329,7 +334,12 @@ export class LocalController implements PlanController {
   private release(id: number, flick: Flick | null): void {
     const s = this.session;
     if (!s) return;
-    if (flick && this.kindFor(id) !== null) s.draft.push(flick);
+    if (flick && this.kindFor(id) !== null) {
+      const g = this.ghostFor(id, flick);
+      // A run, slide or dive onto another player is refused outright; a bad pass is the player's to waste.
+      if (g.bad && (g.kind === 'run' || g.kind === 'slide' || g.kind === 'dive')) this.deps.hud.toast('Spot taken');
+      else s.draft.push(flick);
+    }
     this.rebuild();
     this.refresh();
   }
@@ -412,6 +422,7 @@ export class LocalController implements PlanController {
     const s = this.session!;
     s.ghosts = [];
     s.moving = new Set();
+    s.reserved = [];
     s.projected = s.state;
     for (const f of s.draft) {
       const g = this.ghostFor(f.playerId, f);
@@ -424,6 +435,7 @@ export class LocalController implements PlanController {
           : { ...s.projected, setPiece: undefined, possession: { team: s.team, playerId: -1 } };
       } else {
         s.moving.add(f.playerId);
+        s.reserved.push(g.to);
       }
     }
   }

@@ -38,6 +38,8 @@ export const INTERCEPT_CHANCE = 0.75;
 export const BLOCK_CHANCE = 0.5;
 
 /** Distance a full-strength run moves a teammate without the ball. */
+/** Half the space a player takes up; a run, slide or dive may not end within twice this of another player. */
+export const BODY_RADIUS = 1.3;
 export const RUN_RANGE = 14;
 export const RUN_SPEED = 12;
 

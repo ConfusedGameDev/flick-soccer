@@ -118,3 +118,20 @@ describe('cpu timing game', () => {
     expect(first.aim?.height).toBeUndefined();
   });
 });
+
+describe('cpu moves', () => {
+  it('never plans a run, slide or dive onto another player', () => {
+    for (const difficulty of ['easy', 'normal'] as const) {
+      for (let seed = 1; seed <= 6; seed++) {
+        const a = planAttack(base, 'home', difficulty, seed);
+        const d = planDefense(base, 'away', difficulty, seed + 50);
+        const r = resolveTurn(base, a, d, seed);
+        expect(r.events.filter((e) => e.type === 'invalid-flick' && e.reason === 'spot taken')).toEqual([]);
+        const s = shootingState();
+        const d2 = planDefense(s, 'away', difficulty, seed);
+        const r2 = resolveTurn(s, planAttack(s, 'home', difficulty, seed), d2, seed);
+        expect(r2.events.filter((e) => e.type === 'invalid-flick' && e.reason === 'spot taken')).toEqual([]);
+      }
+    }
+  });
+});

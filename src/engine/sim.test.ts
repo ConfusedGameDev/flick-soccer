@@ -1,22 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BLOCK_CHANCE,
-  GOAL_W,
-  HEIGHT_SAVE_SHIFT,
-  HOLD_CHANCE,
-  INTERCEPT_CHANCE,
-  PASS_RANGE,
-  PITCH_L,
-  PITCH_W,
-  SAVE_CHANCE,
-  SET_PIECE_METERS,
-  TACKLE_REACH,
-  TURNS_PER_HALF,
-} from './pitch';
+import { BLOCK_CHANCE, BODY_RADIUS, GOAL_W, HEIGHT_SAVE_SHIFT, HOLD_CHANCE, INTERCEPT_CHANCE, PASS_RANGE, PITCH_L, PITCH_W, RUN_RANGE, SAVE_CHANCE, SET_PIECE_METERS, SLIDE_RANGE, TACKLE_REACH, TURNS_PER_HALF } from './pitch';
 import { mulberry32 } from './rng';
 import { initialMatch, keeperOf, kickoffPosition } from './setup';
-import { continueMatch, findReceiver, flickKind, passTarget, resolveDuel, resolveTurn } from './sim';
-import type { Flick, MatchState, Plan, Team, Vec2 } from './types';
+import { continueMatch, findReceiver, flickKind, passTarget, resolveDuel, resolveTurn, spotTaken } from './sim';
+import type { Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
 import { dist, normalize, sub } from './vec';
 
 const flick = (playerId: number, from: Vec2, to: Vec2, meters?: number): Flick => {
@@ -418,5 +405,77 @@ describe('resolveTurn: own goal line', () => {
     expect(r.state.possession.team).toBe('away');
     expect(r.state.ball.y).toBe(0);
     expect([0, PITCH_W]).toContain(r.state.ball.x);
+  });
+});
+
+describe('resolveTurn: moves may not end on another player', () => {
+  const spotOf = (p: { pos: Vec2 }, dx: number, dy: number): Vec2 => ({ x: p.pos.x + dx, y: p.pos.y + dy });
+  /** A run flick from `runner` that ends exactly at `to` (RUN_RANGE covers it at baseline speed). */
+  const runTo = (runner: PlayerState, to: Vec2): Flick => {
+    const d = sub(to, runner.pos);
+    return { playerId: runner.id, dir: normalize(d), strength: Math.hypot(d.x, d.y) / RUN_RANGE };
+  };
+  const taken = (r: TurnResult, id: number) => r.events.some((e) => e.type === 'invalid-flick' && e.playerId === id && e.reason === 'spot taken');
+
+  it('refuses a run onto a team-mate and keeps the runner where he was', () => {
+    // Home 6 and 7 stand on the same row 16 m apart at kickoff: a 14 m run reaches 7's side.
+    const runner = home(6);
+    const mate = home(7);
+    const near = spotOf(mate, -(BODY_RADIUS * 2 - 0.3), 0);
+    expect(dist(runner.pos, near)).toBeLessThanOrEqual(RUN_RANGE);
+    const r = resolveTurn(base, attack(runTo(runner, near)), defense(), 3);
+    expect(taken(r, runner.id)).toBe(true);
+    expect(r.events.some((e) => e.type === 'run')).toBe(false);
+    expect(r.state.players[runner.id].pos).toEqual(runner.pos);
+  });
+
+  it('lets the same run end just outside the body radius', () => {
+    const runner = home(6);
+    const mate = home(7);
+    const free = spotOf(mate, -(BODY_RADIUS * 2 + 0.3), 0);
+    const r = resolveTurn(base, attack(runTo(runner, free)), defense(), 3);
+    expect(taken(r, runner.id)).toBe(false);
+    expect(r.events.some((e) => e.type === 'run')).toBe(true);
+    expect(r.state.players[runner.id].pos.x).toBeCloseTo(free.x, 1);
+  });
+
+  it('refuses a slide onto an attacker', () => {
+    const s: MatchState = structuredClone(base);
+    const defender = s.players.find((p) => p.team === 'away' && p.number === 5)!;
+    const target = s.players.find((p) => p.team === 'home' && p.number === 10)!;
+    defender.pos = { x: target.pos.x, y: target.pos.y + 6 };
+    const d = sub(target.pos, defender.pos);
+    const slide: Flick = { playerId: defender.id, dir: normalize(d), strength: 6 / SLIDE_RANGE };
+    const r = resolveTurn(s, attack(), defense(slide), 3);
+    expect(taken(r, defender.id)).toBe(true);
+    expect(r.state.players[defender.id].pos).toEqual(defender.pos);
+  });
+
+  it('refuses the second of two team-mates sent to one spot, but not a run to where an opponent slides', () => {
+    const a = home(6);
+    const b = home(7);
+    const spot = { x: (a.pos.x + b.pos.x) / 2, y: a.pos.y + 4 };
+    const r = resolveTurn(base, attack(runTo(a, spot), runTo(b, spot)), defense(), 3);
+    expect(taken(r, a.id)).toBe(false);
+    expect(taken(r, b.id)).toBe(true);
+    // Hidden information: a defender's slide ending on the same spot never blocks the attacker's run.
+    const s: MatchState = structuredClone(base);
+    const defender = s.players.find((p) => p.team === 'away' && p.number === 5)!;
+    defender.pos = { x: spot.x, y: spot.y + 8 };
+    const slide: Flick = { playerId: defender.id, dir: { x: 0, y: -1 }, strength: 8 / SLIDE_RANGE };
+    const both = resolveTurn(s, attack(runTo(a, spot)), defense(slide), 3);
+    expect(taken(both, a.id)).toBe(false);
+    expect(taken(both, defender.id)).toBe(false);
+  });
+
+  it('spotTaken uses two body radii, ignores the mover himself and honours reserved spots', () => {
+    const a = home(6);
+    const b = home(7);
+    expect(spotTaken(spotOf(b, 0, 0), base.players, a.id)).toBe(true);
+    expect(spotTaken(spotOf(a, 0, 0), base.players, a.id)).toBe(false);
+    expect(spotTaken(spotOf(b, BODY_RADIUS * 2 + 0.1, 0), base.players, a.id)).toBe(false);
+    expect(spotTaken(spotOf(b, BODY_RADIUS * 2 - 0.1, 0), base.players, a.id)).toBe(true);
+    const free = spotOf(b, BODY_RADIUS * 2 + 0.1, 0);
+    expect(spotTaken(free, base.players, a.id, [free])).toBe(true);
   });
 });
