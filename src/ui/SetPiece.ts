@@ -2,7 +2,7 @@ import { statFactor } from '../engine/pool';
 import { GOAL_W, OVER_BAR, PITCH_L, PITCH_W } from '../engine/pitch';
 import type { MatchState, Team } from '../engine/types';
 import { hex, type Kit } from '../render/kits';
-import { lookFor, paintNumber, paintSprite, spriteCanvas } from '../render/sprites';
+import { lookFor, paintNumber, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
 
 // The set-piece scene, ISS Deluxe style: the camera sits behind the kicker,
 // who is drawn big from behind with the goal (or the pitch) ahead. The player
@@ -167,7 +167,7 @@ export class SetPiece {
         const flagRight = spec.goal !== 'left';
         paintCorner(canvas, flagRight);
         const k = Math.max(2, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 250));
-        figure.appendChild(spriteCanvas('back', spec.kit, spec.keeper, k, lookFor(spec.name)));
+        figure.appendChild(spriteCanvas('hero-back', spec.kit, spec.keeper, k, lookFor(spec.name)));
         const fx = ((flagRight ? FLAG.x : W - FLAG.x) / W) * 100;
         const fy = (FLAG.y / H) * 100;
         for (const el of [ball, pivot]) {
@@ -185,8 +185,8 @@ export class SetPiece {
         frame = { base: flagRight ? -CORNER_BASE_DEG : CORNER_BASE_DEG, sweep: CORNER_SWEEP_DEG, sign: -1 };
       } else if (!scene) {
         paintBackdrop(canvas, spec.goal);
-        const k = Math.max(3, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 110));
-        figure.appendChild(spriteCanvas('back', spec.kit, spec.keeper, k, lookFor(spec.name)));
+        const k = Math.max(2, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 200));
+        figure.appendChild(spriteCanvas('hero-back', spec.kit, spec.keeper, k, lookFor(spec.name)));
       }
       if (spec.map) paintMap(q<HTMLCanvasElement>('[data-map]'), spec.map.state, spec.map.kits, spec.kit);
       const angle = () => frame.base + frame.sign * x * frame.sweep;
@@ -357,6 +357,22 @@ const FLY_MS = 650;
  * from the centre, which is exactly where LocalController.shoot sends the ball, so the
  * drawn posts are the real posts. The keeper stands where he is in the match.
  */
+/** The kicker figure the shot scene can afford between the top and bottom bars, and where his goal line goes. */
+export function pickFigures(W: number, avail: number, topY: number, botY: number): { pose: 'hero-back' | 'back'; s: number; w: number; h: number; gl: number } {
+  const feet = Math.round(botY - 2);
+  const candidates: ['hero-back' | 'back', number][] = [];
+  if (W >= 230 && avail > 260) candidates.push(['hero-back', 2]);
+  candidates.push(['hero-back', 1], ['back', 1]);
+  // Built up from the kicker's feet, as in ISS: the goal line sits a little above his head.
+  for (const [pose, s] of candidates) {
+    const [w, h] = spriteSize(pose);
+    const gl = feet - h * s - Math.max(6, Math.round(h * s * 0.22));
+    if (gl - topY >= 40) return { pose, s, w: w * s, h: h * s, gl };
+  }
+  const [w, h] = spriteSize('back');
+  return { pose: 'back', s: 1, w, h, gl: feet - h - 6 };
+}
+
 class ShotScene {
   private readonly k: number;
   private readonly W: number;
@@ -410,13 +426,11 @@ class ShotScene {
     const { W, H } = this;
     const g = this.bg.getContext('2d')!;
     const avail = Math.max(60, botY - topY);
-    // Built up from the kicker's feet, as in ISS: the goal line sits a little above his head.
-    let ks = W < 230 && avail > 230 ? 2 : 1;
+    const fig = pickFigures(W, avail, topY, botY);
+    const ks = fig.s;
     const feet = Math.round(botY - 2);
-    const glFor = (scale: number) => feet - 48 * scale - Math.max(6, Math.round(48 * scale * 0.22));
-    if (glFor(ks) - topY < 40) ks = 1;
     // On tall screens the goal stays in the upper half rather than leaving a wall of crowd.
-    const gl = Math.min(glFor(ks), Math.round(topY + avail * 0.5));
+    const gl = Math.min(fig.gl, Math.round(topY + avail * 0.5));
     let gw = Math.round(Math.min(W * 0.86, 240));
     if (gl - Math.round(gw / 3) < topY + 6) gw = Math.max(48, 3 * (gl - topY - 6));
     const gh = Math.round(gw / 3);
@@ -488,8 +502,8 @@ class ShotScene {
     this.paintGoal(g, goalTop);
 
     // The keeper, where he stands: on his line by default, coming out toward the ball with depth.
-    const kicker = { w: 32 * ks, h: 48 * ks };
-    const kx = Math.round(W / 2 - kicker.w * 0.85);
+    const kicker = { w: fig.w, h: fig.h };
+    const kx = Math.round(W / 2 - kicker.w * (fig.pose === 'hero-back' ? 0.72 : 0.85));
     const ky = feet - kicker.h;
     this.ballX = Math.round(W / 2 + 3 * ks);
     this.ballY = feet - 3 * ks;
@@ -499,17 +513,23 @@ class ShotScene {
       const gx = gcx + Math.max(-1.6, Math.min(1.6, gk.x)) * (gw / 2);
       const fx = Math.round(gx + (this.ballX - gx) * depth);
       const fy = Math.round(gl + (this.ballY - gl) * depth) + 1;
-      const s = depth > 0.45 ? 2 : 1;
       g.fillStyle = C.shadow;
-      g.fillRect(fx - 6 * s, fy - 1, 12 * s, 2);
-      paintSprite(g, 'ready', gk.kit, true, fx - 8 * s, fy - 24 * s, s, lookFor(gk.name));
+      if (gh >= 44 || depth > 0.45) {
+        // The big crouched keeper fills a goal this size, as in ISS's penalty view.
+        const [hw, hh] = spriteSize('hero-ready');
+        g.fillRect(fx - Math.round(hw * 0.3), fy - 1, Math.round(hw * 0.6), 2);
+        paintSprite(g, 'hero-ready', gk.kit, true, fx - Math.round(hw / 2), fy - hh, 1, lookFor(gk.name));
+      } else {
+        g.fillRect(fx - 6, fy - 1, 12, 2);
+        paintSprite(g, 'ready', gk.kit, true, fx - 8, fy - 24, 1, lookFor(gk.name));
+      }
     }
     // The kicker from behind, his shadow and his number, on the foreground layer.
     g.fillStyle = C.shadow;
-    g.fillRect(kx + 6 * ks, feet - 1, 20 * ks, 2 * ks);
+    g.fillRect(kx + Math.round(kicker.w * 0.2), feet - 1, Math.round(kicker.w * 0.6), 2 * ks);
     const f = this.fg.getContext('2d')!;
-    paintSprite(f, 'back', this.spec.kit, this.spec.keeper, kx, ky, ks, lookFor(this.spec.name));
-    if (this.spec.number != null) paintNumber(f, this.spec.kit, this.spec.keeper, kx, ky, ks, this.spec.number);
+    paintSprite(f, fig.pose, this.spec.kit, this.spec.keeper, kx, ky, ks, lookFor(this.spec.name));
+    if (this.spec.number != null) paintNumber(f, this.spec.kit, this.spec.keeper, kx, ky, ks, this.spec.number, fig.pose);
   }
 
   private paintGoal(g: CanvasRenderingContext2D, goalTop: number): void {

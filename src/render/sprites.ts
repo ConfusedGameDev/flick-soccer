@@ -1,5 +1,6 @@
 import { Texture } from 'pixi.js';
 import { hex, shirtColorAt, type Kit } from './kits';
+import { HERO_POSES, HERO_RIGS, LETTERS, isHeroPose, rasterise, type HeroPose, type JerseyFrame, type Material } from './rig';
 
 // Pixel-art player sprites painted from ASCII templates, in the spirit of
 // 16-bit football games: a 16x24 figure seen from the front, slightly above,
@@ -9,10 +10,15 @@ import { hex, shirtColorAt, type Kit } from './kits';
 //   P/p shorts, shade   K/k socks, shade   B boots   q deep jersey shadow   . transparent
 // Each player gets a `Look` (skin tone, hair colour and style) derived from
 // their name, so a squad reads as eleven people rather than clones.
+// The big `hero-*` poses of the cutscene cards and the set-piece scene are
+// not typed templates: `render/rig.ts` rasterises a jointed figure into the
+// same letters (with the extra tones listed in `LETTERS`), so everything
+// below paints them the same way.
 
-export type Pose = 'stand' | 'run1' | 'run2' | 'kick' | 'cheer' | 'slide' | 'ready' | 'back';
+export type Pose = 'stand' | 'run1' | 'run2' | 'kick' | 'cheer' | 'slide' | 'ready' | 'back' | HeroPose;
+export { HERO_POSES, isHeroPose, type HeroPose };
 /** The 16x24 front-facing poses used on the pitch. */
-type FrontPose = Exclude<Pose, 'back'>;
+type FrontPose = Exclude<Pose, 'back' | HeroPose>;
 
 export const SPRITE_W = 16;
 export const SPRITE_H = 24;
@@ -299,8 +305,8 @@ const BACK: string[] = [
   '..........OOOOO..OOOOO..........',
 ];
 
-/** Where the jersey sits per pose, for mapping the kit pattern (top row, rows, left column, columns). */
-const JERSEY_BOX: Record<Pose, [number, number, number, number]> = {
+/** Where the jersey sits per typed pose, for mapping the kit pattern (top row, rows, left column, columns). */
+const JERSEY_BOX: Record<Exclude<Pose, HeroPose>, [number, number, number, number]> = {
   stand: [9, 7, 1, 14],
   run1: [9, 7, 1, 14],
   run2: [9, 7, 1, 14],
@@ -316,11 +322,15 @@ const BOOTS = '#1b1b22';
 const GLOVE = '#f0f0f0';
 const GLOVE_SHADE = '#c8c8d0';
 
-/** Darken a packed RGB colour. */
+/** Darken (f < 1) or lighten (f > 1) a packed RGB colour. */
 function shade(c: number, f: number): number {
   const ch = (v: number) => Math.max(0, Math.min(255, Math.round(v * f)));
   return (ch((c >> 16) & 255) << 16) | (ch((c >> 8) & 255) << 8) | ch(c & 255);
 }
+
+const parse = (css: string): number => parseInt(css.slice(1), 16);
+const BALL_WHITE = '#f8f8f8';
+const BALL_SHADE = '#c8c8d0';
 
 /** A stable look for a player name: the same name always paints the same person. */
 export function lookFor(name: string): Look {
@@ -335,11 +345,42 @@ export function lookFor(name: string): Look {
 const templateCache = new Map<string, string[]>();
 const BLANK = '.'.repeat(SPRITE_W);
 
+interface HeroTemplate {
+  rows: string[];
+  jersey?: JerseyFrame;
+  number?: [number, number];
+  ball?: [number, number];
+}
+const heroCache = new Map<string, HeroTemplate>();
+
+/** The rasterised hero pose for a hair style, optionally mirrored. Cached. */
+export function heroTemplate(pose: HeroPose, look: Look, flip = false): HeroTemplate {
+  const key = `${pose}:${look.style}:${flip ? 'f' : ''}`;
+  let t = heroCache.get(key);
+  if (!t) {
+    const r = rasterise(HERO_RIGS[pose](look.style), { flip });
+    t = { rows: r.rows, jersey: r.jersey, number: r.anchors.number, ball: r.anchors.ball };
+    heroCache.set(key, t);
+  }
+  return t;
+}
+
+/** Native size of a pose in template cells: [width, height]. */
+export function spriteSize(pose: Pose): [number, number] {
+  if (isHeroPose(pose)) {
+    const r = HERO_RIGS[pose](0);
+    return [r.w, r.h];
+  }
+  return pose === 'back' ? [BACK_W, BACK_H] : [SPRITE_W, SPRITE_H];
+}
+
 /**
  * Rows for a pose with a look's hair style applied: SPRITE_H rows of SPRITE_W
- * letters for the pitch poses, BACK_H x BACK_W for the back view.
+ * letters for the pitch poses, BACK_H x BACK_W for the back view, the rig's
+ * frame for the hero poses (`flip` mirrors those).
  */
-export function templateRows(pose: Pose, look: Look): string[] {
+export function templateRows(pose: Pose, look: Look, flip = false): string[] {
+  if (isHeroPose(pose)) return heroTemplate(pose, look, flip).rows;
   const key = `${pose}:${look.style}`;
   let rows = templateCache.get(key);
   if (!rows) {
@@ -367,73 +408,68 @@ export function templateRows(pose: Pose, look: Look): string[] {
   return rows;
 }
 
-function jerseyColor(kit: Kit, keeper: boolean, pose: Pose, x: number, y: number): number {
+function jerseyColor(kit: Kit, keeper: boolean, pose: Pose, x: number, y: number, frame?: JerseyFrame): number {
   if (keeper) return kit.keeper.jersey;
-  const [top, rows, left, cols] = JERSEY_BOX[pose];
-  const u = Math.max(0, Math.min(1, (x - left + 0.5) / cols));
-  const v = Math.max(0, Math.min(1, (y - top + 0.5) / rows));
-  return shirtColorAt(kit, u, v);
+  let u: number;
+  let v: number;
+  if (frame) {
+    // Hero poses carry the shirt as an affine frame, so the pattern follows a leaning torso.
+    const px = x + 0.5 - frame.origin[0];
+    const py = y + 0.5 - frame.origin[1];
+    const uu = frame.u[0] * frame.u[0] + frame.u[1] * frame.u[1];
+    const vv = frame.v[0] * frame.v[0] + frame.v[1] * frame.v[1];
+    u = (px * frame.u[0] + py * frame.u[1]) / uu;
+    v = (px * frame.v[0] + py * frame.v[1]) / vv;
+  } else {
+    const [top, rows, left, cols] = JERSEY_BOX[pose as Exclude<Pose, HeroPose>];
+    u = (x - left + 0.5) / cols;
+    v = (y - top + 0.5) / rows;
+  }
+  return shirtColorAt(kit, Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v)));
+}
+
+/** The base colour of a material for a kit and look; `alt` is the palette's second colour where one exists. */
+function materialColor(mat: Material, alt: boolean, kit: Kit, keeper: boolean, look: Look, pose: Pose, x: number, y: number, frame?: JerseyFrame): string {
+  const [skin, skinShade] = SKINS[look.skin] ?? SKINS[1];
+  const [hair, hairHi] = HAIRS[look.hair] ?? HAIRS[0];
+  switch (mat) {
+    case 'hair':
+      return alt ? hairHi : hair;
+    case 'skin':
+      return alt ? skinShade : skin;
+    case 'hands':
+      return keeper ? (alt ? GLOVE_SHADE : GLOVE) : alt ? skinShade : skin;
+    case 'jersey':
+      return hex(jerseyColor(kit, keeper, pose, x, y, frame));
+    case 'collar':
+      // Collar trim: the second kit colour on presets, the painted shirt itself on custom kits.
+      return hex(keeper ? shade(kit.keeper.jersey, 0.72) : kit.design ? jerseyColor(kit, false, pose, x, y, frame) : kit.jersey2);
+    case 'shorts':
+      return hex(keeper ? kit.keeper.shorts : kit.shorts);
+    case 'socks':
+      return hex(keeper ? kit.keeper.socks : kit.socks);
+    case 'ball':
+      return alt ? BALL_SHADE : BALL_WHITE;
+    default:
+      return BOOTS;
+  }
 }
 
 /** Paint one pose at integer scale `k` onto a 2D context at (x, y) = top-left. */
-export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look = DEFAULT_LOOK): void {
-  const rows = templateRows(pose, look);
-  const [skin, skinShade] = SKINS[look.skin] ?? SKINS[1];
-  const [hair, hairHi] = HAIRS[look.hair] ?? HAIRS[0];
+export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look = DEFAULT_LOOK, flip = false): void {
+  const hero = isHeroPose(pose) ? heroTemplate(pose, look, flip) : null;
+  const rows = hero ? hero.rows : templateRows(pose, look);
+  const frame = hero?.jersey;
   for (let j = 0; j < rows.length; j++) {
     for (let i = 0; i < rows[j].length; i++) {
       const c = rows[j][i];
       if (c === '.') continue;
+      const letter = LETTERS[c];
       let fill: string;
-      switch (c) {
-        case 'O':
-          fill = OUTLINE;
-          break;
-        case 'H':
-          fill = hair;
-          break;
-        case 'h':
-          fill = hairHi;
-          break;
-        case 'S':
-          fill = skin;
-          break;
-        case 's':
-          fill = skinShade;
-          break;
-        case 'G':
-          fill = keeper ? GLOVE : skin;
-          break;
-        case 'g':
-          fill = keeper ? GLOVE_SHADE : skinShade;
-          break;
-        case 'J':
-          fill = hex(jerseyColor(kit, keeper, pose, i, j));
-          break;
-        case 'j':
-          fill = hex(shade(jerseyColor(kit, keeper, pose, i, j), 0.72));
-          break;
-        case 'q':
-          fill = hex(shade(jerseyColor(kit, keeper, pose, i, j), 0.5));
-          break;
-        case 'C':
-          // Collar trim: the second kit colour on presets, the painted shirt itself on custom kits.
-          fill = hex(keeper ? shade(kit.keeper.jersey, 0.72) : kit.design ? jerseyColor(kit, false, pose, i, j) : kit.jersey2);
-          break;
-        case 'P':
-          fill = hex(keeper ? kit.keeper.shorts : kit.shorts);
-          break;
-        case 'p':
-          fill = hex(shade(keeper ? kit.keeper.shorts : kit.shorts, 0.72));
-          break;
-        case 'K':
-          fill = hex(keeper ? kit.keeper.socks : kit.socks);
-          break;
-        case 'k':
-          fill = hex(shade(keeper ? kit.keeper.socks : kit.socks, 0.72));
-          break;
-        default:
-          fill = BOOTS;
+      if (!letter || letter.mat === 'outline') fill = letter ? OUTLINE : BOOTS;
+      else {
+        const base = materialColor(letter.mat, letter.tone === 'alt', kit, keeper, look, pose, i, j, frame);
+        fill = typeof letter.tone === 'number' && letter.tone !== 1 ? hex(shade(parse(base), letter.tone)) : base;
       }
       ctx.fillStyle = fill;
       ctx.fillRect(x + i * k, y + j * k, k, k);
@@ -442,12 +478,12 @@ export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit,
 }
 
 /** A standalone canvas holding one sprite at scale `k` (cutscene cards, menus, the coach). */
-export function spriteCanvas(pose: Pose, kit: Kit, keeper: boolean, k: number, look: Look = DEFAULT_LOOK): HTMLCanvasElement {
-  const rows = templateRows(pose, look);
+export function spriteCanvas(pose: Pose, kit: Kit, keeper: boolean, k: number, look: Look = DEFAULT_LOOK, flip = false): HTMLCanvasElement {
+  const rows = templateRows(pose, look, flip);
   const c = document.createElement('canvas');
   c.width = rows[0].length * k;
   c.height = rows.length * k;
-  paintSprite(c.getContext('2d')!, pose, kit, keeper, 0, 0, k, look);
+  paintSprite(c.getContext('2d')!, pose, kit, keeper, 0, 0, k, look, flip);
   return c;
 }
 
@@ -466,20 +502,32 @@ const DIGITS: Record<string, string[]> = {
 };
 
 /**
- * The shirt number on the back view, painted over a `back` sprite at the same (x, y, k):
- * white with a dark edge on dark shirts, dark on light ones, centred between the shoulders.
+ * The shirt number on a back view, painted over the sprite at the same (x, y, k):
+ * white with a dark edge on dark shirts, dark on light ones, centred between the
+ * shoulders. The hero back view draws it twice the size.
  */
-export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boolean, x: number, y: number, k: number, n: number): void {
+export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boolean, x: number, y: number, k: number, n: number, pose: 'back' | 'hero-back' = 'back'): void {
   const text = String(Math.max(0, Math.round(n)) % 100);
   const base = keeper ? kit.keeper.jersey : kit.jersey;
   const lum = 0.299 * ((base >> 16) & 255) + 0.587 * ((base >> 8) & 255) + 0.114 * (base & 255);
   const ink = lum > 150 ? '#1b1b26' : '#f8f8f0';
   const edge = lum > 150 ? '#f8f8f0' : '#141420';
-  const w = text.length * 4 - 1;
-  const left = Math.round(15.5 - w / 2);
-  const top = 17;
+  // Digit cell size and the centre of the number on the shirt.
+  const scale = pose === 'hero-back' ? 2 : 1;
+  const cell = pose === 'hero-back' ? (heroTemplate('hero-back', DEFAULT_LOOK).number ?? [24, 30]) : null;
+  const anchor: [number, number] = cell ? [cell[0] + 0.5, cell[1] + 0.5] : [15.5, 19.5];
+  const w = (text.length * 4 - 1) * scale;
+  const left = Math.round(anchor[0] - w / 2);
+  const top = Math.round(anchor[1] - 2.5 * scale);
   const on = new Set<string>();
-  [...text].forEach((d, n) => DIGITS[d].forEach((row, j) => [...row].forEach((c, i) => c === '#' && on.add(`${left + n * 4 + i},${top + j}`))));
+  [...text].forEach((d, n) =>
+    DIGITS[d].forEach((row, j) =>
+      [...row].forEach((c, i) => {
+        if (c !== '#') return;
+        for (let sy = 0; sy < scale; sy++) for (let sx = 0; sx < scale; sx++) on.add(`${left + (n * 4 + i) * scale + sx},${top + j * scale + sy}`);
+      }),
+    ),
+  );
   // A one-pixel ring first, so the number reads on stripes and hoops too, then the digits.
   ctx.fillStyle = edge;
   for (const key of on) {

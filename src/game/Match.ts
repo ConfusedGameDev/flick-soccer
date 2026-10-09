@@ -4,7 +4,7 @@ import { other } from '../engine/pitch';
 import { FORMATION_NAMES, LEAGUES, cpuSquad, defaultSquad, leaguePool, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
-import { initialMatch } from '../engine/setup';
+import { keeperOf, initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
 import type { Booster, DiceRoll, MatchState, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { PiecesView } from '../render/PiecesView';
@@ -393,16 +393,22 @@ export class Match {
     let kind: CutsceneKind | null = null;
     let playerId: number | null = null;
     let team: Team | null = null;
+    // The other side's figure on the card: the beaten keeper, the shooter, the robbed passer.
+    let foilId: number | null = null;
     if (goal) {
       kind = 'goal';
       playerId = shot?.from ?? null;
       team = goal.team;
+      foilId = keeperOf(this.state.players, other(goal.team)).id;
     } else if (save) {
       kind = 'save';
       playerId = save.playerId;
+      foilId = shot?.from ?? null;
     } else if (intercept) {
       kind = 'overtake';
       playerId = intercept.playerId;
+      const passes = ev.filter((e): e is Extract<TimelineEvent, { type: 'pass' }> => e.type === 'pass' && e.t <= intercept.t);
+      foilId = passes.length ? passes[passes.length - 1].from : null;
     } else if (corner) {
       kind = 'corner';
       team = corner.team;
@@ -411,19 +417,21 @@ export class Match {
       team = throwIn.team;
     }
     if (!kind) return;
-    await this.card(kind, playerId, team);
+    await this.card(kind, playerId, team, foilId);
   }
 
-  private async card(kind: CutsceneKind, playerId: number | null, team: Team | null): Promise<void> {
+  private async card(kind: CutsceneKind, playerId: number | null, team: Team | null, foilId: number | null = null): Promise<void> {
     const p = playerId !== null ? this.state.players[playerId] : null;
     const t = p?.team ?? team ?? this.state.possession.team;
     const featured = p ?? this.state.players[this.state.possession.playerId];
+    const foil = foilId !== null ? this.state.players[foilId] : null;
     await this.deps.cutscene.show({
       kind,
       kit: this.kits[t],
       keeper: featured.keeper,
       name: featured.name,
       team: teamName(t),
+      foil: { kit: this.kits[other(t)], keeper: foil?.keeper ?? kind === 'goal', name: foil?.name },
     });
   }
 

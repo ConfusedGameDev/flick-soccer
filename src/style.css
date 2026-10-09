@@ -578,15 +578,12 @@ button:disabled {
   }
 }
 
-/* Cutscene cards */
+/* Cutscene cards: big pixel figures on a black stage with a strip of grass (ISS Deluxe) */
 .cutscene {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: radial-gradient(circle at 30% 40%, var(--kit) 0%, var(--kit2) 55%, #0a0f0c 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #000;
   animation: cs-in 0.2s ease-out;
   z-index: 5;
 }
@@ -598,7 +595,6 @@ button:disabled {
 @keyframes cs-in {
   from {
     opacity: 0;
-    transform: scale(1.06);
   }
 }
 
@@ -608,47 +604,36 @@ button:disabled {
   }
 }
 
-.cs-lines {
+.cs-stage {
   position: absolute;
-  inset: -50%;
-  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, 0.16) 0deg 2deg, transparent 2deg 9deg);
-  animation: cs-spin 6s linear infinite;
-  mix-blend-mode: screen;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  /* A slow pan in whole pixels so the canvases never resample. */
+  animation: cs-pan 2.4s steps(12, end) forwards;
 }
 
-@keyframes cs-spin {
-  to {
-    transform: rotate(18deg);
-  }
-}
-
-.cs-figure {
+.cs-stage canvas {
   position: absolute;
-  left: 8%;
-  bottom: 6%;
-  filter: drop-shadow(0 12px 0 rgba(0, 0, 0, 0.35));
-  animation: cs-pan 2.6s ease-out forwards;
-}
-
-.cs-figure canvas {
   image-rendering: pixelated;
   display: block;
 }
 
 @keyframes cs-pan {
   from {
-    transform: translate(-6%, 6%) scale(1.12);
+    transform: translate(calc(-50% + var(--pan)), -50%);
   }
   to {
-    transform: translate(4%, 0) scale(1);
+    transform: translate(calc(-50% - var(--pan)), -50%);
   }
 }
 
 .cs-text {
   position: absolute;
-  right: 6%;
-  top: 18%;
-  text-align: right;
+  left: 4%;
+  right: 4%;
+  top: 8%;
+  text-align: center;
   color: #fff;
   text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
 }
@@ -673,12 +658,46 @@ button:disabled {
   }
 }
 
+.cs-rule {
+  width: 72px;
+  height: 4px;
+  margin: 12px auto 0;
+  background: var(--kit);
+  box-shadow: 2px 2px 0 #000;
+}
+
 .cs-sub {
   margin-top: 10px;
   font-size: clamp(14px, 2.4vw, 24px);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+/* Dev art previews (?demo=sheet) */
+.demo-sheet {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: #000;
+  padding: 12px;
+}
+
+.demo-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.demo-row canvas {
+  image-rendering: pixelated;
+}
+
+.demo-label {
+  color: #bbb;
+  font: 12px monospace;
+  width: 100px;
 }
 
 /* Kit editor */

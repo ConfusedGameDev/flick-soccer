@@ -1,6 +1,7 @@
 import type { Sfx } from '../audio/Sfx';
 import { BOOSTER_INFO } from '../engine/dice';
 import { other } from '../engine/pitch';
+import { keeperOf } from '../engine/setup';
 import { defaultSquad, type PoolPlayer, type Squad } from '../engine/pool';
 import type { DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { ServerMessage } from '../net/protocol';
@@ -301,20 +302,32 @@ export class OnlineMatch {
     const intercept = find('intercept');
     const corner = find('corner');
     const throwIn = find('throw-in');
-    if (goal) await this.card('goal', shot?.from ?? null, goal.team);
-    else if (save) await this.card('save', save.playerId, null);
-    else if (intercept) await this.card('overtake', intercept.playerId, null);
+    const passBefore = (t: number) => {
+      const passes = ev.filter((e): e is Extract<TimelineEvent, { type: 'pass' }> => e.type === 'pass' && e.t <= t);
+      return passes.length ? passes[passes.length - 1].from : null;
+    };
+    if (goal) await this.card('goal', shot?.from ?? null, goal.team, keeperOf(this.state!.players, other(goal.team)).id);
+    else if (save) await this.card('save', save.playerId, null, shot?.from ?? null);
+    else if (intercept) await this.card('overtake', intercept.playerId, null, passBefore(intercept.t));
     else if (corner) await this.card('corner', null, corner.team);
     else if (throwIn) await this.card('throw-in', null, throwIn.team);
   }
 
-  private async card(kind: CutsceneKind, playerId: number | null, team: Team | null): Promise<void> {
+  private async card(kind: CutsceneKind, playerId: number | null, team: Team | null, foilId: number | null = null): Promise<void> {
     const s = this.state!;
     const p = playerId !== null ? s.players[playerId] : null;
     const t = p?.team ?? team ?? s.possession.team;
     const featured = p ?? s.players[s.possession.playerId];
+    const foil = foilId !== null ? s.players[foilId] : null;
     const kits = this.deps.pieces.currentKits;
-    await this.deps.cutscene.show({ kind, kit: kits[t], keeper: featured.keeper, name: featured.name, team: teamName(t) });
+    await this.deps.cutscene.show({
+      kind,
+      kit: kits[t],
+      keeper: featured.keeper,
+      name: featured.name,
+      team: teamName(t),
+      foil: { kit: kits[other(t)], keeper: foil?.keeper ?? kind === 'goal', name: foil?.name },
+    });
   }
 
   /** Sounds and slide poses for timeline events (same cues as the local match). */
