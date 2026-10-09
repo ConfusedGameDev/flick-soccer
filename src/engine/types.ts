@@ -25,7 +25,8 @@ export interface PlayerState {
   keeper: boolean;
   /** Short display name (surname). */
   name: string;
-  era: 'classic' | 'modern';
+  /** Club in the pool, '' for baseline squads; club-mates power the Chemistry tactic. */
+  club: string;
   stats: PlayerStats;
   /** Where this player stands at a kickoff (world frame). */
   kickoff: Vec2;

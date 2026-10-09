@@ -1,9 +1,10 @@
 // Kit definitions. Colors are hex numbers; patterns are applied per pixel by
-// the sprite painter. The four presets are "inspired by" the 1990 kits of
-// América, Chivas, Pumas and Cruz Azul: no crests, no licensed marks.
-// Custom kits carry a painted design instead of a pattern.
+// the sprite painter. The six presets are "inspired by" the home colours of
+// Madrid, Barcelona, Milan, Paris, Dortmund and Manchester United: no crests,
+// no licensed marks. Custom kits carry a painted design instead of a pattern.
 
-export type KitPattern = 'plain' | 'stripes' | 'hoops' | 'sash';
+/** `band` is a single vertical stripe down the middle of the shirt. */
+export type KitPattern = 'plain' | 'stripes' | 'hoops' | 'sash' | 'band';
 
 /** A painted shirt: palette indices on a DESIGN_SIZE² grid. */
 export interface KitDesign {
@@ -36,44 +37,64 @@ export const PALETTE: number[] = [
 
 export const KITS: Kit[] = [
   {
-    id: 'america',
-    name: 'Águilas 1990',
-    jersey: 0xf3e4b3,
-    jersey2: 0x17305f,
-    pattern: 'sash',
-    shorts: 0x17305f,
-    socks: 0xf3e4b3,
-    keeper: { jersey: 0x2e8b57, shorts: 0x1b1b1b, socks: 0x2e8b57 },
-  },
-  {
-    id: 'chivas',
-    name: 'Rebaño 1990',
-    jersey: 0xd42b2b,
-    jersey2: 0xf5f5f5,
-    pattern: 'stripes',
-    shorts: 0x1c2f6b,
-    socks: 0xf5f5f5,
-    keeper: { jersey: 0xffd447, shorts: 0x1b1b1b, socks: 0xffd447 },
-  },
-  {
-    id: 'pumas',
-    name: 'Auriazul 1990',
-    jersey: 0xf1b63a,
-    jersey2: 0x1b2a5e,
-    pattern: 'hoops',
-    shorts: 0x1b2a5e,
-    socks: 0x1b2a5e,
-    keeper: { jersey: 0xe8e8e8, shorts: 0x1b1b1b, socks: 0xe8e8e8 },
-  },
-  {
-    id: 'cruzazul',
-    name: 'Celeste 1990',
-    jersey: 0x1f58c7,
+    id: 'madrid',
+    name: 'Merengues',
+    jersey: 0xf5f5f5,
     jersey2: 0xf5f5f5,
     pattern: 'plain',
     shorts: 0xf5f5f5,
-    socks: 0x1f58c7,
+    socks: 0xf5f5f5,
+    keeper: { jersey: 0x2e8b57, shorts: 0x1b1b1b, socks: 0x2e8b57 },
+  },
+  {
+    id: 'barca',
+    name: 'Blaugrana',
+    jersey: 0x1f58c7,
+    jersey2: 0xa51a4a,
+    pattern: 'stripes',
+    shorts: 0x1f3a8a,
+    socks: 0x1f3a8a,
     keeper: { jersey: 0xff7043, shorts: 0x1b1b1b, socks: 0xff7043 },
+  },
+  {
+    id: 'milan',
+    name: 'Rossoneri',
+    jersey: 0xd42b2b,
+    jersey2: 0x1b1b1b,
+    pattern: 'stripes',
+    shorts: 0xf5f5f5,
+    socks: 0x1b1b1b,
+    keeper: { jersey: 0xffd447, shorts: 0x1b1b1b, socks: 0xffd447 },
+  },
+  {
+    id: 'paris',
+    name: 'Parisiens',
+    jersey: 0x1b2a5e,
+    jersey2: 0xd42b2b,
+    pattern: 'band',
+    shorts: 0x1b2a5e,
+    socks: 0x1b2a5e,
+    keeper: { jersey: 0x8a8a8a, shorts: 0x1b1b1b, socks: 0x8a8a8a },
+  },
+  {
+    id: 'dortmund',
+    name: 'Schwarzgelb',
+    jersey: 0xffd447,
+    jersey2: 0x1b1b1b,
+    pattern: 'plain',
+    shorts: 0x1b1b1b,
+    socks: 0xffd447,
+    keeper: { jersey: 0x4fc3f7, shorts: 0x1b1b1b, socks: 0x4fc3f7 },
+  },
+  {
+    id: 'united',
+    name: 'Red Devils',
+    jersey: 0xd42b2b,
+    jersey2: 0xf5f5f5,
+    pattern: 'plain',
+    shorts: 0xf5f5f5,
+    socks: 0x1b1b1b,
+    keeper: { jersey: 0x2e8b57, shorts: 0x1b1b1b, socks: 0x2e8b57 },
   },
 ];
 
@@ -98,6 +119,8 @@ export function shirtColorAt(kit: Kit, u: number, v: number): number {
         return y % 2 === 1;
       case 'sash':
         return x + y * 2 >= 6 && x + y * 2 <= 9;
+      case 'band':
+        return x === 4 || x === 5;
       default:
         return false;
     }
@@ -132,6 +155,8 @@ export function newCustomKit(name: string, base = 0): Kit {
   };
 }
 
+const PREVIEW_OUTLINE = '#141420';
+
 /** A shirt-shaped mask for previews (14 wide, 12 tall). */
 const SHIRT_MASK = [
   '..XXXXXXXXXX..',
@@ -153,9 +178,20 @@ export function kitPreview(kit: Kit, cell: number): HTMLCanvasElement {
   const w = SHIRT_MASK[0].length;
   const h = SHIRT_MASK.length;
   const c = document.createElement('canvas');
-  c.width = w * cell;
-  c.height = (h + 4) * cell;
+  c.width = (w + 2) * cell;
+  c.height = (h + 6) * cell;
   const ctx = c.getContext('2d')!;
+  ctx.translate(cell, cell);
+  // A dark outline one cell wide, so a white or yellow kit still reads on any background.
+  const solid = (x: number, y: number) =>
+    (y >= 0 && y < h && x >= 0 && x < w && SHIRT_MASK[y][x] === 'X') || (y >= h && y < h + 3 && x >= 3 && x < 11) || (y === h + 3 && ((x >= 3 && x < 6) || (x >= 8 && x < 11)));
+  ctx.fillStyle = PREVIEW_OUTLINE;
+  for (let y = -1; y <= h + 4; y++) {
+    for (let x = -1; x <= w; x++) {
+      if (solid(x, y)) continue;
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (SHIRT_MASK[y][x] !== 'X') continue;

@@ -46,10 +46,19 @@ describe('season run', () => {
     expect(run.boosters.length).toBe(MAX_BOOSTERS);
   });
 
-  it('opponents get stronger with the stage and are deterministic', () => {
+  it('opponents get stronger with the stage, each from one league, and are deterministic', () => {
     const run = start();
-    const budgets = STAGE_BUDGET.map((_, stage) => squadCost(opponentFor(pool, { ...run, stage }).squad.players));
-    for (let i = 1; i < budgets.length; i++) expect(budgets[i]).toBeGreaterThanOrEqual(budgets[i - 1]);
+    const opponents = STAGE_BUDGET.map((_, stage) => opponentFor(pool, { ...run, stage }));
+    for (let i = 0; i < opponents.length; i++) {
+      const o = opponents[i];
+      expect(o.budget).toBe(STAGE_BUDGET[i]);
+      if (i > 0) expect(o.budget).toBeGreaterThan(opponents[i - 1].budget);
+      // Spends most of the stage budget and never more than it.
+      expect(squadCost(o.squad.players)).toBeLessThanOrEqual(o.budget);
+      expect(squadCost(o.squad.players)).toBeGreaterThan(o.budget - 20);
+      expect(o.squad.players.every((p) => p.league === o.league)).toBe(true);
+    }
+    expect(squadCost(opponents[opponents.length - 1].squad.players)).toBeGreaterThan(squadCost(opponents[0].squad.players));
     expect(opponentFor(pool, run).name).toBe(opponentFor(pool, run).name);
     expect(opponentFor(pool, run).difficulty).toBe('easy');
     expect(opponentFor(pool, { ...run, stage: 3 }).difficulty).toBe('normal');

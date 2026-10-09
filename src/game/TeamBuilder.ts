@@ -3,15 +3,19 @@ import {
   BUDGET,
   FORMATIONS,
   FORMATION_NAMES,
+  LEAGUES,
+  LEAGUE_INFO,
+  POOL_PER_LEAGUE,
   POSITIONS,
   SQUAD_SIZE,
   cost,
   cpuSquad,
+  leaguePool,
   squadCost,
   squadProblem,
   stats,
-  type Era,
   type FormationName,
+  type League,
   type PoolPlayer,
   type Position,
   type Squad,
@@ -23,7 +27,6 @@ import type { PitchView } from '../render/PitchView';
 import type { Hud } from '../ui/Hud';
 import { isDualScreen } from '../ui/segments';
 
-type EraFilter = Era | 'all';
 type PosFilter = Position | 'all';
 
 const STAT_LABELS: [keyof PoolPlayer, string][] = [
@@ -50,15 +53,31 @@ export interface BuilderDeps {
 }
 
 /**
- * Team builder: draft and formation on one screen. The pool is a panel beside
- * (or below) the pitch; every pick lands on the next free slot of the chosen
- * formation, and the discs can be dragged anywhere or tapped in pairs to swap
- * while you keep picking. Edited in the home frame; the match mirrors Away.
+ * Team builder: pick a league, then draft and formation on one screen. The
+ * league's pool is a panel beside (or below) the pitch; every pick lands on
+ * the next free slot of the chosen formation, and the discs can be dragged
+ * anywhere or tapped in pairs to swap while you keep picking. Edited in the
+ * home frame; the match mirrors Away.
  */
 export class TeamBuilder {
   constructor(private readonly deps: BuilderDeps) {}
 
-  run(title: string, pool: readonly PoolPlayer[], seed: number): Promise<Squad> {
+  /** The league menu that opens every draft: the 26 best players of each league. */
+  pickLeague(title: string): Promise<League> {
+    return this.deps.hud.showMenu<League>(
+      title,
+      `Each league brings its ${POOL_PER_LEAGUE} best players`,
+      LEAGUES.map((l) => ({ key: l, label: `${LEAGUE_INFO[l].flag} ${LEAGUE_INFO[l].name}` })),
+    );
+  }
+
+  /** Pick a league, then draft from it. */
+  async run(title: string, pool: readonly PoolPlayer[], seed: number): Promise<Squad> {
+    const league = await this.pickLeague(title);
+    return this.draft(title, pool, seed, league);
+  }
+
+  draft(title: string, pool: readonly PoolPlayer[], seed: number, start: League): Promise<Squad> {
     const { hud, pitch, pieces, canvas, overlay, relayout } = this.deps;
     return new Promise((resolve) => {
       let formation: FormationName = '4-4-2';
@@ -66,7 +85,7 @@ export class TeamBuilder {
       let positions: Vec2[] = FORMATIONS[formation].map((s) => ({ ...s.pos }));
       let selected: number | null = null;
       let drag: { slot: number; pointerId: number; start: Vec2; moved: boolean } | null = null;
-      let era: EraFilter = 'all';
+      let league: League = start;
       let pos: PosFilter = 'all';
 
       // ---- Pool panel ----
@@ -81,7 +100,7 @@ export class TeamBuilder {
           <div class="draft-budget" data-budget></div>
         </div>
         <div class="draft-filters">
-          <div class="chips" data-era></div>
+          <div class="chips" data-league></div>
           <div class="chips" data-pos></div>
         </div>
         <div class="draft-list" data-list></div>
@@ -94,7 +113,7 @@ export class TeamBuilder {
       const sub = panel.querySelector<HTMLElement>('[data-sub]')!;
       const budget = panel.querySelector<HTMLElement>('[data-budget]')!;
       const list = panel.querySelector<HTMLElement>('[data-list]')!;
-      const eraChips = panel.querySelector<HTMLElement>('[data-era]')!;
+      const leagueChips = panel.querySelector<HTMLElement>('[data-league]')!;
       const posChips = panel.querySelector<HTMLElement>('[data-pos]')!;
 
       // Make room for the panel: beside the pitch in landscape, under it in portrait.
@@ -145,7 +164,7 @@ export class TeamBuilder {
       };
 
       const refreshPanel = () => {
-        chips<EraFilter>(eraChips, ['all', 'classic', 'modern'], ['All eras', 'Classic 60–87', 'Modern 88–07'], () => era, (v) => (era = v));
+        chips<League>(leagueChips, LEAGUES, LEAGUES.map((l) => `${LEAGUE_INFO[l].flag} ${LEAGUE_INFO[l].short}`), () => league, (v) => (league = v));
         chips<PosFilter>(posChips, ['all', ...POSITIONS], ['All', ...POSITIONS], () => pos, (v) => (pos = v));
         const chosen = picked();
         const spent = squadCost(chosen);
@@ -156,8 +175,8 @@ export class TeamBuilder {
         hud.setPlanning({ canUndo: false, canConfirm: problem === null });
 
         list.innerHTML = '';
-        const rows = pool
-          .filter((p) => (era === 'all' || p.era === era) && (pos === 'all' || p.position === pos))
+        const rows = leaguePool(pool, league)
+          .filter((p) => pos === 'all' || p.position === pos)
           .sort((a, b) => cost(b) - cost(a) || a.short.localeCompare(b.short));
         for (const p of rows) {
           const on = slots.includes(p);
@@ -165,7 +184,7 @@ export class TeamBuilder {
           row.className = 'draft-row' + (on ? ' picked' : '');
           row.innerHTML = `
             <span class="pos ${p.position}">${p.position}</span>
-            <span class="who"><b>${p.name}</b><small>${p.club} · ${p.era === 'classic' ? 'Classic' : 'Modern'}</small></span>
+            <span class="who"><b>${p.name}</b><small>${p.club}</small></span>
             <span class="stats">${STAT_LABELS.map(([k, l]) => `<i title="${l}">${l}<b>${p[k]}</b></i>`).join('')}</span>
             <span class="cost">${cost(p)}</span>`;
           row.addEventListener('click', () => {
@@ -194,7 +213,7 @@ export class TeamBuilder {
             number: slot + 1,
             keeper: p.position === 'GK' && slots.findIndex((q) => q?.position === 'GK') === slot,
             name: p.short,
-            era: p.era,
+            club: p.club,
             stats: stats(p),
             kickoff: { ...positions[slot] },
             pos: { ...positions[slot] },
@@ -292,7 +311,7 @@ export class TeamBuilder {
       canvas.addEventListener('pointercancel', up);
 
       panel.querySelector('[data-auto]')!.addEventListener('click', () => {
-        const auto = cpuSquad(pool, formation, seed + picked().length);
+        const auto = cpuSquad(leaguePool(pool, league), formation, seed + picked().length);
         slots = auto.players.map((p) => p);
         positions = auto.positions.map((p) => ({ ...p }));
         selected = null;

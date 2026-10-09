@@ -110,11 +110,11 @@ Unstoppable pass and super goalkeeper never conflict, because one affects passes
 
 ## 5. Teams
 
-- **Player pool:** 52 real Liga MX players, 26 classic (1960–1987) and 26 modern (1988–2007). Real names are used for this proof of concept.
+- **Player pool:** 130 players, the 26 best of each of five leagues (Mexico, England, Italy, Spain, Germany), as of the start of the 2026–27 season. They ship under fake names that are close enough to be recognisable ("Erling Holland"); the real-to-fake map is `docs/player-names.csv` (also as `docs/player-names.xlsx`), from which the JSON is generated. The draft opens with a league menu and then shows that league's pool.
 - **Stats (proposed):** Pass, Shot, Speed, Tackle and Keeping, each rated 1–5. Cost is derived from the stats.
 - **Draft (proposed):** a budget of 100 points to buy exactly 11 players, at least one of whom is a goalkeeper. Both teams draft from the full pool on their own, so the two teams can share players.
 - **Formation:** picked and arranged on the same screen as the draft. Each pick lands on the next free slot of the chosen preset (4-4-2, 4-3-3, 5-3-2); drag players anywhere on the pitch or tap two to swap while you keep picking.
-- **Kits:** 1990-era América, Chivas, Pumas and Cruz Azul, plus custom kits (§6.4).
+- **Kits:** six club-inspired presets (Madrid, Barcelona, Milan, Paris, Dortmund, Manchester United: colours only, no crests or names), plus custom kits (§6.4).
 - The player pool lives in a data file (JSON) so it can be edited without touching code.
 
 ## 6. Presentation
@@ -185,7 +185,7 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 - **Store, between matches:** training (+1 to one stat of one player, 3 coins, stats cap at 5); three scouted players per stage (a signing costs about half their draft price and replaces your cheapest player in that position); booster packs (4 coins, one random booster, hand limit 2). Unused boosters carry over into the next match.
 - The run is saved after every step and can be resumed or abandoned from the menu.
 
-- **Tactics cards (M11):** passive rules bought in the store (two on offer per stage, hold up to three) that apply to every match of the run. Catenaccio: three defensive flicks. Tiki-taka: each completed pass makes the next 5% harder to intercept, up to 15%. Clásicos: a pass between two classic-era players is 10% harder to intercept. Cannon: shots 10% harder to save or block. Iron wall: keeper reach ×1.3. Engine room: slides, runs and dives 20% faster. They live in `TeamMeta.tactics`, so the CPU opponent could carry them too.
+- **Tactics cards (M11):** passive rules bought in the store (two on offer per stage, hold up to three) that apply to every match of the run. Catenaccio: three defensive flicks. Tiki-taka: each completed pass makes the next 5% harder to intercept, up to 15%. Chemistry: a pass between two club-mates is 10% harder to intercept. Cannon: shots 10% harder to save or block. Iron wall: keeper reach ×1.3. Engine room: slides, runs and dives 20% faster. They live in `TeamMeta.tactics`, so the CPU opponent could carry them too.
 
 **Ideas still open:**
 
@@ -195,7 +195,7 @@ Touch-first. The pull-back-and-release gesture must feel right on a phone browse
 
 ## 10. Risks and open questions
 
-- **Real names and kits:** these need to be replaced with licensed or parody versions before any public release. They are fine for the PoC.
+- **Names and kits:** players use parody names (`docs/player-names.csv` maps them) and kits are colours only; club names in the pool data are still real and need the same treatment before any public release.
 - **Balance numbers:** every **(proposed)** value in §3–§5 needs playtesting at M1–M4.
 - **Hiding plans in hot-seat mode:** check that the cover screen is enough in practice.
 - **Server hosting and cost** for M8 are still to be decided.

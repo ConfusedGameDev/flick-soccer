@@ -1,7 +1,7 @@
 import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, kickoffRoll } from '../engine/dice';
 import { other } from '../engine/pitch';
-import { FORMATION_NAMES, cpuSquad, defaultSquad, type PoolPlayer, type Squad } from '../engine/pool';
+import { FORMATION_NAMES, LEAGUES, cpuSquad, defaultSquad, leaguePool, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
 import { initialMatch } from '../engine/setup';
@@ -296,7 +296,7 @@ export class Match {
         while (!kit) {
           const custom = loadCustomKits();
           const options = [...KITS, ...custom].filter((k) => !taken.has(k.id));
-          const id = await hud.showMenu<string>(title, 'Classic 1990 colours, or paint your own', [
+          const id = await hud.showMenu<string>(title, 'Club colours, or paint your own', [
             ...options.map((k) => ({ key: k.id, label: k.name, icon: kitPreview(k, 3) })),
             { key: '__new', label: 'Paint a new kit' },
             ...(custom.length ? [{ key: '__edit', label: 'Edit a painted kit' }] : []),
@@ -323,7 +323,7 @@ export class Match {
   /** Quick match uses baseline squads; draft lets each human pick and arrange a team. The CPU auto-picks. */
   private async teams(): Promise<void> {
     const { hud, builder, pool } = this.deps;
-    const setup = await hud.showMenu<Setup>('Teams', 'Draft from the Liga MX pool, or play with plain squads', [
+    const setup = await hud.showMenu<Setup>('Teams', 'Pick a league and draft its best players, or play with plain squads', [
       { key: 'draft', label: 'Draft teams (100 points)' },
       { key: 'quick', label: 'Quick match' },
     ]);
@@ -335,7 +335,8 @@ export class Match {
       const seed = (this.seed ^ (team === 'home' ? 0x1234 : 0x5678)) >>> 0;
       if (this.isCpu(team)) {
         const formation = FORMATION_NAMES[seed % FORMATION_NAMES.length];
-        this.squads[team] = cpuSquad(pool, formation, seed);
+        const league = LEAGUES[(seed >>> 8) % LEAGUES.length];
+        this.squads[team] = cpuSquad(leaguePool(pool, league), formation, seed);
         continue;
       }
       if (this.hotSeat) {

@@ -1,6 +1,6 @@
 import type { Difficulty } from '../engine/cpu';
 import { BOOSTERS, MAX_BOOSTERS } from '../engine/dice';
-import { FORMATION_NAMES, STAT_KEYS, cost, cpuSquad, type PoolPlayer, type Squad, type Stats } from '../engine/pool';
+import { FORMATION_NAMES, LEAGUES, STAT_KEYS, cost, cpuSquad, leaguePool, type League, type PoolPlayer, type Squad, type Stats } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { MAX_TACTICS, TACTICS, TACTIC_INFO } from '../engine/tactics';
 import type { Booster, Score, Tactic } from '../engine/types';
@@ -48,6 +48,7 @@ export interface RunState {
 
 export interface Opponent {
   name: string;
+  league: League;
   squad: Squad;
   difficulty: Difficulty;
   budget: number;
@@ -67,14 +68,16 @@ function clubName(squad: Squad, fallback: string): string {
   return top ? `${top[0]} XI` : fallback;
 }
 
-/** The club waiting at the run's current stage. Deterministic for the run seed. */
+/** The club waiting at the run's current stage, drafted from one league. Deterministic for the run seed. */
 export function opponentFor(pool: readonly PoolPlayer[], run: RunState): Opponent {
   const seed = stageSeed(run);
   const budget = STAGE_BUDGET[Math.min(run.stage, STAGE_BUDGET.length - 1)];
   const formation = FORMATION_NAMES[seed % FORMATION_NAMES.length];
-  const squad = cpuSquad(pool, formation, seed, budget);
+  const league = LEAGUES[(seed >>> 8) % LEAGUES.length];
+  const squad = cpuSquad(leaguePool(pool, league), formation, seed, budget);
   return {
     name: clubName(squad, `Stage ${run.stage + 1}`),
+    league,
     squad,
     difficulty: run.stage < 2 ? 'easy' : 'normal',
     budget,
@@ -170,6 +173,8 @@ export function loadRun(): RunState | null {
     if (!raw) return null;
     const run = JSON.parse(raw) as RunState;
     if (!run || !Array.isArray(run.squad?.players) || !run.squad.players.length) return null;
+    // Runs saved before the league pools have players without a league; they cannot continue.
+    if (!run.squad.players.every((p) => typeof p.league === 'string')) return null;
     run.tactics ??= [];
     return run;
   } catch {

@@ -6,8 +6,19 @@ import { clamp } from './vec';
 // Player pool, squads and formations. Pure: shared by the draft UI, the CPU
 // auto-picker and the match setup.
 
-export type Era = 'classic' | 'modern';
+export type League = 'mx' | 'en' | 'it' | 'es' | 'de';
 export type Position = 'GK' | 'DF' | 'MF' | 'FW';
+
+export const LEAGUES: League[] = ['mx', 'en', 'it', 'es', 'de'];
+/** Players per league in the pool (the 26 best of each). */
+export const POOL_PER_LEAGUE = 26;
+export const LEAGUE_INFO: Record<League, { name: string; short: string; flag: string }> = {
+  mx: { name: 'Mexico', short: 'MEX', flag: '🇲🇽' },
+  en: { name: 'England', short: 'ENG', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  it: { name: 'Italy', short: 'ITA', flag: '🇮🇹' },
+  es: { name: 'Spain', short: 'ESP', flag: '🇪🇸' },
+  de: { name: 'Germany', short: 'GER', flag: '🇩🇪' },
+};
 
 export interface Stats {
   pass: number;
@@ -21,10 +32,13 @@ export interface PoolPlayer extends Stats {
   id: string;
   name: string;
   short: string;
-  era: Era;
+  league: League;
   club: string;
   position: Position;
 }
+
+/** The slice of the pool a league drafts from. */
+export const leaguePool = (pool: readonly PoolPlayer[], league: League): PoolPlayer[] => pool.filter((p) => p.league === league);
 
 export const BUDGET = 100;
 export const SQUAD_SIZE = 11;
@@ -147,9 +161,12 @@ export function makeSquad(players: readonly PoolPlayer[], formation: FormationNa
 export function cpuSquad(pool: readonly PoolPlayer[], formation: FormationName, seed: number, budget = BUDGET): Squad {
   const rng = mulberry32(seed);
   const slots = FORMATIONS[formation];
-  // Reserve enough for the cheapest possible fill of the remaining slots.
-  const MIN = Math.min(...pool.map(cost));
   const picked: PoolPlayer[] = [];
+  /** The least the remaining slots can cost from `free` once `p` is taken. */
+  const reserve = (free: readonly PoolPlayer[], p: PoolPlayer, remaining: number) => {
+    const costs = free.filter((q) => q !== p).map(cost).sort((a, b) => a - b);
+    return costs.slice(0, remaining).reduce((s, c) => s + c, 0);
+  };
   // Quality for the slot, with a little noise so two CPU squads differ.
   const value = (p: PoolPlayer, role: Position) => {
     const s = role === 'GK' ? p.keeping * 3 : role === 'DF' ? p.tackle * 2 + p.speed : role === 'MF' ? p.pass * 2 + p.tackle : p.shot * 2 + p.speed;
@@ -167,7 +184,8 @@ export function cpuSquad(pool: readonly PoolPlayer[], formation: FormationName, 
     const role = order[i].role;
     const remaining = order.length - i - 1;
     const free = pool.filter((p) => !picked.includes(p));
-    const affordable = free.filter((p) => cost(p) <= budget - remaining * MIN);
+    // Reserve enough for the cheapest possible fill of the remaining slots.
+    const affordable = free.filter((p) => cost(p) <= budget - reserve(free, p, remaining));
     const sameRole = affordable.filter((p) => p.position === role);
     // Fall back to the cheapest player left if nothing fits (cannot happen with a sane pool, but never crash).
     const from = sameRole.length ? sameRole : affordable.length ? affordable : [free.sort((a, b) => cost(a) - cost(b))[0]];
@@ -185,7 +203,7 @@ export function defaultSquad(team: 'home' | 'away', formation: FormationName = '
     id: `${team}-${i + 1}`,
     name: `${team === 'home' ? 'Home' : 'Away'} #${i + 1}`,
     short: `#${i + 1}`,
-    era: 'modern',
+    league: 'mx',
     club: '',
     position: s.role,
     pass: STAT_BASE,
