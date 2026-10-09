@@ -70,10 +70,11 @@ describe('cpu defense', () => {
     expect(planDefense(base, 'away', 'normal', 21)).toEqual(d);
   });
 
-  it('moves the keeper or a blocker when a shot is coming', () => {
+  it('defends a coming shot no worse than standing still', () => {
     const s = shootingState();
+    // With placement (PLACEMENT_SAVE_SHIFT) a dive is a guess: against shots predicted to
+    // both sides, staying central can be the best plan, so moving is not required.
     const d = planDefense(s, 'away', 'normal', 4);
-    expect(d.flicks.length).toBeGreaterThan(0);
     // Against the striker's best shot, the chosen defense should not be worse than standing still.
     // Compare on the shot's intended line: the CPU's own timing-game aim would scatter it.
     const aimed = planAttack(s, 'home', 'normal', 3);

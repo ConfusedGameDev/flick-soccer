@@ -23,6 +23,7 @@ import {
   DT,
   HEIGHT_SAVE_SHIFT,
   HEIGHT_SCATTER,
+  PLACEMENT_SAVE_SHIFT,
   HOLD_CHANCE,
   INTERCEPT_CHANCE,
   KEEPER_REACH,
@@ -390,7 +391,8 @@ export function resolveTurn(
         dir = rotate(f.dir, (rng() * 2 - 1) * AIM_SCATTER * err);
         if (shot) height = clamp(clamp01(f.aim.height) + (rng() * 2 - 1) * HEIGHT_SCATTER * err, 0, 1);
       }
-      const over = shot && height > OVER_BAR;
+      // A height locked over the bar stays over: the scatter only ever adds error.
+      const over = shot && (height > OVER_BAR || (!!f.aim && clamp01(f.aim.height) > OVER_BAR));
       const { to, out } = passTarget(from, { ...f, dir }, shot ? 'shot' : 'pass', kickRange(kicker, shot ? 'shot' : 'pass'));
       const speed = shot ? SHOT_SPEED : BALL_SPEED;
       const unstoppable = !shot && unstoppableLeft;
@@ -434,6 +436,8 @@ export function resolveTurn(
         chance += seg.shot ? shotChanceShift(state.meta[attackTeam]) : passChanceShift(state.meta[attackTeam], seg.chainPos, seg.classic);
         // High shots are harder for the keeper to reach.
         if (p.keeper && seg.shot) chance -= HEIGHT_SAVE_SHIFT * seg.height;
+        // Placement: a shot past the keeper is harder to stop than one straight at him.
+        if (p.keeper && seg.shot) chance -= PLACEMENT_SAVE_SHIFT * clamp01(pointToSegment(p.pos, ball, seg.to) / reach);
         if (p.keeper && superKeeper) chance += 0.25;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {
@@ -599,4 +603,13 @@ export function continueMatch(state: MatchState): MatchState {
 
 function resetFormations(players: PlayerState[]): void {
   for (const p of players) p.pos = { ...p.kickoff };
+}
+
+/** Closest distance from `p` to the segment a→b. */
+function pointToSegment(p: Vec2, a: Vec2, b: Vec2): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
 }

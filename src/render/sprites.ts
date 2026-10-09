@@ -6,11 +6,11 @@ import { hex, shirtColorAt, type Kit } from './kits';
 // with a dark outline and one level of shading. Letters:
 //   O outline   H/h hair, highlight   S/s skin, shade   G/g hands (gloves on keepers)
 //   J/j jersey, shade (kit colour, pattern or painted design)   C collar trim (second kit colour)
-//   P/p shorts, shade   K/k socks, shade   B boots   . transparent
+//   P/p shorts, shade   K/k socks, shade   B boots   q deep jersey shadow   . transparent
 // Each player gets a `Look` (skin tone, hair colour and style) derived from
 // their name, so a squad reads as eleven people rather than clones.
 
-export type Pose = 'stand' | 'run1' | 'run2' | 'kick' | 'cheer' | 'slide' | 'back';
+export type Pose = 'stand' | 'run1' | 'run2' | 'kick' | 'cheer' | 'slide' | 'ready' | 'back';
 /** The 16x24 front-facing poses used on the pitch. */
 type FrontPose = Exclude<Pose, 'back'>;
 
@@ -174,6 +174,24 @@ const BODIES: Record<FrontPose, string[]> = {
     '....OBBBO....OO.',
     '....OOOOO.......',
   ],
+  // A keeper set for a shot: crouched, knees out, gloves spread wide (the set-piece scene).
+  ready: [
+    '...OOOCJJCOOO...',
+    '..OJJJJJJJJJJO..',
+    '.OJJJJJJJJJJJJO.',
+    'OJJOJJJJJJJJOJJO',
+    'OSSOJJJJJJJJOSSO',
+    'OGGOjjjjjjjjOGGO',
+    'OGgO.OPPPPO.OGgO',
+    '.OO.OPPPPPPO.OO.',
+    '....OPpOOpPO....',
+    '...OSSO..OSSO...',
+    '..OSSO....OSSO..',
+    '..OKKO....OKKO..',
+    '..OkKO....OKkO..',
+    '.OBBBO....OBBBO.',
+    '.OOOO......OOOO.',
+  ],
   // Arms up; the head rows are replaced below because the hands reach past the ears.
   cheer: [
     '.OJOOOCJJCOOOJO.',
@@ -225,59 +243,60 @@ const CHEER_HEAD = [
 ];
 
 /**
- * The set-piece figure seen from behind, 32x48: the back of the head, a wide
- * shirt with short sleeves and the arms slightly out, shorts, socks and boots.
- * No face; the hair style is applied by templateRows.
+ * The set-piece figure seen from behind, 32x48, ISS style: the back of the head,
+ * hands on hips, a shirt shaded on the right with room for the number (paintNumber),
+ * shorts, striped socks and boots. No face; the hair style is applied by templateRows.
+ * Generated from simple shapes with an automatic one-pixel outline, then hand-checked.
  */
 const BACK: string[] = [
-  '............OOOOOOOO............',
-  '...........OHHHHHHHHO...........',
-  '..........OHHhhHHHHHHO..........',
-  '..........OHHHHHHHHHHO..........',
-  '..........OHHHHHHHHHHO..........',
-  '..........OHHHHHHHHHHO..........',
-  '..........OHHHHHHHHHhO..........',
-  '...........OHHHHHHHHO...........',
-  '............OOSSSSOO............',
-  '.............OSSSsO.............',
-  '.............OSSSsO.............',
-  '........OOOOOOCSSCOOOOOO........',
-  '......OOJJJJJJCCCCJJJJJJOO......',
-  '.....OJJJJJJJJJJJJJJJJJJJJO.....',
-  '....OJJJJJJJJJJJJJJJJJJJJJJO....',
-  '....OJJJOJJJJJJJJJJJJJJOJJJO....',
-  '....OJJJOJJJJJJJJJJJJJJOJJJO....',
-  '....OjjJOJJJJJJJJJJJJJJOJjjO....',
-  '....OjjjOJJJJJJJJJJJJJJOjjjO....',
-  '....OjjjOJJJJJJJJJJJJJJOjjjO....',
-  '....OSSSOJJJJJJJJJJJJJJOSSSO....',
-  '....OSSSOJJJJJJJJJJJJJJOSSSO....',
-  '....OSSsOJJJJJJJJJJJJJJOSsSO....',
-  '....OGGGOJjjjjjjjjjjjjJOGGGO....',
-  '....OGggOJjjjjjjjjjjjjJOGgGO....',
-  '.....OO.OjjjjjjjjjjjjjjO.OO.....',
-  '........OPPPPPPPPPPPPPPO........',
-  '........OPPPPPPPPPPPPPPO........',
-  '........OPPPPPPPPPPPPPPO........',
-  '........OPPPPPPPPPPPPPPO........',
-  '........OPPPPPPOOPPPPPPO........',
-  '........OPpPPPO..OPPPpPO........',
-  '........OPpPPPO..OPPPpPO........',
-  '........OOOOOOO..OOOOOOO........',
-  '.........OSSSSO..OSSSSO.........',
-  '.........OSSSSO..OSSSSO.........',
-  '.........OSSSsO..OSSSsO.........',
-  '.........OSSSsO..OSSSsO.........',
-  '.........OKKKKO..OKKKKO.........',
-  '.........OKKKKO..OKKKKO.........',
-  '.........OKKKkO..OKKKkO.........',
-  '.........OKKKkO..OKKKkO.........',
-  '.........OkKKkO..OkKKkO.........',
-  '.........OBBBBO..OBBBBO.........',
-  '........OBBBBBBO.OBBBBBBO.......',
-  '........OBBBBBBO.OBBBBBBO.......',
-  '........OOOOOOOO.OOOOOOOO.......',
-  '................................',
+  '...........OOHHHHHOO............',
+  '..........OHhhHHHHHHO...........',
+  '..........OhhhhHHHHHO...........',
+  '.........OHhhhhHHHHHHO..........',
+  '.........OHHHHHHHHHHHOO.........',
+  '........OSHHHHHHHHHHHOSO........',
+  '........OsHHHHHHHHHHHOsO........',
+  '.........OHHHHHHHHHHHOO.........',
+  '..........OHHHHHHHHHO...........',
+  '...........OHHHHHHHO............',
+  '............OSHHHssO............',
+  '............OSSSSssO............',
+  '........OOOOOSSSSssOOOOO........',
+  '....OOOOJJJJCCCCCCCCJjjqOOO.....',
+  '...OJJJjJJJJJCJJJJCJJjjJJJjO....',
+  '...OJJJjJJJJJJJJJJJJJJjJJJjO....',
+  '..OJJJjjJJJJJJJJJJJJJJjjJJJjO...',
+  '..OJJJjOjJJJJJJJJJJJJjjqJJJjO...',
+  '.OCCCCOOjJJJJJJJJJJJJjjqOCCCCO..',
+  '.OSSSsOOjJJJJJJJJJJJJjjqOSSSsO..',
+  '.OSSSsOOjJJJJJJJJJJJJjjqOSSSsO..',
+  'OSSSsO.OjJJJJJJJJJJJJjjqOOSSSsO.',
+  '.OSSSsOOjJJJJJJJJJJJJjjqOSSSsO..',
+  '.OSSSsOOjJJJJJJJJJJJJjjqOSSSsO..',
+  '..OSSSsOjJJJJJJJJJJJJjjqSSSsO...',
+  '...OGGGgOjJJJJJJJJJJjjqGGGgO....',
+  '...OGGGgOjJJJJJJJJJJjjqGGGgO....',
+  '....OggggjJJJJJJJJJJjjggggO.....',
+  '.....OOOOjJJJJJJJJJJjjqOOO......',
+  '........OjJJJJJJJJJJjjqO........',
+  '.........OjJJJJJJJJJjjqO........',
+  '........OPPPPPPPPPPPPppO........',
+  '........OPPPPPPPPPPPPppO........',
+  '........OPPPPPPPPPPPPppO........',
+  '........OPPPPPPPPPPPPppO........',
+  '........OPPPPPPOOPPPPppO........',
+  '........OPPPPPpOOpPPPppO........',
+  '........OPPPPPpOOpPPPppO........',
+  '.........OSSSSsOOSSSSsO.........',
+  '.........OSSSSsOOSSSSsO.........',
+  '.........OSSSSsOOSSSSsO.........',
+  '.........OKKKKkOOKKKKkO.........',
+  '.........OkkkkkOOkkkkkO.........',
+  '.........OKKKKkOOKKKKkO.........',
+  '.........OKKKKkOOKKKKkO.........',
+  '.........OBBBBBOOBBBBBO.........',
+  '.........OBBBBBOOBBBBBO.........',
+  '..........OOOOO..OOOOO..........',
 ];
 
 /** Where the jersey sits per pose, for mapping the kit pattern (top row, rows, left column, columns). */
@@ -288,7 +307,8 @@ const JERSEY_BOX: Record<Pose, [number, number, number, number]> = {
   kick: [9, 7, 1, 14],
   cheer: [9, 7, 2, 12],
   slide: [16, 4, 4, 10],
-  back: [11, 15, 4, 24],
+  ready: [9, 6, 0, 16],
+  back: [13, 18, 2, 28],
 };
 
 const OUTLINE = '#141420';
@@ -326,9 +346,9 @@ export function templateRows(pose: Pose, look: Look): string[] {
     if (pose === 'back') {
       // Seen from behind there is no face: the style only changes how much neck shows.
       rows = BACK.map((r, y) => {
-        if (look.style === 3) return y < 8 ? r.replace(/H/g, 'S').replace(/h/g, 's') : r; // bald
-        if (look.style === 1 && y >= 6 && y < 8) return r.replace(/H/g, 'S').replace(/h/g, 's'); // buzz cut: shorter at the nape
-        if (look.style === 2 && y >= 8 && y < 11) return r.replace(/S/g, 'H').replace(/s/g, 'h'); // long: hair down the neck
+        if (look.style === 3) return y < 11 ? r.replace(/H/g, 'S').replace(/h/g, 's') : r; // bald
+        if (look.style === 1 && y >= 8 && y < 11) return r.replace(/H/g, 'S').replace(/h/g, 's'); // buzz cut: shorter at the nape
+        if (look.style === 2 && y >= 10 && y < 13) return r.replace(/S/g, 'H').replace(/s/g, 'h'); // long: hair down the neck
         return r;
       });
     } else if (pose === 'slide') {
@@ -393,6 +413,9 @@ export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit,
         case 'j':
           fill = hex(shade(jerseyColor(kit, keeper, pose, i, j), 0.72));
           break;
+        case 'q':
+          fill = hex(shade(jerseyColor(kit, keeper, pose, i, j), 0.5));
+          break;
         case 'C':
           // Collar trim: the second kit colour on presets, the painted shirt itself on custom kits.
           fill = hex(keeper ? shade(kit.keeper.jersey, 0.72) : kit.design ? jerseyColor(kit, false, pose, i, j) : kit.jersey2);
@@ -426,6 +449,48 @@ export function spriteCanvas(pose: Pose, kit: Kit, keeper: boolean, k: number, l
   c.height = rows.length * k;
   paintSprite(c.getContext('2d')!, pose, kit, keeper, 0, 0, k, look);
   return c;
+}
+
+/** 3x5 digits for shirt numbers. */
+const DIGITS: Record<string, string[]> = {
+  '0': ['###', '#.#', '#.#', '#.#', '###'],
+  '1': ['.#.', '##.', '.#.', '.#.', '###'],
+  '2': ['###', '..#', '###', '#..', '###'],
+  '3': ['###', '..#', '.##', '..#', '###'],
+  '4': ['#.#', '#.#', '###', '..#', '..#'],
+  '5': ['###', '#..', '###', '..#', '###'],
+  '6': ['###', '#..', '###', '#.#', '###'],
+  '7': ['###', '..#', '.#.', '.#.', '.#.'],
+  '8': ['###', '#.#', '###', '#.#', '###'],
+  '9': ['###', '#.#', '###', '..#', '###'],
+};
+
+/**
+ * The shirt number on the back view, painted over a `back` sprite at the same (x, y, k):
+ * white with a dark edge on dark shirts, dark on light ones, centred between the shoulders.
+ */
+export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boolean, x: number, y: number, k: number, n: number): void {
+  const text = String(Math.max(0, Math.round(n)) % 100);
+  const base = keeper ? kit.keeper.jersey : kit.jersey;
+  const lum = 0.299 * ((base >> 16) & 255) + 0.587 * ((base >> 8) & 255) + 0.114 * (base & 255);
+  const ink = lum > 150 ? '#1b1b26' : '#f8f8f0';
+  const edge = lum > 150 ? '#f8f8f0' : '#141420';
+  const w = text.length * 4 - 1;
+  const left = Math.round(15.5 - w / 2);
+  const top = 17;
+  const on = new Set<string>();
+  [...text].forEach((d, n) => DIGITS[d].forEach((row, j) => [...row].forEach((c, i) => c === '#' && on.add(`${left + n * 4 + i},${top + j}`))));
+  // A one-pixel ring first, so the number reads on stripes and hoops too, then the digits.
+  ctx.fillStyle = edge;
+  for (const key of on) {
+    const [px, py] = key.split(',').map(Number);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!on.has(`${px + dx},${py + dy}`)) ctx.fillRect(x + (px + dx) * k, y + (py + dy) * k, k, k);
+  }
+  ctx.fillStyle = ink;
+  for (const key of on) {
+    const [px, py] = key.split(',').map(Number);
+    ctx.fillRect(x + px * k, y + py * k, k, k);
+  }
 }
 
 const cache = new Map<string, Texture>();

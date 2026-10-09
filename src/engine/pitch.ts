@@ -58,6 +58,11 @@ export const HEIGHT_SCATTER = 0.3;
 export const OVER_BAR = 0.85;
 /** The keeper's save chance drops by this much times the shot's height. */
 export const HEIGHT_SAVE_SHIFT = 0.15;
+/**
+ * Placement: the keeper's save chance drops by this much times how far the shot passes from
+ * him, as a share of his reach (0 straight at him, the full shift at the edge of his reach).
+ */
+export const PLACEMENT_SAVE_SHIFT = 0.45;
 /** Fixed distances of restart kicks; the engine overrides the taker's strength. */
 export const SET_PIECE_METERS: Record<SetPiece, number> = { corner: 36, 'throw-in': 14 };
 

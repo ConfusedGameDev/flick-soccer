@@ -330,9 +330,10 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
     best,
     ...Array.from({ length: params.defenseSamples }, () => ({ ...sampleDefense(state, team, predicted, rng, maxFlicks), ...extras })),
   ];
-  candidates.forEach((candidate, i) => {
+  candidates.forEach((candidate) => {
     let total = 0;
-    for (const attack of predicted) total += expectedScore(state, attack, candidate, attacker, params.seeds, seed + i * 7);
+    // The same seeds for every candidate, so they are compared on the same luck, not on noise.
+    for (const attack of predicted) total += expectedScore(state, attack, candidate, attacker, params.seeds, seed);
     const s = total / predicted.length;
     if (s < bestScore) {
       bestScore = s;

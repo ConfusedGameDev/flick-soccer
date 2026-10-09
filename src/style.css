@@ -2057,6 +2057,13 @@ button:disabled {
   transform: rotate(var(--post-deg));
 }
 
+/* A shot paints its own kicker, ball and aim on the canvas. */
+.setpiece.shot .sp-figure,
+.setpiece.shot .sp-ball,
+.setpiece.shot .sp-pivot {
+  display: none;
+}
+
 /* Only a shot aims at a goal mouth. */
 .setpiece.corner .sp-post,
 .setpiece.throw-in .sp-post {

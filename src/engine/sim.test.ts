@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLOCK_CHANCE,
+  GOAL_W,
   HEIGHT_SAVE_SHIFT,
   HOLD_CHANCE,
   INTERCEPT_CHANCE,
@@ -304,6 +305,32 @@ describe('resolveTurn: set pieces and the timing game', () => {
     expect(r.events.some((e) => e.type === 'save')).toBe(false);
     expect(r.events.some((e) => e.type === 'goal')).toBe(false);
     expect(r.events.some((e) => e.type === 'goal-kick')).toBe(true);
+  });
+
+  it('a height locked over the bar goes over even when the scatter would pull it back down', () => {
+    const s = shootingState();
+    for (let seed = 1; seed <= 200; seed++) {
+      const r = resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy: 0, height: 0.9 } }), defense(), seed);
+      expect(r.events.some((e) => e.type === 'goal'), `seed ${seed}`).toBe(false);
+    }
+  });
+
+  it('a perfect shot into the corner beats the keeper more often than one straight at him', () => {
+    const s = shootingState();
+    const from = s.ball;
+    const corner: Flick = { ...straightShot(s), dir: normalize(sub({ x: PITCH_W / 2 + GOAL_W * 0.4, y: PITCH_L }, from)) };
+    const goals = (f: Flick) => {
+      let n = 0;
+      for (let seed = 1; seed <= 400; seed++) {
+        const r = resolveTurn(s, attack({ ...f, aim: { accuracy: 1, height: 0.5 } }), defense(), seed);
+        if (r.events.some((e) => e.type === 'goal')) n++;
+      }
+      return n / 400;
+    };
+    const atKeeper = goals(straightShot(s));
+    const placed = goals(corner);
+    expect(placed).toBeGreaterThan(atKeeper + 0.2);
+    expect(placed).toBeGreaterThan(0.5);
   });
 
   it('high shots are harder to save', () => {

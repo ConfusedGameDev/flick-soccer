@@ -6,7 +6,7 @@ vi.mock('pixi.js', () => ({ Texture: class {} }));
 import { KITS, hex } from './kits';
 import { BACK_H, BACK_W, SPRITE_H, SPRITE_W, lookFor, paintSprite, templateRows, type Pose } from './sprites';
 
-const POSES: Pose[] = ['stand', 'run1', 'run2', 'kick', 'cheer', 'slide'];
+const POSES: Pose[] = ['stand', 'run1', 'run2', 'kick', 'cheer', 'slide', 'ready'];
 
 describe('sprite templates', () => {
   it('every pose and hair style is a full SPRITE_W x SPRITE_H grid of known letters', () => {
@@ -16,7 +16,7 @@ describe('sprite templates', () => {
         expect(rows.length, `${pose} style ${style} rows`).toBe(SPRITE_H);
         rows.forEach((r, i) => {
           expect(r.length, `${pose} style ${style} row ${i}`).toBe(SPRITE_W);
-          expect(r, `${pose} style ${style} row ${i}`).toMatch(/^[.OHhSsGgJjCPpKkB]+$/);
+          expect(r, `${pose} style ${style} row ${i}`).toMatch(/^[.OHhSsGgJjqCPpKkB]+$/);
         });
       }
     }
@@ -39,7 +39,7 @@ describe('back view (set-piece scene)', () => {
       expect(rows.length, `style ${style} rows`).toBe(BACK_H);
       rows.forEach((r, i) => {
         expect(r.length, `style ${style} row ${i}`).toBe(BACK_W);
-        expect(r, `style ${style} row ${i}`).toMatch(/^[.OHhSsGgJjCPpKkB]+$/);
+        expect(r, `style ${style} row ${i}`).toMatch(/^[.OHhSsGgJjqCPpKkB]+$/);
       });
       // The hair sits above the shirt; a bald head shows skin instead.
       const crown = rows.slice(0, 8).join('');

@@ -1,7 +1,7 @@
 import { statFactor } from '../engine/pool';
 import { OVER_BAR } from '../engine/pitch';
 import { hex, type Kit } from '../render/kits';
-import { lookFor, spriteCanvas } from '../render/sprites';
+import { lookFor, paintNumber, paintSprite, spriteCanvas } from '../render/sprites';
 
 // The set-piece scene, ISS Deluxe style: the camera sits behind the kicker,
 // who is drawn big from behind with the goal (or the pitch) ahead. The player
@@ -22,6 +22,16 @@ export interface SetPieceSpec {
   goal: 'ahead' | 'left' | 'right' | 'none';
   /** One-line coaching shown under the title (first time only). */
   hint?: string;
+  /** Shots: the kicker's shirt number, painted on his back. */
+  number?: number;
+  /**
+   * Shots: the defending keeper as he stands in the match. `x` is his offset from the goal
+   * centre in half goal widths, screen-right positive (as seen from behind the kicker);
+   * `depth` is how far off his line he is, 0 on the line and 1 at the ball.
+   */
+  goalie?: { kit: Kit; name: string; x: number; depth: number };
+  /** Shots: the ball's offset from the goal centre in half goal widths, screen-right positive. */
+  offset?: number;
 }
 
 export interface SetPieceResult {
@@ -120,9 +130,15 @@ export class SetPiece {
       const cursor = q('[data-cursor]');
       const resultEl = q('[data-result]');
 
-      paintBackdrop(q<HTMLCanvasElement>('[data-canvas]'), spec.goal);
-      const k = Math.max(3, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 110));
-      figure.appendChild(spriteCanvas('back', spec.kit, spec.keeper, k, lookFor(spec.name)));
+      const canvas = q<HTMLCanvasElement>('[data-canvas]');
+      // Shots get the full ISS-style scene on the canvas (goal, keeper, kicker, aim);
+      // corners and throw-ins keep the backdrop with the DOM figure and arrow.
+      const scene = spec.kind === 'shot' ? new ShotScene(canvas, spec, q('.sp-top'), q('.sp-bottom')) : null;
+      if (!scene) {
+        paintBackdrop(canvas, spec.goal);
+        const k = Math.max(3, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 110));
+        figure.appendChild(spriteCanvas('back', spec.kit, spec.keeper, k, lookFor(spec.name)));
+      }
       // The posts mark the goal on the sweep so "inside" is visible while aiming.
       root.style.setProperty('--post-deg', `${GOAL_FRACTION * AIM_SWEEP_DEG}deg`);
       root.style.setProperty('--over', `${OVER_BAR * 100}%`);
@@ -168,6 +184,7 @@ export class SetPiece {
         varrow.style.bottom = `${h * 100}%`;
         varrow.classList.toggle('over', h > OVER_BAR);
         cursor.style.left = `${c * 100}%`;
+        scene?.draw(now, stage, x, h, stage === 'aim' ? !locked : stage === 'height' && !locked);
       };
 
       const loop = (now: number) => {
@@ -197,6 +214,15 @@ export class SetPiece {
         // The kicker follows through and the ball flies off toward the horizon.
         figure.classList.add('kick');
         root.classList.add('flying');
+        if (scene) {
+          scene.kick(performance.now(), result.x, result.height ?? 0.2);
+          const fly = (now: number) => {
+            if (!root.isConnected) return;
+            scene.draw(now, 'done', result.x, result.height ?? 0.2, false);
+            requestAnimationFrame(fly);
+          };
+          requestAnimationFrame(fly);
+        }
         ball.style.transform = `translate(calc(-50% + ${x * 30}vw), calc(-50% - 36vh - ${(result.height ?? 0.2) * 14}vh)) scale(0.18)`;
         cleanup();
         setTimeout(() => {
@@ -246,6 +272,348 @@ export class SetPiece {
         resolve(null);
       };
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shot scene: the whole view painted on one pixel canvas, ISS Deluxe style
+// ---------------------------------------------------------------------------
+
+const C = {
+  outline: '#141420',
+  accent: '#ffd447',
+  accent2: '#ff6b3d',
+  cream: '#f4f1e6',
+  grassA: '#2f8a3a',
+  grassB: '#3a9a48',
+  line: '#eef2e6',
+  track: '#b4643c',
+  trackDark: '#9a5232',
+  net: 'rgba(235, 240, 235, 0.55)',
+  netDim: 'rgba(235, 240, 235, 0.28)',
+  shadow: 'rgba(0, 0, 0, 0.32)',
+};
+const BOARD_COLOURS = ['#1d3f8f', '#c8202a', '#f2f2f2', '#1d7a3a', '#f2c230', '#2a2a6a'];
+const FLY_MS = 650;
+
+/**
+ * Paints the shot at an integer pixel scale, sized to the screen (never stretched). The goal
+ * mouth on the canvas is the aim: the arrow's target is `x / GOAL_FRACTION` half goal widths
+ * from the centre, which is exactly where LocalController.shoot sends the ball, so the
+ * drawn posts are the real posts. The keeper stands where he is in the match.
+ */
+class ShotScene {
+  private readonly k: number;
+  private readonly W: number;
+  private readonly H: number;
+  private readonly bg: HTMLCanvasElement;
+  /** The kicker, drawn over the aim arrow so it comes out from behind him. */
+  private readonly fg: HTMLCanvasElement;
+  private readonly ctx: CanvasRenderingContext2D;
+  private gcx = 0;
+  private gw = 0;
+  private gh = 0;
+  /** y of the goal line. */
+  private gl = 0;
+  private ballX = 0;
+  private ballY = 0;
+  private kickAt = -1;
+  private kickTarget = { x: 0, y: 0 };
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    private readonly spec: SetPieceSpec,
+    top: HTMLElement,
+    bottom: HTMLElement,
+  ) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    this.k = Math.max(2, Math.floor(Math.min(vw / 180, vh / 180)));
+    this.W = Math.ceil(vw / this.k);
+    this.H = Math.ceil(vh / this.k);
+    canvas.width = this.W;
+    canvas.height = this.H;
+    canvas.style.width = `${this.W * this.k}px`;
+    canvas.style.height = `${this.H * this.k}px`;
+    canvas.style.inset = '0 auto auto 0';
+    this.ctx = canvas.getContext('2d')!;
+    this.bg = document.createElement('canvas');
+    this.bg.width = this.W;
+    this.bg.height = this.H;
+    this.fg = document.createElement('canvas');
+    this.fg.width = this.W;
+    this.fg.height = this.H;
+    this.paint(top.offsetHeight / this.k, this.H - bottom.offsetHeight / this.k);
+  }
+
+  /** Where an aim (x on the ±1 sweep) and a height (0..1, OVER_BAR = the bar) land on the goal plane. */
+  private target(x: number, h: number): { x: number; y: number } {
+    return { x: this.gcx + (x / GOAL_FRACTION) * (this.gw / 2), y: this.gl - (h / OVER_BAR) * this.gh };
+  }
+
+  private paint(topY: number, botY: number): void {
+    const { W, H } = this;
+    const g = this.bg.getContext('2d')!;
+    const avail = Math.max(60, botY - topY);
+    // Built up from the kicker's feet, as in ISS: the goal line sits a little above his head.
+    let ks = W < 230 && avail > 230 ? 2 : 1;
+    const feet = Math.round(botY - 2);
+    const glFor = (scale: number) => feet - 48 * scale - Math.max(6, Math.round(48 * scale * 0.22));
+    if (glFor(ks) - topY < 40) ks = 1;
+    // On tall screens the goal stays in the upper half rather than leaving a wall of crowd.
+    const gl = Math.min(glFor(ks), Math.round(topY + avail * 0.5));
+    let gw = Math.round(Math.min(W * 0.86, 240));
+    if (gl - Math.round(gw / 3) < topY + 6) gw = Math.max(48, 3 * (gl - topY - 6));
+    const gh = Math.round(gw / 3);
+    const goalTop = gl - gh;
+    const offset = Math.max(-2.5, Math.min(2.5, this.spec.offset ?? 0));
+    const gcx = Math.round(Math.max(gw / 2 + 4, Math.min(W - gw / 2 - 4, W / 2 - offset * (gw / 2) * 0.6)));
+    Object.assign(this, { gcx, gw, gh, gl });
+
+    // Crowd: a dithered terrace of faces and shirts, darker at the top.
+    const boardsY = goalTop + Math.round(gh * 0.3);
+    const boardH = Math.max(4, Math.round(gh * 0.22));
+    g.fillStyle = '#1e2238';
+    g.fillRect(0, 0, W, boardsY);
+    const crowd = ['#c9b6a0', '#8a6a5a', '#d8d2c2', '#5a6a8a', '#b04a3a', '#e0c070', '#3a5a9a'];
+    for (let y = 1; y < boardsY - 1; y++) {
+      if (y % 5 === 4) continue; // tier steps
+      for (let x = (y * 3) % 2; x < W; x += 2) {
+        const r = (x * 7919 + y * 104729) % 97;
+        if (r < 30) continue;
+        g.fillStyle = crowd[r % crowd.length];
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+    // Advertising boards behind the goal.
+    for (let x = 0, i = 0; x < W; i++) {
+      const w = 20 + ((i * 37) % 14);
+      const col = BOARD_COLOURS[i % BOARD_COLOURS.length];
+      g.fillStyle = col;
+      g.fillRect(x, boardsY, w, boardH);
+      g.fillStyle = col === '#f2f2f2' || col === '#f2c230' ? '#1d3f8f' : '#f2f2f2';
+      for (let t = x + 3; t < x + w - 3; t += 3) if ((t * 13 + i) % 5 !== 0) g.fillRect(t, boardsY + Math.floor(boardH / 2) - 1, 2, Math.min(2, boardH - 2));
+      g.fillStyle = C.outline;
+      g.fillRect(x + w - 1, boardsY, 1, boardH);
+      x += w;
+    }
+    g.fillStyle = C.outline;
+    g.fillRect(0, boardsY + boardH, W, 1);
+    // Running track, then the grass in perspective bands.
+    const grassY = gl - Math.round(gh * 0.28);
+    g.fillStyle = C.track;
+    g.fillRect(0, boardsY + boardH + 1, W, grassY - boardsY - boardH - 1);
+    g.fillStyle = C.trackDark;
+    for (let y = boardsY + boardH + 3; y < grassY; y += 3) g.fillRect(0, y, W, 1);
+    let y = grassY;
+    for (let i = 0; y < H; i++) {
+      const band = Math.max(2, Math.round(3 + i * i * 0.9));
+      g.fillStyle = i % 2 ? C.grassA : C.grassB;
+      g.fillRect(0, y, W, band);
+      y += band;
+    }
+
+    // Lines: the goal line, the six-yard box and the penalty area, widening toward the camera.
+    g.fillStyle = C.line;
+    g.fillRect(0, gl, W, 1);
+    const slant = (x0: number, y0: number, x1: number, y1: number) => {
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= n; i++) g.fillRect(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), 1, 1);
+    };
+    const box = (half: number, depth: number) => {
+      const yb = gl + depth;
+      const spread = depth * 0.6;
+      slant(gcx - half, gl, gcx - half - spread, yb);
+      slant(gcx + half, gl, gcx + half + spread, yb);
+      if (yb < H) g.fillRect(Math.round(gcx - half - spread), yb, Math.round(2 * (half + spread)) + 1, 1);
+    };
+    box(gw * 0.83, Math.round(gh * 0.55));
+    box(gw * 2.2, Math.round(gh * 2.3));
+
+    this.paintGoal(g, goalTop);
+
+    // The keeper, where he stands: on his line by default, coming out toward the ball with depth.
+    const kicker = { w: 32 * ks, h: 48 * ks };
+    const kx = Math.round(W / 2 - kicker.w * 0.85);
+    const ky = feet - kicker.h;
+    this.ballX = Math.round(W / 2 + 3 * ks);
+    this.ballY = feet - 3 * ks;
+    const gk = this.spec.goalie;
+    if (gk) {
+      const depth = Math.max(0, Math.min(0.8, gk.depth));
+      const gx = gcx + Math.max(-1.6, Math.min(1.6, gk.x)) * (gw / 2);
+      const fx = Math.round(gx + (this.ballX - gx) * depth);
+      const fy = Math.round(gl + (this.ballY - gl) * depth) + 1;
+      const s = depth > 0.45 ? 2 : 1;
+      g.fillStyle = C.shadow;
+      g.fillRect(fx - 6 * s, fy - 1, 12 * s, 2);
+      paintSprite(g, 'ready', gk.kit, true, fx - 8 * s, fy - 24 * s, s, lookFor(gk.name));
+    }
+    // The kicker from behind, his shadow and his number, on the foreground layer.
+    g.fillStyle = C.shadow;
+    g.fillRect(kx + 6 * ks, feet - 1, 20 * ks, 2 * ks);
+    const f = this.fg.getContext('2d')!;
+    paintSprite(f, 'back', this.spec.kit, this.spec.keeper, kx, ky, ks, lookFor(this.spec.name));
+    if (this.spec.number != null) paintNumber(f, this.spec.kit, this.spec.keeper, kx, ky, ks, this.spec.number);
+  }
+
+  private paintGoal(g: CanvasRenderingContext2D, goalTop: number): void {
+    const { gcx, gw, gh, gl } = this;
+    const l = Math.round(gcx - gw / 2);
+    const r = Math.round(gcx + gw / 2);
+    // The back of the net sits higher (further away) and a little narrower.
+    const back = Math.round(gh * 0.3);
+    const inset = Math.round(gw * 0.04);
+    const bl = l + inset;
+    const br = r - inset;
+    const bTop = goalTop - Math.round(back * 0.25);
+    const bBot = gl - back;
+    g.fillStyle = 'rgba(20, 30, 20, 0.35)';
+    g.fillRect(bl, bTop, br - bl, bBot - bTop);
+    // Back net: a square mesh.
+    g.fillStyle = C.netDim;
+    for (let x = bl; x <= br; x += 3) g.fillRect(x, bTop, 1, bBot - bTop);
+    for (let y = bTop; y <= bBot; y += 3) g.fillRect(bl, y, br - bl, 1);
+    // Roof and side nets: lines from the frame to the back.
+    g.fillStyle = C.net;
+    for (let i = 0; i <= 6; i++) {
+      const t = i / 6;
+      // sides
+      for (const [fx, bx] of [
+        [l, bl],
+        [r, br],
+      ]) {
+        const yTop = Math.round(goalTop + (bTop - goalTop) * t);
+        const yBot = Math.round(gl + (bBot - gl) * t);
+        const x = Math.round(fx + (bx - fx) * t);
+        g.fillRect(x, yTop, 1, yBot - yTop);
+      }
+    }
+    g.fillRect(bl, bBot, br - bl, 1);
+    // Frame: posts and bar, white with a grey shade on the right.
+    g.fillStyle = C.outline;
+    g.fillRect(l - 1, goalTop - 1, 4, gl - goalTop + 2);
+    g.fillRect(r - 2, goalTop - 1, 4, gl - goalTop + 2);
+    g.fillRect(l - 1, goalTop - 1, r - l + 3, 4);
+    g.fillStyle = '#ffffff';
+    g.fillRect(l, goalTop, 2, gl - goalTop);
+    g.fillRect(r - 1, goalTop, 2, gl - goalTop);
+    g.fillRect(l, goalTop, r - l + 1, 2);
+    g.fillStyle = '#c8ccd2';
+    g.fillRect(l + 1, goalTop + 2, 1, gl - goalTop - 2);
+    g.fillRect(r, goalTop + 2, 1, gl - goalTop - 2);
+    g.fillRect(l, goalTop + 1, r - l + 1, 1);
+  }
+
+  kick(now: number, x: number, h: number): void {
+    this.kickAt = now;
+    this.kickTarget = this.target(x, h);
+  }
+
+  /** One frame: the painted backdrop, then the aim (while aiming or setting the height) and the ball. */
+  draw(now: number, stage: Stage, x: number, h: number, live: boolean): void {
+    const c = this.ctx;
+    c.clearRect(0, 0, this.W, this.H);
+    c.drawImage(this.bg, 0, 0);
+    if (this.kickAt >= 0) {
+      const t = Math.min(1, (now - this.kickAt) / FLY_MS);
+      const e = 1 - (1 - t) * (1 - t);
+      const tx = this.kickTarget.x;
+      const ty = this.kickTarget.y;
+      const bx = this.ballX + (tx - this.ballX) * e;
+      const by = this.ballY + (ty - this.ballY) * e - Math.sin(Math.PI * e) * this.gh * 0.25;
+      c.drawImage(this.fg, 0, 0);
+      this.ball(bx, by, 3.5 - 2 * e);
+      return;
+    }
+    const tgt = this.target(x, stage === 'aim' ? 0.35 * OVER_BAR : h);
+    const over = stage !== 'aim' && h > OVER_BAR;
+    const col = !live ? C.cream : over ? C.accent2 : C.accent;
+    this.arrow(this.ballX, this.ballY - 3, tgt.x, tgt.y, col);
+    this.reticle(tgt.x, tgt.y, col);
+    c.drawImage(this.fg, 0, 0);
+    this.ball(this.ballX, this.ballY, 3.5);
+  }
+
+  private ball(x: number, y: number, r: number): void {
+    const c = this.ctx;
+    const d = Math.max(2, Math.round(r * 2));
+    const px = Math.round(x - d / 2);
+    const py = Math.round(y - d / 2);
+    if (this.kickAt < 0) {
+      c.fillStyle = C.shadow;
+      c.fillRect(px, py + d - 1, d + 1, 2);
+    }
+    c.fillStyle = C.outline;
+    c.fillRect(px, py, d, d);
+    c.fillStyle = '#f8f8f8';
+    c.fillRect(px + 1, py, d - 2, d);
+    c.fillRect(px, py + 1, d, d - 2);
+    if (d >= 5) {
+      c.fillStyle = '#26262e';
+      c.fillRect(px + Math.floor(d / 2), py + Math.floor(d / 2) - 1, 2, 2);
+      c.fillRect(px + 1, py + d - 3, 1, 1);
+    }
+  }
+
+  /** A thick pixel arrow from the ball toward the target, stopping short of it. */
+  private arrow(x0: number, y0: number, x1: number, y1: number, col: string): void {
+    const c = this.ctx;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    // Stop just short of the reticle, so the arrow points straight into it.
+    const n = Math.max(8, Math.round(len - Math.max(3, Math.round(this.gh * 0.12)) - 3));
+    for (const [fill, w] of [
+      [C.outline, 4],
+      [col, 2],
+    ] as const) {
+      c.fillStyle = fill;
+      for (let i = 6; i <= n; i += 1) {
+        const px = Math.round(x0 + (dx * i) / len) - w / 2;
+        const py = Math.round(y0 + (dy * i) / len) - w / 2;
+        c.fillRect(px, py, w, w);
+      }
+    }
+    // Arrowhead: a small chevron at the tip.
+    const ux = dx / len;
+    const uy = dy / len;
+    const tx = x0 + ux * n;
+    const ty = y0 + uy * n;
+    for (const [fill, grow] of [
+      [C.outline, 1],
+      [col, 0],
+    ] as const) {
+      c.fillStyle = fill;
+      for (let i = 0; i < 5 + grow; i++) {
+        for (const side of [-1, 1]) {
+          const px = Math.round(tx - ux * i + -uy * side * i * 0.9);
+          const py = Math.round(ty - uy * i + ux * side * i * 0.9);
+          c.fillRect(px - grow, py - grow, 2 + grow * 2, 2 + grow * 2);
+        }
+      }
+    }
+  }
+
+  /** Corner brackets around the aim point on the goal plane. */
+  private reticle(x: number, y: number, col: string): void {
+    const c = this.ctx;
+    const r = Math.max(3, Math.round(this.gh * 0.12));
+    const cx = Math.round(x);
+    const cy = Math.round(y);
+    for (const [fill, o] of [
+      [C.outline, 1],
+      [col, 0],
+    ] as const) {
+      c.fillStyle = fill;
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          c.fillRect(cx + sx * r - (sx > 0 ? 2 : 0) - o, cy + sy * r - o, 3 + o * 2, 1 + o * 2);
+          c.fillRect(cx + sx * r - o, cy + sy * r - (sy > 0 ? 2 : 0) - o, 1 + o * 2, 3 + o * 2);
+        }
+      }
+      c.fillRect(cx - o, cy - o, 1 + o * 2, 1 + o * 2);
+    }
   }
 }
 

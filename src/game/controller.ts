@@ -1,13 +1,15 @@
 import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
-import { GOAL_W, PITCH_W, PLAN_SECONDS, SHOT_RANGE, attackDir, inAttackingThird, targetGoalY } from '../engine/pitch';
+import { GOAL_W, PITCH_W, PLAN_SECONDS, SHOT_RANGE, attackDir, inAttackingThird, other, targetGoalY } from '../engine/pitch';
 import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
 import { rollSeed } from '../engine/seeds';
+import { keeperOf } from '../engine/setup';
 import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength } from '../engine/sim';
 import type { Booster, DiceRoll, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
 import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
+import type { Kit } from '../render/kits';
 import type { PiecesView } from '../render/PiecesView';
 import type { DragPreview, GhostFlick, PlanPreview } from '../render/PlanPreview';
 import { DiceView } from '../ui/DiceView';
@@ -205,6 +207,8 @@ export class LocalController implements PlanController {
       stat: kicker.stats.shot,
       goal: 'ahead',
       hint: this.hint('shot'),
+      ...shotView(s.state, s.team, from, this.deps.pieces.currentKits[other(s.team)]),
+      number: kicker.number,
     });
     this.busy = false;
     if (this.session !== s) return; // timed out while the scene was up
@@ -465,4 +469,21 @@ export class LocalController implements PlanController {
       canShoot,
     });
   }
+}
+
+/**
+ * What the shot scene needs from the match, in the kicker's view (screen-right positive):
+ * where the defending keeper stands relative to the goal and the ball's offset from the goal
+ * centre, both in half goal widths, and how far off his line the keeper has come.
+ */
+export function shotView(state: MatchState, team: Team, from: Vec2, keeperKit: Kit): Pick<SetPieceSpec, 'goalie' | 'offset'> {
+  const a = attackDir(team);
+  const goalY = targetGoalY(team);
+  const half = GOAL_W / 2;
+  const keeper = keeperOf(state.players, other(team));
+  const toBall = Math.max(1, Math.abs(from.y - goalY));
+  return {
+    offset: ((from.x - PITCH_W / 2) * a) / half,
+    goalie: { kit: keeperKit, name: keeper.name, x: ((keeper.pos.x - PITCH_W / 2) * a) / half, depth: Math.abs(keeper.pos.y - goalY) / toBall },
+  };
 }
