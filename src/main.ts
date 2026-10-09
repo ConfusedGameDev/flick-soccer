@@ -136,7 +136,7 @@ async function boot(): Promise<void> {
   const demo = new URLSearchParams(location.search).get('demo');
   if (demo) {
     const { runDemo } = await import('./ui/demo');
-    await runDemo(demo, { overlay, cutscene, setPiece });
+    await runDemo(demo, { overlay, cutscene, setPiece, pieces, player });
     return;
   }
   await match.start();

@@ -1,5 +1,6 @@
 import { DESIGN_SIZE, PALETTE, contrastingKeeper, hex, kitPreview, newCustomKit, type Kit } from '../render/kits';
-import { spriteCanvas } from '../render/sprites';
+import { spriteSet } from '../render/spriteSet';
+import { frameCanvas, spriteCanvas } from '../render/sprites';
 
 type Tool = 'pencil' | 'fill';
 
@@ -128,15 +129,21 @@ export class KitEditor {
         syncColors();
         preview.innerHTML = '';
         preview.appendChild(kitPreview(kit, 8));
-        preview.appendChild(spriteCanvas('stand', kit, false, 4));
-        preview.appendChild(spriteCanvas('run1', kit, false, 4));
+        if (spriteSet() === 'generated') {
+          preview.appendChild(frameCanvas('idle', 's', kit, false, 3));
+          preview.appendChild(frameCanvas('run', 'e', kit, false, 3));
+        } else {
+          preview.appendChild(spriteCanvas('stand', kit, false, 4));
+          preview.appendChild(spriteCanvas('run1', kit, false, 4));
+        }
         big.innerHTML = '';
         const title = document.createElement('div');
         title.className = 'ke-stage-title';
         title.textContent = nameInput.value.trim() || kit.name;
         const row = document.createElement('div');
         row.className = 'ke-stage-row';
-        row.append(kitPreview(kit, 8), spriteCanvas('stand', kit, false, 5), spriteCanvas('run1', kit, false, 5), spriteCanvas('kick', kit, false, 5), spriteCanvas('stand', kit, true, 5));
+        if (spriteSet() === 'generated') row.append(kitPreview(kit, 8), frameCanvas('idle', 's', kit, false, 3), frameCanvas('run', 'e', kit, false, 3), frameCanvas('slide', 'e', kit, false, 3), frameCanvas('idle', 's', kit, true, 3));
+        else row.append(kitPreview(kit, 8), spriteCanvas('stand', kit, false, 5), spriteCanvas('run1', kit, false, 5), spriteCanvas('kick', kit, false, 5), spriteCanvas('stand', kit, true, 5));
         big.append(title, row);
       };
       nameInput.addEventListener('input', refreshPreview);
