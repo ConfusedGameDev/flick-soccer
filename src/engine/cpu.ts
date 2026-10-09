@@ -5,6 +5,7 @@ import {
   PASS_RANGE,
   PITCH_L,
   PITCH_W,
+  RUN_RANGE,
   SET_PIECE_METERS,
   SHOT_RANGE,
   SLIDE_RANGE,
@@ -15,7 +16,7 @@ import {
 import { BOOSTER_INFO, rollDice } from './dice';
 import { mulberry32 } from './rng';
 import { maxFlicksFor } from './tactics';
-import { findReceiver, flickKind, kickRange, passTarget, resolveTurn, setPieceStrength } from './sim';
+import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, resolveTurn, setPieceStrength, spotTaken } from './sim';
 import { keeperOf } from './setup';
 import type { Aim, Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
 import { add, clamp, dist, normalize, rotate, scale, sub } from './vec';
@@ -53,6 +54,56 @@ type Rng = () => number;
 /** Flick that sends the ball (or a player) from `from` toward `to`, covering `meters` of the given range. */
 function toward(playerId: number, from: Vec2, to: Vec2, range: number, meters = dist(from, to)): Flick {
   return { playerId, dir: normalize(sub(to, from)), strength: clamp(meters / range, 0.05, 1) };
+}
+
+/**
+ * A movement flick shortened until the engine's own endpoint (stat range
+ * included) is free of other players and of `reserved` spots; null when
+ * nothing on its line is. The engine refuses a move onto a body, so the CPU
+ * never offers one.
+ */
+function freeMove(state: MatchState, p: PlayerState, f: Flick, kind: 'slide' | 'run' | 'dive', reserved: Vec2[]): Flick | null {
+  const range = kind === 'slide' ? SLIDE_RANGE : kind === 'run' ? RUN_RANGE : DIVE_RANGE;
+  for (let strength = f.strength; strength * range >= 1; strength -= 0.5 / range) {
+    const g = { ...f, strength };
+    const to = moveTarget(p.pos, g, kind, moveRange(p, kind));
+    if (!spotTaken(to, state.players, p.id, reserved)) {
+      reserved.push(to);
+      return g;
+    }
+  }
+  return null;
+}
+
+/** Re-settle every movement flick of a finished plan (after the noise), walking the chain the way the engine does. */
+function settleMoves(plan: Plan, state: MatchState, role: 'attack' | 'defense'): Plan {
+  const reserved: Vec2[] = [];
+  const flicks: Flick[] = [];
+  let ball = state.ball;
+  let carrier = state.possession.playerId;
+  let restart = state.setPiece;
+  for (const f of plan.flicks) {
+    const p = state.players[f.playerId];
+    if (!p) continue;
+    if (role === 'defense') {
+      const g = freeMove(state, p, f, p.keeper ? 'dive' : 'slide', reserved);
+      if (g) flicks.push(g);
+      continue;
+    }
+    if (f.playerId !== carrier) {
+      const g = freeMove(state, p, f, 'run', reserved);
+      if (g) flicks.push(g);
+      continue;
+    }
+    flicks.push(f);
+    const live = restart ? { ...f, strength: setPieceStrength(restart, p) } : f;
+    const { to, out } = passTarget(ball, live, f.shot ? 'shot' : 'pass', kickRange(p, f.shot ? 'shot' : 'pass'));
+    const receiver = !f.shot && !out ? findReceiver(state.players, plan.team, to, carrier) : null;
+    restart = undefined;
+    carrier = receiver ? receiver.id : -1;
+    ball = receiver ? receiver.pos : ball;
+  }
+  return { ...plan, flicks };
 }
 
 // ---------------------------------------------------------------------------
@@ -105,8 +156,12 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
     const runner = mates[Math.floor(rng() * mates.length)];
     if (runner.id !== carrier && !runner.keeper) {
       const ahead = { x: clamp(runner.pos.x + (rng() - 0.5) * 16, 2, PITCH_W - 2), y: clamp(goalY, 2, PITCH_L - 2) };
-      flicks.push(toward(runner.id, runner.pos, ahead, 14, 8 + rng() * 6));
-      used.add(runner.id);
+      // Stop short of anyone standing on the line: a run onto a body is refused by the engine.
+      const run = freeMove(state, runner, toward(runner.id, runner.pos, ahead, RUN_RANGE, 8 + rng() * 6), 'run', []);
+      if (run) {
+        flicks.push(run);
+        used.add(runner.id);
+      }
     }
   }
 
@@ -237,7 +292,7 @@ export function planAttack(state: MatchState, team: Team, difficulty: Difficulty
   const params = CPU_PARAMS[difficulty];
   const extras = cpuExtras(state, team, 'attack', seed);
   const best = rankAttacks(state, team, params, seed, 1, extras)[0]?.plan ?? { team, flicks: [], ...extras };
-  return applyAim(addNoise(best, params.noise, mulberry32(seed ^ 0x5bd1e995)), state, params, mulberry32(seed ^ 0x1b873593));
+  return applyAim(settleMoves(addNoise(best, params.noise, mulberry32(seed ^ 0x5bd1e995)), state, 'attack'), state, params, mulberry32(seed ^ 0x1b873593));
 }
 
 // ---------------------------------------------------------------------------
@@ -285,14 +340,19 @@ function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rn
   const allSegs = predicted.flatMap((p) => segmentsOf(state, p));
   const shots = allSegs.filter((s) => s.shot);
   const n = 1 + (rng() < 0.75 ? 1 : 0);
+  // Where this sample's moves already end: a second move there would be refused.
+  const reserved: Vec2[] = [];
+  const move = (p: PlayerState, target: Vec2, kind: 'slide' | 'dive', range: number): Flick | null =>
+    freeMove(state, p, toward(p.id, p.pos, target, range), kind, reserved);
 
   while (flicks.length < Math.min(n, maxFlicks)) {
     // Keeper: dive to where a predicted shot crosses the line.
     if (shots.length && !used.has(keeper.id) && rng() < 0.6) {
       const s = shots[Math.floor(rng() * shots.length)];
       const target = { x: s.b.x, y: keeper.pos.y };
-      flicks.push(toward(keeper.id, keeper.pos, target, DIVE_RANGE));
       used.add(keeper.id);
+      const f = move(keeper, target, 'dive', DIVE_RANGE);
+      if (f) flicks.push(f);
       continue;
     }
     if (allSegs.length === 0) break;
@@ -309,8 +369,9 @@ function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rn
     if (choice.dd > SLIDE_RANGE * 1.4) break;
     // Aim a little along the lane so the slide meets the ball rather than trailing it.
     const target = add(choice.at, scale(normalize(sub(seg.b, seg.a)), (rng() - 0.3) * 3));
-    flicks.push(toward(choice.d.id, choice.d.pos, target, SLIDE_RANGE));
     used.add(choice.d.id);
+    const f = move(choice.d, target, 'slide', SLIDE_RANGE);
+    if (f) flicks.push(f);
   }
   return { team, flicks };
 }
@@ -340,5 +401,5 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
       best = candidate;
     }
   });
-  return addNoise(best, params.noise, mulberry32(seed ^ 0x27d4eb2f));
+  return settleMoves(addNoise(best, params.noise, mulberry32(seed ^ 0x27d4eb2f)), state, 'defense');
 }

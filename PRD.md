@@ -40,7 +40,7 @@ All three modes run on one shared match engine. The only difference between them
   - **Short pass** (short pull) **(proposed):** travels along the ground and can be intercepted anywhere along its line. It is more accurate.
   - **Long pass** (long pull) **(proposed):** lofted, so it can only be intercepted near where it lands. It scatters a little around the target.
 - **Shot:** a flick toward goal. It is allowed only from the attacking third **(proposed)**.
-- **Run (proposed):** flick a teammate who doesn't have the ball to move them into space. It uses up one flick.
+- **Run (proposed):** flick a teammate who doesn't have the ball to move them into space. It uses up one flick. No movement flick (run, slide or dive) may end on another player, of either team, or where a team-mate is already being sent this turn: the preview shows the ghost in red and refuses the flick, and the engine ignores such a move if one arrives anyway.
 
 ### 3.4 Defender: 2 flicks per turn
 - **Tackle:** flick an outfield player toward where you expect the pass to go. They slide along that line, and pull length sets the slide distance.

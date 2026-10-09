@@ -33,6 +33,7 @@ import {
   PITCH_L,
   PITCH_W,
   RECEIVE_RADIUS,
+  BODY_RADIUS,
   RUN_RANGE,
   RUN_SPEED,
   SAVE_CHANCE,
@@ -105,6 +106,17 @@ export function passTarget(from: Vec2, flick: Flick, kind: 'pass' | 'shot' = 'pa
 export function moveTarget(from: Vec2, flick: Flick, kind: 'slide' | 'run' | 'dive', rangeMul = 1): Vec2 {
   const base = kind === 'slide' ? SLIDE_RANGE : kind === 'run' ? RUN_RANGE : DIVE_RANGE;
   return clampToPitch(add(from, scale(normalize(flick.dir), flick.strength * base * rangeMul)));
+}
+
+/**
+ * A movement flick may not end on another player: within two body radii of
+ * anyone's position at the start of the turn, or of a spot (`reserved`) the
+ * same team already sends someone to this turn. Opponent moves are hidden,
+ * so they never block; the planning preview and the engine agree on this.
+ */
+export function spotTaken(at: Vec2, players: readonly PlayerState[], selfId: number, reserved: readonly Vec2[] = []): boolean {
+  const min = BODY_RADIUS * 2;
+  return players.some((p) => p.id !== selfId && dist(p.pos, at) < min) || reserved.some((r) => dist(r, at) < min);
 }
 
 /** Range factor for a player's pass or shot. */
@@ -299,12 +311,19 @@ export function resolveTurn(
   // Every movement flick (slides, dives, runs) starts at t = 0 and runs in parallel.
   const moves: Move[] = [];
   const moving = new Set<number>();
+  /** Spots each team already sends someone to this turn; a second move there is refused. */
+  const reserved: Record<Team, Vec2[]> = { home: [], away: [] };
   const addMove = (p: PlayerState, f: Flick, kind: 'slide' | 'run' | 'dive') => {
     if (moving.has(p.id)) {
       events.push({ t, type: 'invalid-flick', playerId: p.id, reason: 'already moving' });
       return;
     }
     const to = moveTarget(p.pos, f, kind, rangeMul(p, kind));
+    if (spotTaken(to, state.players, p.id, reserved[p.team])) {
+      events.push({ t, type: 'invalid-flick', playerId: p.id, reason: 'spot taken' });
+      return;
+    }
+    reserved[p.team].push(to);
     const speed = (kind === 'slide' ? SLIDE_SPEED : kind === 'run' ? RUN_SPEED : DIVE_SPEED) * speedMul(p);
     moves.push({ idx: p.id, from: { ...p.pos }, to, duration: dist(p.pos, to) / speed });
     moving.add(p.id);
