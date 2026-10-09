@@ -3,9 +3,9 @@ import { HERO_POSES, spriteCanvas, type HeroPose } from '../render/sprites';
 import type { Cutscene, CutsceneKind } from './Cutscene';
 import type { SetPiece } from './SetPiece';
 
-// Dev-only preview routes for the procedural art (`?demo=sheet|cutscenes|shot`),
+// Preview routes for the procedural art (`?demo=sheet|cutscenes|shot`),
 // loaded on demand from main.ts. They exist so the figures can be iterated
-// against screenshots without playing a match.
+// against screenshots, and checked on a preview deploy, without playing a match.
 
 export interface DemoDeps {
   overlay: HTMLElement;

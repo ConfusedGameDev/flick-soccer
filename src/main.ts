@@ -132,8 +132,8 @@ async function boot(): Promise<void> {
 
   if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = match;
 
-  // Dev-only art previews (`?demo=sheet|cutscenes|shot`), see ui/demo.ts.
-  const demo = import.meta.env.DEV ? new URLSearchParams(location.search).get('demo') : null;
+  // Art previews (`?demo=sheet|cutscenes|shot`), see ui/demo.ts; loaded on demand so they cost nothing otherwise.
+  const demo = new URLSearchParams(location.search).get('demo');
   if (demo) {
     const { runDemo } = await import('./ui/demo');
     await runDemo(demo, { overlay, cutscene, setPiece });
