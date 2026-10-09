@@ -30,7 +30,8 @@ function restartFrame(state: MatchState, team: Team, kind: SetPieceKind): { d: V
   const ball = state.ball;
   const goalCentre = { x: PITCH_W / 2, y: targetGoalY(team) };
   if (kind === 'corner') {
-    const d = normalize(sub({ x: goalCentre.x, y: goalCentre.y - attackDir(team) * 12 }, ball));
+    // Rest aim at 45° between the goal line and the touchline, so the ±35° sweep always stays in play.
+    const d = normalize({ x: Math.sign(goalCentre.x - ball.x) || 1, y: -attackDir(team) });
     const toGoal = sub(goalCentre, ball);
     const side = toGoal.x * rightOf(d).x + toGoal.y * rightOf(d).y;
     return { d, rad: (35 * Math.PI) / 180, goal: side > 0 ? 'right' : 'left' };
@@ -239,6 +240,7 @@ export class LocalController implements PlanController {
       name: taker.name,
       stat: taker.stats.pass,
       goal,
+      map: { state: s.state, kits: this.deps.pieces.currentKits },
       hint: this.hint(kind),
     });
     this.busy = false;

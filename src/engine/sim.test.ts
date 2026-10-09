@@ -403,3 +403,20 @@ describe('resolveTurn: set pieces and the timing game', () => {
     expect(dist(c.ball, pass.to)).toBeCloseTo(SET_PIECE_METERS.corner, 0);
   });
 });
+
+describe('resolveTurn: own goal line', () => {
+  it('gives a corner to the other side when the ball is kicked out behind its own goal', () => {
+    const s: MatchState = structuredClone(base);
+    const k = keeperOf(s.players, 'home');
+    k.pos = { x: PITCH_W / 2, y: 5 };
+    s.ball = { ...k.pos };
+    s.possession = { team: 'home', playerId: k.id };
+    const r = resolveTurn(s, attack({ playerId: k.id, dir: { x: 0.2, y: -1 }, strength: 1 }), defense(), 4);
+    expect(r.events.some((e) => e.type === 'corner' && e.team === 'away')).toBe(true);
+    expect(r.events.some((e) => e.type === 'goal-kick')).toBe(false);
+    expect(r.state.setPiece).toBe('corner');
+    expect(r.state.possession.team).toBe('away');
+    expect(r.state.ball.y).toBe(0);
+    expect([0, PITCH_W]).toContain(r.state.ball.x);
+  });
+});

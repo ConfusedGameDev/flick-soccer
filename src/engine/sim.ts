@@ -467,8 +467,11 @@ export function resolveTurn(
             events.push({ t, type: 'goal', team: attackTeam });
             endChain({ kind: 'goal', team: attackTeam });
           } else if (onGoalLine) {
-            // Attacker put it over the goal line (wide or over the bar): goal kick for the defence.
-            endChain({ kind: 'goal-kick', team: defenseTeam });
+            // Over the goal line they attack (wide or over the bar): goal kick for the defence.
+            // Over their own goal line (a keeper clearing it behind himself): corner for the defence.
+            const ownLine = Math.abs(ball.y - targetGoalY(attackTeam)) > PITCH_L / 2;
+            if (ownLine) endChain({ kind: 'corner', team: defenseTeam, at: ball });
+            else endChain({ kind: 'goal-kick', team: defenseTeam });
           } else {
             endChain({ kind: 'throw-in', team: defenseTeam, at: ball });
           }

@@ -2212,3 +2212,39 @@ button:disabled {
     transform: scale(1);
   }
 }
+
+/* Corner view: the flag scene fills the screen, the pivot sits on the flag, the minimap at the bottom */
+.setpiece.corner .sp-pitch {
+  position: absolute;
+  inset: 0;
+}
+
+.setpiece.corner .sp-top,
+.setpiece.corner .sp-bottom {
+  background: rgba(10, 15, 12, 0.55);
+}
+
+.setpiece.corner .sp-bottom {
+  margin-top: auto;
+}
+
+.setpiece.corner .sp-arrow,
+.setpiece.corner .sp-post {
+  height: 24vh;
+}
+
+.setpiece.corner .sp-figure {
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35));
+}
+
+.setpiece.corner .sp-figure.kick {
+  transform: translateY(-4px) rotate(-4deg);
+}
+
+.sp-map {
+  height: clamp(64px, 16vh, 150px);
+  width: auto;
+  image-rendering: pixelated;
+  border: 3px solid #000;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}

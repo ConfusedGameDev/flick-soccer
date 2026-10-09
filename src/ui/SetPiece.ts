@@ -1,5 +1,6 @@
 import { statFactor } from '../engine/pool';
-import { OVER_BAR } from '../engine/pitch';
+import { GOAL_W, OVER_BAR, PITCH_L, PITCH_W } from '../engine/pitch';
+import type { MatchState, Team } from '../engine/types';
 import { hex, type Kit } from '../render/kits';
 import { lookFor, paintNumber, paintSprite, spriteCanvas } from '../render/sprites';
 
@@ -18,8 +19,10 @@ export interface SetPieceSpec {
   name: string;
   /** Shot stat for shots, pass stat for corners and throw-ins: sizes the timing block. */
   stat: number;
-  /** Where the goal shows on the backdrop. */
+  /** Where the goal is: ahead of the kicker (shots), to their left or right (corners), or out of view. */
   goal: 'ahead' | 'left' | 'right' | 'none';
+  /** The match as it stands, for the minimap (corners and throw-ins). */
+  map?: { state: MatchState; kits: Partial<Record<Team, Kit>> };
   /** One-line coaching shown under the title (first time only). */
   hint?: string;
   /** Shots: the kicker's shirt number, painted on his back. */
@@ -61,6 +64,26 @@ const MISS_RANGE = 0.25;
 const AIM_SWEEP_DEG = 40;
 const STAGE_PAUSE_MS = 250;
 const CLOSE_MS = 850;
+
+/** How the DOM arrow sits on screen: its rest angle, how far it swings (deg) and which way +x turns it. */
+interface ArrowFrame {
+  base: number;
+  sweep: number;
+  sign: 1 | -1;
+}
+
+// ---- Corner view geometry (in backdrop pixels; mirrored when the goal is on the kicker's left) ----
+/** The corner flag, with the goal line running left from it and the touchline climbing up-left. */
+const FLAG = { x: 160, y: 84 };
+/** Screen angle of the touchline above the goal line: the pitch's 90° corner drawn foreshortened. */
+const TOUCHLINE_DEG = 55;
+/** Pixels per metre along the goal line and along the touchline. */
+const ALONG_GOAL = 3;
+const ALONG_TOUCH = 2.2;
+/** The kicker's rest aim, 45° between the goal line and the touchline, as an angle from "up" on screen. */
+const CORNER_BASE_DEG = 90 - 45 * (TOUCHLINE_DEG / 90);
+/** The ±35° world sweep of a corner (LocalController.restartFrame), foreshortened like the touchline. */
+const CORNER_SWEEP_DEG = (35 * TOUCHLINE_DEG) / 90;
 
 type Stage = 'aim' | 'height' | 'timing' | 'done';
 
@@ -114,6 +137,7 @@ export class SetPiece {
           </div>
           <div class="sp-result" data-result></div>
           <div class="sp-tap">tap to lock</div>
+          ${spec.map ? '<canvas class="sp-map" data-map></canvas>' : ''}
         </div>`;
       this.overlay.appendChild(root);
 
@@ -122,6 +146,7 @@ export class SetPiece {
       const hintEl = q('[data-hint]');
       const figure = q('[data-figure]');
       const ball = q('[data-ball]');
+      const pivot = q('[data-pivot]');
       const arrow = q('[data-arrow]');
       const gauge = q('[data-gauge]');
       const varrow = q('[data-varrow]');
@@ -134,13 +159,39 @@ export class SetPiece {
       // Shots get the full ISS-style scene on the canvas (goal, keeper, kicker, aim);
       // corners and throw-ins keep the backdrop with the DOM figure and arrow.
       const scene = spec.kind === 'shot' ? new ShotScene(canvas, spec, q('.sp-top'), q('.sp-bottom')) : null;
-      if (!scene) {
+      let frame: ArrowFrame = { base: 0, sweep: AIM_SWEEP_DEG, sign: 1 };
+      const corner = spec.kind === 'corner';
+      if (corner) {
+        // The flag from above and behind: the goal line runs away along the bottom, the touchline
+        // climbs into the pitch. Mirrored when the goal is on the kicker's left.
+        const flagRight = spec.goal !== 'left';
+        paintCorner(canvas, flagRight);
+        const k = Math.max(2, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 250));
+        figure.appendChild(spriteCanvas('back', spec.kit, spec.keeper, k, lookFor(spec.name)));
+        const fx = ((flagRight ? FLAG.x : W - FLAG.x) / W) * 100;
+        const fy = (FLAG.y / H) * 100;
+        for (const el of [ball, pivot]) {
+          el.style.left = `${fx}%`;
+          el.style.top = `${fy}%`;
+          el.style.bottom = 'auto';
+          el.style.marginLeft = '0';
+        }
+        figure.style.left = `${fx + (flagRight ? 2.5 : -2.5)}%`;
+        figure.style.top = `${fy - 7}%`;
+        figure.style.bottom = 'auto';
+        figure.style.transform = flagRight ? 'translateX(0)' : 'translateX(-100%)';
+        // Rest angle points into the pitch toward the box. +x is the kicker's right: toward the goal
+        // line when the goal is on their right (flag drawn at the right), toward the touchline otherwise.
+        frame = { base: flagRight ? -CORNER_BASE_DEG : CORNER_BASE_DEG, sweep: CORNER_SWEEP_DEG, sign: -1 };
+      } else if (!scene) {
         paintBackdrop(canvas, spec.goal);
         const k = Math.max(3, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 110));
         figure.appendChild(spriteCanvas('back', spec.kit, spec.keeper, k, lookFor(spec.name)));
       }
+      if (spec.map) paintMap(q<HTMLCanvasElement>('[data-map]'), spec.map.state, spec.map.kits, spec.kit);
+      const angle = () => frame.base + frame.sign * x * frame.sweep;
       // The posts mark the goal on the sweep so "inside" is visible while aiming.
-      root.style.setProperty('--post-deg', `${GOAL_FRACTION * AIM_SWEEP_DEG}deg`);
+      root.style.setProperty('--post-deg', `${GOAL_FRACTION * frame.sweep}deg`);
       root.style.setProperty('--over', `${OVER_BAR * 100}%`);
 
       // The timing block never sits in the middle, so each attempt feels different.
@@ -180,7 +231,7 @@ export class SetPiece {
           const phase = (t % BAR_PERIOD_MS) / BAR_PERIOD_MS;
           c = phase < 0.5 ? phase * 2 : 2 - phase * 2;
         }
-        arrow.style.transform = `rotate(${x * AIM_SWEEP_DEG}deg)`;
+        arrow.style.transform = `rotate(${angle()}deg)`;
         varrow.style.bottom = `${h * 100}%`;
         varrow.classList.toggle('over', h > OVER_BAR);
         cursor.style.left = `${c * 100}%`;
@@ -192,6 +243,7 @@ export class SetPiece {
         paint(now);
         raf = requestAnimationFrame(loop);
       };
+      paint(stageStart);
       raf = requestAnimationFrame(loop);
 
       const cleanup = () => {
@@ -223,7 +275,10 @@ export class SetPiece {
           };
           requestAnimationFrame(fly);
         }
-        ball.style.transform = `translate(calc(-50% + ${x * 30}vw), calc(-50% - 36vh - ${(result.height ?? 0.2) * 14}vh)) scale(0.18)`;
+        // The DOM ball (corners, throw-ins) flies off along the arrow.
+        const rad = (angle() * Math.PI) / 180;
+        const reach = corner ? 24 : 36;
+        ball.style.transform = `translate(calc(-50% + ${(Math.sin(rad) * reach).toFixed(1)}vh), calc(-50% - ${(Math.cos(rad) * reach).toFixed(1)}vh)) scale(${corner ? 0.5 : 0.18})`;
         cleanup();
         setTimeout(() => {
           root.remove();
@@ -692,4 +747,191 @@ function paintBackdrop(canvas: HTMLCanvasElement, goal: SetPieceSpec['goal']): v
   ctx.fillRect(gx, gy, 2, gh);
   ctx.fillRect(gx + gw - 1, gy, 2, gh);
   ctx.fillRect(gx, gy, gw + 1, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Corner view: the flag from above and behind, and the minimap
+// ---------------------------------------------------------------------------
+
+const GRASS = '#35823f';
+const GRASS_LIGHT = '#3c8f47';
+const LINE = '#eef2e6';
+
+/**
+ * A corner: the flag at the right (or left, mirrored), the goal line running
+ * away from it along the bottom with the goal in view, the touchline climbing
+ * into the pitch, both boxes, and the track and terrace behind the lines.
+ */
+function paintCorner(canvas: HTMLCanvasElement, flagRight: boolean): void {
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  if (!flagRight) {
+    ctx.translate(W, 0);
+    ctx.scale(-1, 1);
+  }
+  const { x: fx, y: fy } = FLAG;
+  const rad = (TOUCHLINE_DEG * Math.PI) / 180;
+  const tdx = -Math.cos(rad);
+  const tdy = -Math.sin(rad);
+  /** The point `g` metres along the goal line (toward the goal) and `t` metres up the touchline direction. */
+  const at = (g: number, t: number) => ({ x: fx - g * ALONG_GOAL + t * ALONG_TOUCH * tdx, y: fy + t * ALONG_TOUCH * tdy });
+  const top = at(0, fy / -tdy / ALONG_TOUCH);
+
+  // Out of bounds beyond the goal line: a grass margin, the track, the terrace.
+  ctx.fillStyle = GRASS;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#c47a2b';
+  ctx.fillRect(0, fy + 7, W, H - fy - 7);
+  ctx.fillStyle = '#d99a4a';
+  ctx.fillRect(0, fy + 9, W, 1);
+  ctx.fillRect(0, fy + 15, W, 1);
+  ctx.fillStyle = '#2a2f4a';
+  ctx.fillRect(0, fy + 22, W, H - fy - 22);
+  for (let y = fy + 23; y < H; y += 2) {
+    for (let x = y % 4 === 1 ? 1 : 3; x < W; x += 4) {
+      ctx.fillStyle = ['#c9b6a0', '#8a6a5a', '#d8d2c2', '#5a6a8a'][(x * 7 + y * 13) % 4];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  // Beyond the touchline: darker grass, then the track along the edge.
+  ctx.fillStyle = '#2f7236';
+  ctx.beginPath();
+  ctx.moveTo(fx, fy);
+  ctx.lineTo(top.x, 0);
+  ctx.lineTo(W, 0);
+  ctx.lineTo(W, fy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#c47a2b';
+  ctx.fillRect(fx + 20, 0, W - fx - 20, fy + 7);
+
+  // Stripes parallel to the touchline, clipped to the pitch.
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(fx, fy);
+  ctx.lineTo(top.x, 0);
+  ctx.lineTo(0, 0);
+  ctx.lineTo(0, fy);
+  ctx.closePath();
+  ctx.clip();
+  const span = 14 / ALONG_GOAL;
+  for (let i = 1; i < 14; i += 2) {
+    const a = at(i * span, 0);
+    const b = at((i + 1) * span, 0);
+    const a2 = at(i * span, 60);
+    const b2 = at((i + 1) * span, 60);
+    ctx.fillStyle = GRASS_LIGHT;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(a2.x, a2.y);
+    ctx.lineTo(b2.x, b2.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Lines: goal line, touchline, corner arc, both boxes.
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  const line = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  };
+  line({ x: 0, y: fy }, { x: fx, y: fy });
+  line({ x: fx, y: fy }, { x: top.x, y: 0 });
+  ctx.beginPath();
+  ctx.arc(fx, fy, 8, Math.PI, Math.PI + rad);
+  ctx.stroke();
+  const nearPost = (PITCH_W - GOAL_W) / 2;
+  for (const [edge, depth] of [
+    [16.5, 16.5],
+    [5.5, 5.5],
+  ] as const) {
+    const g0 = nearPost - edge;
+    const g1 = nearPost + GOAL_W + edge;
+    line(at(g0, 0), at(g0, depth));
+    line(at(g0, depth), at(g1, depth));
+    line(at(g1, depth), at(g1, 0));
+  }
+
+  // The goal, seen along its line: posts on the goal line, the net behind it.
+  const p0 = at(nearPost, 0);
+  const p1 = at(nearPost + GOAL_W, 0);
+  ctx.fillStyle = 'rgba(240, 240, 240, 0.4)';
+  for (let x = Math.round(p1.x); x <= p0.x; x += 2) ctx.fillRect(x, fy, 1, 7);
+  for (let y = fy; y < fy + 7; y += 2) ctx.fillRect(p1.x, y, p0.x - p1.x, 1);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(Math.round(p1.x), fy - 2, 2, 9);
+  ctx.fillRect(Math.round(p0.x) - 1, fy - 2, 2, 9);
+  ctx.fillRect(Math.round(p1.x), fy - 2, p0.x - p1.x + 1, 2);
+
+  // The corner flag: a pole with a little pennant.
+  ctx.fillStyle = '#f4f1e6';
+  ctx.fillRect(fx - 1, fy - 12, 2, 12);
+  ctx.fillStyle = '#ffd447';
+  ctx.beginPath();
+  ctx.moveTo(fx + 1, fy - 12);
+  ctx.lineTo(fx + 8, fy - 9);
+  ctx.lineTo(fx + 1, fy - 6);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * The minimap: the whole pitch, landscape, with the kicker's side attacking to
+ * the right. Dots in jersey colours, the taker ringed, the ball white.
+ */
+function paintMap(canvas: HTMLCanvasElement, state: MatchState, kits: Partial<Record<Team, Kit>>, fallback: Kit): void {
+  const S = 2;
+  const M = 4;
+  canvas.width = PITCH_L * S + M * 2;
+  canvas.height = PITCH_W * S + M * 2;
+  const ctx = canvas.getContext('2d')!;
+  const team = state.possession.team;
+  const toMap = (p: { x: number; y: number }) => ({
+    x: M + (team === 'home' ? p.y : PITCH_L - p.y) * S,
+    y: M + (team === 'home' ? PITCH_W - p.x : p.x) * S,
+  });
+
+  ctx.fillStyle = '#2f7a3a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(240, 245, 230, 0.8)';
+  ctx.lineWidth = 1;
+  const rect = (x: number, y: number, w: number, h: number) => ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+  rect(M, M, PITCH_L * S, PITCH_W * S);
+  ctx.beginPath();
+  ctx.moveTo(M + (PITCH_L / 2) * S + 0.5, M);
+  ctx.lineTo(M + (PITCH_L / 2) * S + 0.5, M + PITCH_W * S);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(M + (PITCH_L / 2) * S, M + (PITCH_W / 2) * S, 9.15 * S, 0, Math.PI * 2);
+  ctx.stroke();
+  for (const dir of [1, -1] as const) {
+    const x0 = dir > 0 ? M : M + PITCH_L * S;
+    const box = (depth: number, half: number) => rect(dir > 0 ? x0 : x0 - depth * S, M + (PITCH_W / 2 - half) * S, depth * S, half * 2 * S);
+    box(16.5, 20.16);
+    box(5.5, 9.16);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(dir > 0 ? x0 - 2 : x0, M + (PITCH_W / 2 - GOAL_W / 2) * S, 2, GOAL_W * S);
+  }
+
+  for (const p of state.players) {
+    const kit = kits[p.team] ?? fallback;
+    const { x, y } = toMap(p.pos);
+    if (p.id === state.possession.playerId) {
+      ctx.fillStyle = '#ffd447';
+      ctx.fillRect(x - 3, y - 3, 7, 7);
+    }
+    ctx.fillStyle = '#141420';
+    ctx.fillRect(x - 2, y - 2, 5, 5);
+    ctx.fillStyle = hex(p.keeper ? kit.keeper.jersey : kit.jersey);
+    ctx.fillRect(x - 1, y - 1, 3, 3);
+  }
+  const b = toMap(state.ball);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(b.x - 1, b.y - 1, 3, 3);
 }

@@ -56,8 +56,8 @@ All three modes run on one shared match engine. The only difference between them
 | Event | Restart |
 |---|---|
 | Ball crosses the sideline | Throw-in to the other team |
-| Attacker puts it over the goal line | Goal kick: ball goes to the defending goalkeeper |
-| Defender puts it over the goal line, or a save deflects it out | Corner to the attacker |
+| Attacker puts it over the goal line they attack | Goal kick: ball goes to the defending goalkeeper |
+| A side puts it over its own goal line (e.g. the keeper clears it behind himself), or a save deflects it out | Corner to the other side |
 | Goal | The team that conceded restarts from its goalkeeper |
 
 There are no offside or fouls in the PoC.
