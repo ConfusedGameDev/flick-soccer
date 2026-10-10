@@ -51,6 +51,16 @@ export const SAVE_CHANCE = 0.65;
 /** After a save, chance the keeper holds on; otherwise the ball goes out for a corner. */
 export const HOLD_CHANCE = 0.5;
 
+// ---- The keeper game: the defence spends both flicks on the keeper's positioning and reflexes ----
+/** Defense flicks the keeper game costs. */
+export const KEEPER_GAME_COST = 2;
+/** Turns the side must wait after using the keeper game before it is offered again. */
+export const KEEPER_GAME_COOLDOWN = 1;
+/** The keeper's reach against shots grows by this share times the game's accuracy. */
+export const KEEPER_GAME_REACH = 0.75;
+/** The keeper's save chance rises by this much times the game's accuracy. */
+export const KEEPER_GAME_SAVE = 0.25;
+
 // ---- Set pieces: the timing game's accuracy scatters the ball ----
 /** Angular error (radians) of an aimed flick at accuracy 0; it shrinks linearly to 0 at accuracy 1. */
 export const AIM_SCATTER = 0.35;

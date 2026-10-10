@@ -89,6 +89,22 @@ describe('cpu defense', () => {
   });
 });
 
+describe('cpu keeper game', () => {
+  it('plays it against a striker in front of goal, at its skill, and never while resting', () => {
+    const s = shootingState();
+    const played = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => planDefense(s, 'away', 'normal', seed)).filter((d) => d.keeperGame);
+    expect(played.length).toBeGreaterThan(0);
+    for (const d of played) {
+      expect(d.flicks).toHaveLength(0);
+      expect(d.keeperGame!.accuracy).toBeGreaterThanOrEqual(0.6);
+      expect(d.keeperGame!.accuracy).toBeLessThanOrEqual(1);
+    }
+    const resting: MatchState = structuredClone(s);
+    resting.meta.away.keeperCooldown = 1;
+    for (let seed = 1; seed <= 8; seed++) expect(planDefense(resting, 'away', 'normal', seed).keeperGame).toBeUndefined();
+  });
+});
+
 describe('cpu timing game', () => {
   it('marks its shots and plays the timing game on them', () => {
     const s = shootingState();

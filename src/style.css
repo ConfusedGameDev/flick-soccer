@@ -81,6 +81,18 @@ body {
   align-items: flex-end;
 }
 
+/* The bars are see-through for the flick gesture: only their buttons take presses, so a
+   keeper standing under the bottom bar (or the top one in hot-seat) can still be grabbed.
+   (`#overlay` in the selector outranks the `#overlay > *` rule above.) */
+#overlay .bar,
+#overlay .bar > * {
+  pointer-events: none;
+}
+
+#overlay .bar button {
+  pointer-events: auto;
+}
+
 .actions {
   display: flex;
   gap: 8px;
@@ -2353,6 +2365,11 @@ button:disabled {
 /* Only a shot aims at a goal mouth. */
 .setpiece.corner .sp-post,
 .setpiece.throw-in .sp-post {
+  display: none;
+}
+
+/* The keeper game: no ball at his feet; the posts on the sweep are his own goal. */
+.setpiece.keeper .sp-ball {
   display: none;
 }
 

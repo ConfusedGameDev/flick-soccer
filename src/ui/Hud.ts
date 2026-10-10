@@ -1,6 +1,6 @@
 import { BOOSTER_INFO, MAX_BOOSTERS } from '../engine/boosters';
 import type { Booster, MatchState, PlayerStats, Team } from '../engine/types';
-import { TURNS_PER_HALF } from '../engine/pitch';
+import { KEEPER_GAME_COST, TURNS_PER_HALF } from '../engine/pitch';
 import { hex, type Kit } from '../render/kits';
 
 const STAT_LABELS: [keyof PlayerStats, string][] = [
@@ -18,6 +18,11 @@ export interface ExtrasSpec {
   armed: Booster | null;
   /** The Shoot button (attack only): shown when set, enabled when the carrier is in range of goal. */
   shoot?: { enabled: boolean } | null;
+  /**
+   * The keeper game button (defense only): `can` enables it, `played` once this turn's game
+   * is done, `cooldown` the turns it still rests.
+   */
+  keeper?: { can: boolean; played: boolean; cooldown: number } | null;
 }
 
 /** DOM overlay: scoreboard, status text, planning buttons, the pass-the-device cover and toasts. */
@@ -44,6 +49,7 @@ export class Hud {
   onConfirm: () => void = () => {};
   onPack: () => void = () => {};
   onShoot: () => void = () => {};
+  onKeeper: () => void = () => {};
   onBooster: (b: Booster) => void = () => {};
   onMute: () => void = () => {};
 
@@ -182,6 +188,22 @@ export class Hud {
       shoot.disabled = !spec.shoot.enabled;
       shoot.addEventListener('click', () => this.onShoot());
       this.extras.appendChild(shoot);
+    }
+    if (spec.keeper) {
+      const k = spec.keeper;
+      const btn = document.createElement('button');
+      btn.className = 'keeper';
+      btn.textContent = k.played ? '🧤 Keeper set' : k.cooldown > 0 ? '🧤 Keeper resting' : `🧤 Set keeper (−${KEEPER_GAME_COST} flicks)`;
+      btn.title = k.played
+        ? 'The keeper is set for this turn'
+        : k.cooldown > 0
+          ? 'The keeper game rests for a turn after it is used'
+          : k.can
+            ? `Spend both flicks on the keeper's positioning and reflex game: a much better chance to stop a shot this turn; it then rests for a turn`
+            : `Needs ${KEEPER_GAME_COST} free flicks: undo a move first`;
+      btn.disabled = !k.can;
+      btn.addEventListener('click', () => this.onKeeper());
+      this.extras.appendChild(btn);
     }
     const pack = document.createElement('button');
     pack.textContent = spec.pack.opened ? '🃏 Opened' : spec.pack.full ? '🃏 Hand full' : '🃏 Open pack (−1 flick)';

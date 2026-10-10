@@ -1,6 +1,6 @@
 import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, MAX_BOOSTERS, drawBooster } from '../engine/boosters';
-import { GOAL_W, PITCH_W, PLAN_SECONDS, SHOT_RANGE, attackDir, inAttackingThird, other, targetGoalY } from '../engine/pitch';
+import { GOAL_W, KEEPER_GAME_COST, PITCH_W, PLAN_SECONDS, SHOT_RANGE, attackDir, inAttackingThird, other, targetGoalY } from '../engine/pitch';
 import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
 import { packSeed } from '../engine/seeds';
@@ -43,6 +43,7 @@ const HINTS: Record<SetPieceSpec['kind'], string> = {
   shot: 'Tap to lock the arrow across the goal, then the height, then tap on the block.',
   corner: 'Tap to lock the arrow, then tap when the cursor is on the block.',
   'throw-in': 'Tap to lock the arrow, then tap when the cursor is on the block.',
+  keeper: 'Tap to set the keeper in the middle of his goal, then tap when the cursor is on the block.',
 };
 
 export type Role = 'attack' | 'defense';
@@ -95,6 +96,8 @@ interface Session {
   booster: Booster | null;
   /** Flicks a mini-game produced (a shot, a corner, a throw-in): Undo never takes them back. */
   final: Set<Flick>;
+  /** Defense: the keeper game's accuracy once played this turn (it costs KEEPER_GAME_COST flicks, and is final too). */
+  keeperGame: number | null;
   /** The set-piece scene is up and its flick is not in the draft yet. */
   pendingRestart: boolean;
   deadline: number;
@@ -166,6 +169,7 @@ export class LocalController implements PlanController {
         pack: null,
         booster: null,
         final: new Set(),
+        keeperGame: null,
         pendingRestart: false,
         deadline: this.timed ? performance.now() + PLAN_SECONDS * 1000 : Infinity,
         resolve,
@@ -175,6 +179,7 @@ export class LocalController implements PlanController {
       hud.onConfirm = () => this.confirm();
       hud.onPack = () => void this.openPack();
       hud.onShoot = () => void this.shoot();
+      hud.onKeeper = () => void this.keeperGame();
       hud.onBooster = (b) => this.toggleBooster(b);
       if (this.gesture) this.gesture.enabled = true;
       this.timer = setInterval(() => this.tick(), 250);
@@ -230,6 +235,40 @@ export class LocalController implements PlanController {
     this.refresh();
   }
 
+  /** The keeper game is on offer: defending, not played yet, rested, and both flicks still free. */
+  private canKeeperGame(): boolean {
+    const s = this.session;
+    if (!s || s.role !== 'defense' || s.keeperGame !== null || this.busy) return false;
+    if ((s.state.meta[s.team].keeperCooldown ?? 0) > 0) return false;
+    return this.max - s.draft.length >= KEEPER_GAME_COST;
+  }
+
+  /** Set the keeper: both flicks go on his positioning and reflex game; the result rides the plan to the engine. */
+  private async keeperGame(): Promise<void> {
+    const s = this.session;
+    if (!s || !this.canKeeperGame()) return;
+    const keeper = keeperOf(s.state.players, s.team);
+    this.busy = true;
+    if (this.gesture) this.gesture.enabled = false;
+    const res = await this.deps.setPiece.run({
+      kind: 'keeper',
+      kit: this.deps.pieces.currentKits[s.team],
+      keeper: true,
+      name: keeper.name,
+      stat: keeper.stats.keeping,
+      goal: 'none',
+      hint: this.hint('keeper'),
+      number: keeper.number,
+    });
+    this.busy = false;
+    if (this.session !== s) return; // timed out while the scene was up: the game is simply not played
+    if (this.gesture) this.gesture.enabled = true;
+    // Played once: like a shot, it cannot be undone and retaken.
+    if (res) s.keeperGame = res.accuracy;
+    this.rebuild();
+    this.refresh();
+  }
+
   /** A corner or throw-in: the scene produces the first flick, which then stays final in the draft. */
   private async takeSetPiece(): Promise<void> {
     const s = this.session;
@@ -274,11 +313,11 @@ export class LocalController implements PlanController {
     return HINTS[kind];
   }
 
-  /** Flicks allowed this turn: base, minus one for an opened pack, plus one for the booster. */
+  /** Flicks allowed this turn: base, minus one for an opened pack, plus one for the booster, minus the keeper game. */
   private get max(): number {
     const s = this.session;
     if (!s) return 0;
-    return maxFlicksFor(s.state.meta[s.team], s.role) - (s.pack ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0);
+    return maxFlicksFor(s.state.meta[s.team], s.role) - (s.pack ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0) - (s.keeperGame !== null ? KEEPER_GAME_COST : 0);
   }
 
   /** Boosters available this turn: held ones plus the fresh card from this turn's pack. */
@@ -397,6 +436,11 @@ export class LocalController implements PlanController {
       this.deps.hud.toast('The shot is taken');
       return;
     }
+    // Nor may the keeper game lose the flicks it already spent.
+    if (s.keeperGame !== null && after < KEEPER_GAME_COST) {
+      this.deps.hud.toast('The keeper is set');
+      return;
+    }
     s.booster = next;
     while (s.draft.length > this.max) s.draft.pop();
     this.rebuild();
@@ -425,6 +469,7 @@ export class LocalController implements PlanController {
     const plan: Plan = { team: s.team, flicks: s.draft };
     if (s.pack) plan.pack = s.pack;
     if (s.booster) plan.booster = s.booster;
+    if (s.keeperGame !== null) plan.keeperGame = { accuracy: s.keeperGame };
     s.resolve(plan);
     this.onDraft?.(null);
   }
@@ -471,7 +516,8 @@ export class LocalController implements PlanController {
     const flicks = `${left} flick${left === 1 ? '' : 's'} left`;
     let sub: string;
     const canShoot = this.canShoot();
-    if (left === 0) sub = 'Confirm when ready';
+    if (s.keeperGame !== null && left === 0) sub = 'The keeper is set: confirm when ready';
+    else if (left === 0) sub = 'Confirm when ready';
     else if (s.role === 'attack') {
       sub =
         s.projected.possession.playerId < 0
@@ -479,7 +525,7 @@ export class LocalController implements PlanController {
           : canShoot
             ? 'Tap Shoot, or pull back from the carrier to pass or from a teammate to run'
             : 'Pull back from the carrier to pass, or from a teammate to run';
-    } else sub = 'Pull back from a defender to tackle, or from the keeper to dive';
+    } else sub = this.canKeeperGame() ? 'Pull back from a defender to tackle or from the keeper to dive, or set the keeper' : 'Pull back from a defender to tackle, or from the keeper to dive';
     hud.setStatus(`${teamName(s.team)} ${s.role === 'attack' ? 'attacks' : 'defends'} · ${flicks}`, sub);
     hud.setPlanning({ canUndo: this.canUndo(), canConfirm: true });
 
@@ -488,6 +534,7 @@ export class LocalController implements PlanController {
       boosters: this.available().map((b) => ({ ...b, usable: BOOSTER_INFO[b.booster].roles.includes(s.role) })),
       armed: s.booster,
       shoot: s.role === 'attack' ? { enabled: canShoot } : null,
+      keeper: s.role === 'defense' ? { can: this.canKeeperGame(), played: s.keeperGame !== null, cooldown: s.state.meta[s.team].keeperCooldown ?? 0 } : null,
     });
 
     preview.draw(s.ghosts, null);

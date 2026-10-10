@@ -9,15 +9,19 @@ import { lookFor, paintNumber, paintSprite, spriteCanvas, spriteSize } from '../
 // taps to lock a swinging arrow for the aim, a rising arrow for the height
 // (shots only) and finally the cursor of a timing bar on a small block. The
 // scene is theater: the only thing that reaches the engine is the result.
+//
+// The keeper game (`kind: 'keeper'`) is the same scene from behind the keeper:
+// the arrow is where he sets himself (centred is best), then the timing bar
+// is his reflex; the two average into the accuracy the engine reads.
 
-export type SetPieceKind = 'shot' | 'corner' | 'throw-in';
+export type SetPieceKind = 'shot' | 'corner' | 'throw-in' | 'keeper';
 
 export interface SetPieceSpec {
   kind: SetPieceKind;
   kit: Kit;
   keeper: boolean;
   name: string;
-  /** Shot stat for shots, pass stat for corners and throw-ins: sizes the timing block. */
+  /** Shot stat for shots, pass stat for corners and throw-ins, keeping for the keeper game: sizes the timing block. */
   stat: number;
   /** Where the goal is: ahead of the kicker (shots), to their left or right (corners), or out of view. */
   goal: 'ahead' | 'left' | 'right' | 'none';
@@ -49,10 +53,16 @@ export interface SetPieceResult {
 export interface SetPieceSounds {
   tick: () => void;
   kick: () => void;
+  /** The keeper game's finish (falls back to `kick`). */
+  catch?: () => void;
 }
 
 /** Where the posts sit on the ±1 aim sweep; aiming beyond them is wide. */
 export const GOAL_FRACTION = 0.77;
+/** The keeper game: how far off centre (on the ±1 sweep) his positioning score falls to 0. */
+export const KEEPER_POS_RANGE = 0.5;
+/** The keeper game's positioning score for a locked sweep value: 1 dead centre, 0 at KEEPER_POS_RANGE. */
+export const keeperPosition = (x: number): number => Math.max(0, 1 - Math.abs(x) / KEEPER_POS_RANGE);
 
 const AIM_PERIOD_MS = 1600;
 const HEIGHT_PERIOD_MS = 1200;
@@ -87,8 +97,9 @@ const CORNER_SWEEP_DEG = (35 * TOUCHLINE_DEG) / 90;
 
 type Stage = 'aim' | 'height' | 'timing' | 'done';
 
-const TITLES: Record<SetPieceKind, string> = { shot: 'SHOT', corner: 'CORNER', 'throw-in': 'THROW-IN' };
+const TITLES: Record<SetPieceKind, string> = { shot: 'SHOT', corner: 'CORNER', 'throw-in': 'THROW-IN', keeper: 'KEEPER' };
 const STAGE_LABELS: Record<Exclude<Stage, 'done'>, string> = { aim: 'AIM', height: 'HEIGHT', timing: 'TIMING' };
+const KEEPER_STAGE_LABELS: Record<Exclude<Stage, 'done'>, string> = { aim: 'POSITION', height: 'HEIGHT', timing: 'REFLEX' };
 
 export class SetPiece {
   private abort: (() => void) | null = null;
@@ -154,6 +165,8 @@ export class SetPiece {
       const block = q('[data-block]');
       const cursor = q('[data-cursor]');
       const resultEl = q('[data-result]');
+      const keeper = spec.kind === 'keeper';
+      const labels = keeper ? KEEPER_STAGE_LABELS : STAGE_LABELS;
 
       const canvas = q<HTMLCanvasElement>('[data-canvas]');
       // Shots get the full ISS-style scene on the canvas (goal, keeper, kicker, aim);
@@ -216,7 +229,7 @@ export class SetPiece {
         stageStart = performance.now();
         locked = false;
         if (next === 'done') return;
-        stageEl.textContent = STAGE_LABELS[next];
+        stageEl.textContent = labels[next];
         gauge.classList.toggle('hidden', next !== 'height');
         bar.classList.toggle('hidden', next !== 'timing');
         arrow.classList.toggle('dim', next !== 'aim');
@@ -257,12 +270,15 @@ export class SetPiece {
       const finish = () => {
         setStage('done');
         const d = Math.abs(c - centre) - width / 2;
-        result.accuracy = d <= 0 ? 1 : Math.max(0, 1 - d / MISS_RANGE);
+        const timing = d <= 0 ? 1 : Math.max(0, 1 - d / MISS_RANGE);
+        // The keeper game averages his positioning with the reflex.
+        result.accuracy = keeper ? (keeperPosition(result.x) + timing) / 2 : timing;
         const pct = Math.round(result.accuracy * 100);
         resultEl.textContent = result.accuracy >= 0.95 ? `PERFECT! ${pct}%` : result.accuracy >= 0.6 ? `GOOD ${pct}%` : `POOR ${pct}%`;
         resultEl.className = `sp-result ${result.accuracy >= 0.95 ? 'perfect' : result.accuracy >= 0.6 ? 'good' : 'poor'}`;
         hintEl.textContent = '';
-        this.sounds?.kick();
+        if (keeper) (this.sounds?.catch ?? this.sounds?.kick)?.();
+        else this.sounds?.kick();
         // The kicker follows through and the ball flies off toward the horizon.
         figure.classList.add('kick');
         root.classList.add('flying');

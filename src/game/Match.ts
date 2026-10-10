@@ -620,6 +620,9 @@ export class Match {
       case 'booster':
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);
         break;
+      case 'keeper-game':
+        hud.toast(`${teamName(e.team)}: the keeper is set!`);
+        break;
       case 'invalid-flick':
         hud.toast(`Ignored: ${e.reason}`);
         break;

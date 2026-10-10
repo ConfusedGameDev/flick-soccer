@@ -7,6 +7,20 @@ const PAD_TOP = 84;
 const PAD_BOTTOM = 92;
 /** Margin on a dedicated pitch screen: room for the stands band (up to 40 px) plus a gap. */
 const PAD_SCREEN = 48;
+/**
+ * Free screen space kept beyond each goal line, in metres at the chosen scale, so a
+ * keeper near his line can still pull back far enough for a decent pass or dive.
+ */
+export const PULL_ROOM_M = 12;
+
+/**
+ * Pixels per metre for the available area: the pitch fits the width and the height, and the
+ * scale is capped so that the end padding plus the centring slack leaves PULL_ROOM_M behind
+ * each goal line. `padEnd` is the smaller of the two end paddings.
+ */
+export function fitScale(availW: number, availH: number, padEnd: number): number {
+  return Math.max(0.5, Math.min(availW / PITCH_W, availH / PITCH_L, (availH + 2 * padEnd) / (PITCH_L + 2 * PULL_ROOM_M)));
+}
 
 /**
  * Draws the pitch and owns the world (meters, +y up) to screen (pixels, +y down)
@@ -50,7 +64,7 @@ export class PitchView {
       availW = width - left - right - PAD_X * 2;
       availH = height - top - bottom - PAD_TOP - PAD_BOTTOM;
     }
-    const s = Math.max(0.5, Math.min(availW / PITCH_W, availH / PITCH_L));
+    const s = fitScale(availW, availH, this.screen ? PAD_SCREEN : Math.min(PAD_TOP, PAD_BOTTOM));
     this.scale = s;
     this.ox = x0 + (availW - PITCH_W * s) / 2;
     this.oy = y0 + (availH - PITCH_L * s) / 2;

@@ -25,6 +25,10 @@ import {
   PLACEMENT_SAVE_SHIFT,
   HOLD_CHANCE,
   INTERCEPT_CHANCE,
+  KEEPER_GAME_COOLDOWN,
+  KEEPER_GAME_COST,
+  KEEPER_GAME_REACH,
+  KEEPER_GAME_SAVE,
   KEEPER_REACH,
   MAX_TURN_SECONDS,
   OVER_BAR,
@@ -255,6 +259,12 @@ export function resolveTurn(
     home: { ...state.meta.home, boosters: [...state.meta.home.boosters] },
     away: { ...state.meta.away, boosters: [...state.meta.away.boosters] },
   };
+  // The keeper game's rest: one turn less to wait for both sides; the key goes once it is ready.
+  for (const team of ['home', 'away'] as const) {
+    const left = Math.max(0, (state.meta[team].keeperCooldown ?? 0) - 1);
+    if (left > 0) meta[team].keeperCooldown = left;
+    else delete meta[team].keeperCooldown;
+  }
   const mods: Record<Team, TurnMods> = { home: { booster: null }, away: { booster: null } };
   // Tactics cards (catenaccio) set the base; packs and boosters adjust from there.
   const maxFlicks = { attack: maxFlicksFor(state.meta[attackTeam], 'attack'), defense: maxFlicksFor(state.meta[defenseTeam], 'defense') };
@@ -291,6 +301,24 @@ export function resolveTurn(
   const rangeMul = (p: PlayerState, kind: 'slide' | 'run' | 'dive') =>
     (kind !== 'run' && mods[p.team].booster === 'longer-slide' ? 1.5 : 1) * moveRange(p, kind);
   const superKeeper = mods[defenseTeam].booster === 'super-keeper';
+  // The keeper game: after packs and boosters, so an extra flick counts toward its cost, as in
+  // the planning UI. Legal only for the defence, when rested and with the flicks to spend.
+  let keeperGame = 0;
+  if (attackPlan.team === attackTeam && attackPlan.keeperGame) {
+    events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'keeper game on attack' });
+  }
+  if (defensePlan.team === defenseTeam && defensePlan.keeperGame) {
+    if ((state.meta[defenseTeam].keeperCooldown ?? 0) > 0) {
+      events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'keeper resting' });
+    } else if (maxFlicks.defense < KEEPER_GAME_COST) {
+      events.push({ t, type: 'invalid-flick', playerId: -1, reason: `keeper needs ${KEEPER_GAME_COST} flicks` });
+    } else {
+      maxFlicks.defense -= KEEPER_GAME_COST;
+      keeperGame = clamp01(defensePlan.keeperGame.accuracy);
+      meta[defenseTeam].keeperCooldown = KEEPER_GAME_COOLDOWN;
+      events.push({ t, type: 'keeper-game', team: defenseTeam, accuracy: keeperGame });
+    }
+  }
   let unstoppableLeft = mods[attackTeam].booster === 'unstoppable-pass';
 
   const attackFlicks = attackPlan.team === attackTeam ? attackPlan.flicks.slice(0, maxFlicks.attack) : [];
@@ -431,7 +459,9 @@ export function resolveTurn(
         if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
         // A shot sailing over the bar is out of the keeper's hands (blockers still get their roll).
         if (p.keeper && seg.over) continue;
-        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * statFactor(p.stats.keeping) * keeperReachMul(state.meta[defenseTeam]) : TACKLE_REACH;
+        // The keeper game (shots only) stretches his reach; boosters, stats and tactics as before.
+        const set = p.keeper && seg.shot ? 1 + KEEPER_GAME_REACH * keeperGame : 1;
+        const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * set * statFactor(p.stats.keeping) * keeperReachMul(state.meta[defenseTeam]) : TACKLE_REACH;
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
         let chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
@@ -445,6 +475,7 @@ export function resolveTurn(
         // Placement: a shot past the keeper is harder to stop than one straight at him.
         if (p.keeper && seg.shot) chance -= PLACEMENT_SAVE_SHIFT * clamp01(pointToSegment(p.pos, ball, seg.to) / reach);
         if (p.keeper && superKeeper) chance += 0.25;
+        if (p.keeper && seg.shot) chance += KEEPER_GAME_SAVE * keeperGame;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {
           events.push({ t, type: 'save', playerId: p.id });
