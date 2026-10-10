@@ -1,18 +1,18 @@
 import { planAttack, planDefense, type Difficulty } from '../engine/cpu';
-import { BOOSTER_INFO, MAX_DICE_BONUS, rollDice } from '../engine/dice';
+import { BOOSTER_INFO, MAX_BOOSTERS, drawBooster } from '../engine/boosters';
 import { GOAL_W, PITCH_W, PLAN_SECONDS, SHOT_RANGE, attackDir, inAttackingThird, other, targetGoalY } from '../engine/pitch';
 import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
-import { rollSeed } from '../engine/seeds';
+import { packSeed } from '../engine/seeds';
 import { keeperOf } from '../engine/setup';
 import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength, spotTaken } from '../engine/sim';
-import type { Booster, DiceRoll, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
+import type { Booster, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
 import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
 import type { Kit } from '../render/kits';
 import type { PiecesView } from '../render/PiecesView';
 import type { DragPreview, GhostFlick, PlanPreview } from '../render/PlanPreview';
-import { DiceView } from '../ui/DiceView';
+import type { PackView } from '../ui/PackView';
 import type { Hud } from '../ui/Hud';
 import { GOAL_FRACTION, type SetPiece, type SetPieceSpec } from '../ui/SetPiece';
 
@@ -90,10 +90,11 @@ interface Session {
   moving: Set<number>;
   /** Where those movement flicks end; another move may not end there. */
   reserved: Vec2[];
-  dice: DiceRoll | null;
+  /** The booster drawn from this turn's pack, once opened. */
+  pack: Booster | null;
   booster: Booster | null;
-  /** Leading flicks Undo may not take back (the restart flick of a set-piece turn). */
-  locked: number;
+  /** Flicks a mini-game produced (a shot, a corner, a throw-in): Undo never takes them back. */
+  final: Set<Flick>;
   /** The set-piece scene is up and its flick is not in the draft yet. */
   pendingRestart: boolean;
   deadline: number;
@@ -117,7 +118,7 @@ export interface LocalDeps {
   hud: Hud;
   preview: PlanPreview;
   pieces: PiecesView;
-  dice: DiceView;
+  pack: PackView;
   setPiece: SetPiece;
 }
 
@@ -128,7 +129,7 @@ export class LocalController implements PlanController {
   private gesture: FlickGesture | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
-  /** The match seed; trade rolls derive from it and the clock, exactly as the server would roll. */
+  /** The match seed; packs derive from it and the clock, exactly as the server draws them. */
   private seed = 0;
   /** Called after every change to the draft during planning, and with null on confirm (tutorial). */
   onDraft: ((info: DraftInfo | null) => void) | null = null;
@@ -162,9 +163,9 @@ export class LocalController implements PlanController {
         projected: state,
         moving: new Set(),
         reserved: [],
-        dice: null,
+        pack: null,
         booster: null,
-        locked: 0,
+        final: new Set(),
         pendingRestart: false,
         deadline: this.timed ? performance.now() + PLAN_SECONDS * 1000 : Infinity,
         resolve,
@@ -172,7 +173,7 @@ export class LocalController implements PlanController {
       const { hud } = this.deps;
       hud.onUndo = () => this.undo();
       hud.onConfirm = () => this.confirm();
-      hud.onRoll = () => void this.roll();
+      hud.onPack = () => void this.openPack();
       hud.onShoot = () => void this.shoot();
       hud.onBooster = (b) => this.toggleBooster(b);
       if (this.gesture) this.gesture.enabled = true;
@@ -220,13 +221,16 @@ export class LocalController implements PlanController {
     if (res) {
       // The sweep maps onto the goal mouth: ±GOAL_FRACTION are the posts, beyond is wide.
       const target = { x: PITCH_W / 2 + (res.x * attackDir(s.team) * (GOAL_W / 2)) / GOAL_FRACTION, y: targetGoalY(s.team) };
-      s.draft.push({ playerId: kicker.id, dir: normalize(sub(target, from)), strength: 1, shot: true, aim: { accuracy: res.accuracy, height: res.height ?? 0.5 } });
+      const shot: Flick = { playerId: kicker.id, dir: normalize(sub(target, from)), strength: 1, shot: true, aim: { accuracy: res.accuracy, height: res.height ?? 0.5 } };
+      // The timing game is played once: the shot cannot be undone and retaken.
+      s.draft.push(shot);
+      s.final.add(shot);
     }
     this.rebuild();
     this.refresh();
   }
 
-  /** A corner or throw-in: the scene produces the first flick, which then stays locked in the draft. */
+  /** A corner or throw-in: the scene produces the first flick, which then stays final in the draft. */
   private async takeSetPiece(): Promise<void> {
     const s = this.session;
     if (!s || !s.state.setPiece) return;
@@ -251,14 +255,15 @@ export class LocalController implements PlanController {
     if (this.gesture) this.gesture.enabled = true;
     s.pendingRestart = false;
     s.draft.unshift(this.restartFlick(s, res ? sweep(d, res.x, rad) : d, res?.accuracy ?? 0));
-    s.locked = 1;
     this.rebuild();
     this.refresh();
   }
 
   private restartFlick(s: Session, dir: Vec2, accuracy: number): Flick {
     const taker = s.state.players[s.state.possession.playerId];
-    return { playerId: taker.id, dir, strength: setPieceStrength(s.state.setPiece!, taker), aim: { accuracy } };
+    const flick: Flick = { playerId: taker.id, dir, strength: setPieceStrength(s.state.setPiece!, taker), aim: { accuracy } };
+    s.final.add(flick);
+    return flick;
   }
 
   private readonly hinted = new Set<SetPieceSpec['kind']>();
@@ -269,19 +274,25 @@ export class LocalController implements PlanController {
     return HINTS[kind];
   }
 
-  /** Flicks allowed this turn: base, minus one for a traded roll, plus one for the booster. */
+  /** Flicks allowed this turn: base, minus one for an opened pack, plus one for the booster. */
   private get max(): number {
     const s = this.session;
     if (!s) return 0;
-    return maxFlicksFor(s.state.meta[s.team], s.role) - (s.dice ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0);
+    return maxFlicksFor(s.state.meta[s.team], s.role) - (s.pack ? 1 : 0) + (s.booster === 'extra-flick' ? 1 : 0);
   }
 
-  /** Boosters available this turn: held ones plus a fresh pack from this turn's roll. */
+  /** Boosters available this turn: held ones plus the fresh card from this turn's pack. */
   private available(): { booster: Booster; fresh: boolean }[] {
     const s = this.session!;
     const list = s.state.meta[s.team].boosters.map((b) => ({ booster: b, fresh: false }));
-    if (s.dice?.booster) list.push({ booster: s.dice.booster, fresh: true });
+    if (s.pack) list.push({ booster: s.pack, fresh: true });
     return list;
+  }
+
+  /** The pack button is live: not opened yet, room in the hand, a flick to trade. */
+  private canOpenPack(): boolean {
+    const s = this.session;
+    return !!s && !s.pack && !this.busy && s.state.meta[s.team].boosters.length < MAX_BOOSTERS && s.draft.length < this.max;
   }
 
   private positions(): Vec2[] {
@@ -344,30 +355,34 @@ export class LocalController implements PlanController {
     this.refresh();
   }
 
-  private undo(): void {
+  /** Undo takes back the last flick, unless a mini-game produced it. */
+  private canUndo(): boolean {
     const s = this.session;
-    if (!s || s.draft.length <= s.locked) return;
-    s.draft.pop();
+    return !!s && s.draft.length > 0 && !s.final.has(s.draft[s.draft.length - 1]);
+  }
+
+  private undo(): void {
+    if (!this.canUndo()) return;
+    this.session!.draft.pop();
     this.rebuild();
     this.refresh();
   }
 
-  /** Trade a flick for 2d6. The result comes from the shared seed; the flick animation is theater. */
-  private async roll(): Promise<void> {
+  /** Trade a flick for a booster pack. The card comes from the shared seed; the pick is theater. */
+  private async openPack(): Promise<void> {
     const s = this.session;
-    if (!s || s.dice || this.busy || s.state.meta[s.team].blocked > 0 || s.draft.length >= this.max) return;
+    if (!s || !this.canOpenPack()) return;
     this.busy = true;
-    const roll = rollDice(mulberry32(rollSeed(this.seed, s.state, s.team)));
-    await this.deps.dice.show({
-      title: `${teamName(s.team)}: trade a flick for a roll`,
-      rounds: roll.pairs,
-      caption: DiceView.caption(roll),
-      flick: true,
+    const booster = drawBooster(mulberry32(packSeed(this.seed, s.state, s.team)));
+    await this.deps.pack.show({
+      title: `${teamName(s.team)}: trade a flick for a card`,
+      booster,
+      pick: true,
       kit: this.deps.pieces.currentKits[s.team],
     });
     this.busy = false;
-    if (this.session !== s) return; // timed out while the dice were up
-    s.dice = roll;
+    if (this.session !== s) return; // timed out while the pack was open
+    s.pack = booster;
     this.rebuild();
     this.refresh();
   }
@@ -375,9 +390,15 @@ export class LocalController implements PlanController {
   private toggleBooster(b: Booster): void {
     const s = this.session;
     if (!s) return;
-    s.booster = s.booster === b ? null : b;
-    // Dropping an extra flick may leave one flick too many.
-    while (s.draft.length > Math.max(this.max, s.locked)) s.draft.pop();
+    const next = s.booster === b ? null : b;
+    // Dropping an extra flick may leave one flick too many; a final flick cannot be the one to go.
+    const after = maxFlicksFor(s.state.meta[s.team], s.role) - (s.pack ? 1 : 0) + (next === 'extra-flick' ? 1 : 0);
+    if (s.draft.length > after && s.final.has(s.draft[s.draft.length - 1])) {
+      this.deps.hud.toast('The shot is taken');
+      return;
+    }
+    s.booster = next;
+    while (s.draft.length > this.max) s.draft.pop();
     this.rebuild();
     this.refresh();
   }
@@ -392,14 +413,17 @@ export class LocalController implements PlanController {
     const { hud, preview, pieces } = this.deps;
     // The clock ran out with the scene up: close it. A restart still has to be taken,
     // straight ahead with no accuracy; an unfinished shot is simply not taken.
-    if (this.busy) this.deps.setPiece.cancel();
+    if (this.busy) {
+      this.deps.setPiece.cancel();
+      this.deps.pack.cancel();
+    }
     if (s.pendingRestart) s.draft.unshift(this.restartFlick(s, restartFrame(s.state, s.team, s.state.setPiece!).d, 0));
     hud.setPlanning(null);
     hud.setTimer(null);
     preview.clear();
     pieces.setHighlights(null, []);
     const plan: Plan = { team: s.team, flicks: s.draft };
-    if (s.dice) plan.dice = s.dice;
+    if (s.pack) plan.pack = s.pack;
     if (s.booster) plan.booster = s.booster;
     s.resolve(plan);
     this.onDraft?.(null);
@@ -457,14 +481,10 @@ export class LocalController implements PlanController {
             : 'Pull back from the carrier to pass, or from a teammate to run';
     } else sub = 'Pull back from a defender to tackle, or from the keeper to dive';
     hud.setStatus(`${teamName(s.team)} ${s.role === 'attack' ? 'attacks' : 'defends'} · ${flicks}`, sub);
-    hud.setPlanning({ canUndo: s.draft.length > s.locked, canConfirm: true });
+    hud.setPlanning({ canUndo: this.canUndo(), canConfirm: true });
 
-    const meta = s.state.meta[s.team];
     hud.setExtras({
-      canRoll: !s.dice && meta.blocked === 0 && s.draft.length < this.max,
-      rolled: !!s.dice,
-      blocked: meta.blocked,
-      bonus: Math.min(MAX_DICE_BONUS, meta.bonus + (s.dice?.bonus ?? 0)),
+      pack: { can: this.canOpenPack(), opened: !!s.pack, full: s.state.meta[s.team].boosters.length >= MAX_BOOSTERS },
       boosters: this.available().map((b) => ({ ...b, usable: BOOSTER_INFO[b.booster].roles.includes(s.role) })),
       armed: s.booster,
       shoot: s.role === 'attack' ? { enabled: canShoot } : null,

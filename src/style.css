@@ -180,8 +180,9 @@ button:disabled {
   opacity: 0.85;
 }
 
-/* Dice overlay */
-.dice {
+/* Booster pack and coin toss overlays */
+.pack,
+.toss {
   position: fixed;
   inset: 0;
   display: flex;
@@ -194,48 +195,244 @@ button:disabled {
   background: rgba(16, 38, 26, 0.94);
 }
 
-.dice-title {
+.pack-title,
+.toss-title {
   font-size: 24px;
   font-weight: 800;
 }
 
-/* The stage: dice hovering over a player with the ball at their feet. */
-.dice-stage {
+/* The stage: cards (or the coin) hovering over a player. */
+.pack-stage,
+.toss-stage {
   position: relative;
-  width: 260px;
+  width: min(92vw, 340px);
   height: 300px;
-  touch-action: none;
-  cursor: grab;
   user-select: none;
 }
 
-.dice-tray {
+.pack-cards {
   position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  gap: 20px;
-  --dx: 0px;
+  justify-content: center;
+  gap: 10px;
+  perspective: 700px;
+  /* Inside the pack until it is torn: the cards then fan out from where it hung. */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(30px) scale(0.55);
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.3s ease;
+}
+
+.pack.dealt .pack-cards {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
   animation: hover 1.4s ease-in-out infinite;
 }
 
-.dice.rolling .dice-tray,
-.dice.landed .dice-tray {
+.pack.opened .pack-cards {
   animation: none;
+}
+
+/* The sealed foil pack: a tear strip across the top and the body below. */
+.booster {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 124px;
+  height: 160px;
+  margin-left: -62px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  animation: hover 1.4s ease-in-out infinite;
+}
+
+.booster:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.pack.torn .booster {
+  animation: none;
+  pointer-events: none;
+}
+
+.booster-tear,
+.booster-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: block;
+  background: var(--accent-2) var(--dither);
+  background-size: 6px 6px;
+  border: 3px solid var(--cream);
+  transition: transform 0.6s cubic-bezier(0.3, 0.6, 0.4, 1), opacity 0.5s ease;
+}
+
+.booster-tear {
+  top: 0;
+  height: 26px;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 0;
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.25) 50%, transparent 50%);
+  background-size: 8px 100%;
+  /* The serrated bottom edge of the strip. */
+  clip-path: polygon(0 0, 100% 0, 100% 80%, 95% 100%, 90% 80%, 85% 100%, 80% 80%, 75% 100%, 70% 80%, 65% 100%, 60% 80%, 55% 100%, 50% 80%, 45% 100%, 40% 80%, 35% 100%, 30% 80%, 25% 100%, 20% 80%, 15% 100%, 10% 80%, 5% 100%, 0 80%);
+}
+
+.booster-body {
+  top: 24px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 0 10px 10px;
+  box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.12), 0 6px 14px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* A foil shine across the body. */
+.booster-body::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -40%;
+  width: 40%;
+  height: 140%;
+  background: rgba(255, 255, 255, 0.28);
+  transform: rotate(18deg);
+}
+
+.booster-label {
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--cream);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.pack.torn .booster-tear {
+  transform: translate(70px, -90px) rotate(28deg);
+  opacity: 0;
+}
+
+.pack.torn .booster-body {
+  transform: translateY(50px) scale(0.85);
+  opacity: 0;
 }
 
 @keyframes hover {
   0%,
   100% {
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
   50% {
-    transform: translateX(-50%) translateY(-10px);
+    transform: translateY(-8px);
   }
 }
 
-.dice-shadow {
+.card {
+  width: 96px;
+  height: 136px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  background: none;
+  box-shadow: none;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transition: transform 0.25s ease;
+}
+
+.card:not(:disabled):hover {
+  transform: translateY(-6px);
+}
+
+.card:disabled {
+  opacity: 1;
+}
+
+.card-inner {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.52s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card.flipped .card-inner {
+  transform: rotateY(180deg);
+}
+
+.card-back,
+.card-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 3px solid var(--cream);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.card-back {
+  background: var(--accent-2) var(--dither);
+  background-size: 6px 6px;
+  color: var(--cream);
+  font-size: 40px;
+  font-weight: 800;
+}
+
+.card-face {
+  transform: rotateY(180deg);
+  justify-content: flex-start;
+  padding-top: 12px;
+  overflow: hidden;
+  background: var(--cream);
+  color: var(--ink);
+}
+
+.card-face b {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.card-face small {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.card.picked .card-face {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(255, 212, 71, 0.45), 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.card.dim .card-face {
+  filter: grayscale(1) brightness(0.7);
+}
+
+.pack-shadow,
+.toss-shadow {
   position: absolute;
   left: 50%;
   bottom: 14px;
@@ -246,101 +443,137 @@ button:disabled {
   background: rgba(0, 0, 0, 0.35);
 }
 
-.dice-player {
+.pack-player,
+.toss-player {
   position: absolute;
   left: 50%;
   bottom: 18px;
-  transform: translateX(-62%);
+  transform: translateX(-50%);
   line-height: 0;
 }
 
-.dice-player canvas {
+.pack-player canvas,
+.toss-player canvas {
   image-rendering: pixelated;
 }
 
-.dice-ball {
+.pack-hint {
+  min-height: 1.4em;
+  opacity: 0.8;
+}
+
+.pack-caption,
+.toss-caption {
+  min-height: 1.6em;
+  max-width: 360px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* The coin: a gold disc with a face on each side; the toss lands on the face the engine decided. */
+.coin {
   position: absolute;
-  left: calc(50% + 14px);
-  bottom: 16px;
-  width: 22px;
-  height: 22px;
+  top: 24px;
+  left: 50%;
+  width: 120px;
+  height: 120px;
+  margin-left: -60px;
+  transform-style: preserve-3d;
+  animation: hover 1.4s ease-in-out infinite;
+}
+
+.coin.still {
+  animation: none;
+}
+
+.coin-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 50%;
+  border: 5px solid #b9861f;
+  background: radial-gradient(circle at 35% 30%, #ffe993, #e0b23a 55%, #b9861f);
+  color: #5a3d08;
+  font-weight: 800;
+  font-size: 13px;
+  text-transform: uppercase;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.15);
+}
+
+.coin-face.tails {
+  transform: rotateY(180deg);
+}
+
+.coin-face i {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.coin-face.heads i {
   background:
     radial-gradient(circle at 35% 35%, #fff 0 22%, transparent 24%),
     radial-gradient(circle at 70% 60%, var(--ink) 0 14%, transparent 16%),
     radial-gradient(circle at 30% 75%, var(--ink) 0 12%, transparent 14%),
     #f4f1e6;
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
-  will-change: transform;
 }
 
-.die {
-  width: 72px;
-  height: 72px;
-  border-radius: 14px;
-  background: var(--cream);
-  position: relative;
-  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.15), 0 6px 14px rgba(0, 0, 0, 0.35);
+.coin-face.tails i {
+  border-radius: 4px;
+  background: #5a3d08;
+  transform: rotate(45deg) scale(0.75);
 }
 
-.die::before {
-  content: '';
-  position: absolute;
-  inset: 12px;
-  background-image: var(--pips);
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
+.coin.heads {
+  animation: toss-heads 1.5s cubic-bezier(0.3, 0.7, 0.4, 1) forwards;
 }
 
-/* Pips as radial gradients positioned on a 3x3 grid. */
-.die[data-value='1'] { --pips: radial-gradient(circle at 50% 50%, var(--ink) 16%, transparent 18%); }
-.die[data-value='2'] { --pips: radial-gradient(circle at 20% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 80%, var(--ink) 16%, transparent 18%); }
-.die[data-value='3'] { --pips: radial-gradient(circle at 20% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 50% 50%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 80%, var(--ink) 16%, transparent 18%); }
-.die[data-value='4'] { --pips: radial-gradient(circle at 20% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 20% 80%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 80%, var(--ink) 16%, transparent 18%); }
-.die[data-value='5'] { --pips: radial-gradient(circle at 20% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 50% 50%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 20% 80%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 80%, var(--ink) 16%, transparent 18%); }
-.die[data-value='6'] { --pips: radial-gradient(circle at 20% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 20%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 20% 50%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 50%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 20% 80%, var(--ink) 16%, transparent 18%), radial-gradient(circle at 80% 80%, var(--ink) 16%, transparent 18%); }
-
-/* Hit from below: the dice pop up, spin and drop back where they were. */
-.dice.rolling .die {
-  animation: tumble 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+.coin.tails {
+  animation: toss-tails 1.5s cubic-bezier(0.3, 0.7, 0.4, 1) forwards;
 }
 
-.dice.rolling .die:nth-child(2) {
-  animation-delay: 0.05s;
-}
-
-@keyframes tumble {
+@keyframes toss-heads {
   0% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
+    transform: translateY(0) rotateY(0deg);
   }
-  35% {
-    transform: translate(calc(var(--dx) * 0.6), -46px) rotate(380deg) scale(1.25);
-  }
-  70% {
-    transform: translate(var(--dx), -8px) rotate(640deg) scale(1.05);
+  45% {
+    transform: translateY(-90px) rotateY(900deg);
   }
   100% {
-    transform: translate(var(--dx), 0) rotate(720deg) scale(1);
+    transform: translateY(0) rotateY(1800deg);
   }
 }
 
-.dice.landed .die {
-  transform: translate(var(--dx), 0);
+@keyframes toss-tails {
+  0% {
+    transform: translateY(0) rotateY(0deg);
+  }
+  45% {
+    transform: translateY(-90px) rotateY(990deg);
+  }
+  100% {
+    transform: translateY(0) rotateY(1980deg);
+  }
 }
 
-.dice-hint {
-  min-height: 1.4em;
-  opacity: 0.8;
+.toss-call {
+  display: flex;
+  gap: 12px;
 }
 
-.dice-caption {
-  min-height: 1.6em;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent);
+.toss-call button {
+  min-width: 120px;
 }
 
-/* Booster and dice controls during planning */
+/* Pack and booster controls during planning */
 .extras {
   display: flex;
   gap: 8px;
@@ -984,7 +1217,7 @@ button:disabled {
 }
 
 /* Tutorial coach: a speech bubble under the top bar. z-index 0 keeps it above in-flow
-   panels but under covers, dice and cards (z-index 1+). */
+   panels but under covers, packs and cards (z-index 1+). */
 .coach {
   position: fixed;
   top: 76px;
@@ -1301,7 +1534,7 @@ button:disabled {
 /* ---- Dual-screen (M9) ----
    `html[data-posture="book"|"laptop"]` and the --pane-… and --pitch-… variables are
    set by ui/segments.ts. The #overlay is pinned to the pane screen and made a
-   containing block, so every fixed overlay (bars, menus, dice, duel, cards,
+   containing block, so every fixed overlay (bars, menus, packs, the toss, duel, cards,
    kit editor) stays on that screen; the canvas pitch takes the other one and
    #stage hosts anything that should appear over it (the kit preview). */
 .lineup,
@@ -1357,7 +1590,8 @@ html[data-posture] #overlay.building .lineup {
 
 /* Fixed covers must stack above the in-flow lineup (Chrome paints the scrollable panel over them otherwise). */
 .cover,
-.dice,
+.pack,
+.toss,
 .duel {
   z-index: 1;
 }
@@ -1505,7 +1739,9 @@ button:disabled {
 .store-row .cost button.small,
 .store-card button,
 .ke-actions button,
-.dice [data-ok],
+.pack [data-ok],
+.toss [data-ok],
+.toss-call button,
 .menu-row button {
   font-size: 9px;
   padding: 8px 10px;
@@ -1831,7 +2067,7 @@ button:disabled {
   border-radius: 4px;
 }
 
-/* ---- Toasts, dice, duel, cards, coach ---- */
+/* ---- Toasts, packs, duel, cards, coach ---- */
 .toast {
   font-family: var(--font-display);
   font-size: 11px;
@@ -1849,7 +2085,8 @@ button:disabled {
   border-color: var(--accent);
 }
 
-.dice-title,
+.pack-title,
+.toss-title,
 .duel-title {
   font-family: var(--font-display);
   font-size: 13px;
@@ -1858,20 +2095,50 @@ button:disabled {
   text-shadow: 2px 2px 0 #000;
 }
 
-.dice-caption {
+.pack-caption,
+.toss-caption {
   font-family: var(--font-display);
   font-size: 9px;
   line-height: 1.6;
   color: var(--accent);
 }
 
-.dice-hint {
+.pack-hint {
   font-size: 13px;
 }
 
-.die {
-  border-radius: 8px;
+.card-back,
+.card-face {
+  border-radius: 4px;
   border: 2px solid var(--ink);
+}
+
+.card-back {
+  font-family: var(--font-display);
+  font-size: 28px;
+}
+
+.booster-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.booster-tear,
+.booster-body {
+  border-color: var(--ink);
+  border-width: 2px;
+}
+
+.card-face b {
+  font-family: var(--font-display);
+  font-size: 7px;
+  line-height: 1.5;
+}
+
+.coin-face {
+  font-family: var(--font-display);
+  font-size: 9px;
 }
 
 .duel-count {

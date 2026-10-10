@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import poolData from '../data/players.json';
-import { MAX_BOOSTERS } from '../engine/dice';
+import { MAX_BOOSTERS } from '../engine/boosters';
 import { cost, cpuSquad, squadCost, type PoolPlayer } from '../engine/pool';
 import {
   DRAW_COINS,

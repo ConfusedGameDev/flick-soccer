@@ -1,6 +1,5 @@
 import type {
   Booster,
-  DiceRoll,
   Flick,
   FlickKind,
   Keyframe,
@@ -51,7 +50,7 @@ import {
   other,
   targetGoalY,
 } from './pitch';
-import { DICE_BLOCK_TURNS, MAX_BOOSTERS, MAX_DICE_BONUS, rollDice } from './dice';
+import { MAX_BOOSTERS, drawBooster } from './boosters';
 import { statFactor, statOdds } from './pool';
 import { keeperReachMul, maxFlicksFor, moveSpeedMul, passChanceShift, shotChanceShift } from './tactics';
 import { mulberry32 } from './rng';
@@ -126,15 +125,7 @@ export const kickRange = (p: PlayerState, kind: 'pass' | 'shot'): number => stat
 export const moveRange = (p: PlayerState, kind: 'slide' | 'run' | 'dive'): number =>
   statFactor(kind === 'run' ? p.stats.speed : kind === 'slide' ? p.stats.tackle : p.stats.keeping);
 
-/** Bank a roll's side effects (booster pack, dice block) into a team's meta. */
-function bankRoll(m: TeamMeta, roll: DiceRoll): void {
-  if (roll.booster && m.boosters.length < MAX_BOOSTERS) m.boosters.push(roll.booster);
-  if (roll.blocked) m.blocked = DICE_BLOCK_TURNS;
-}
-
 interface TurnMods {
-  /** Success bonus this turn, 0..MAX_DICE_BONUS. */
-  bonus: number;
   booster: Booster | null;
 }
 
@@ -259,13 +250,13 @@ export function resolveTurn(
   // Boxed so assignments inside endChain() are visible to the switch below.
   const run: { outcome: Outcome } = { outcome: { kind: 'settled' } };
 
-  // ---- Dice and boosters: set up this turn's modifiers ----
+  // ---- Packs and boosters: set up this turn's modifiers ----
   const meta: Record<Team, TeamMeta> = {
     home: { ...state.meta.home, boosters: [...state.meta.home.boosters] },
     away: { ...state.meta.away, boosters: [...state.meta.away.boosters] },
   };
-  const mods: Record<Team, TurnMods> = { home: { bonus: 0, booster: null }, away: { bonus: 0, booster: null } };
-  // Tactics cards (catenaccio) set the base; dice and boosters adjust from there.
+  const mods: Record<Team, TurnMods> = { home: { booster: null }, away: { booster: null } };
+  // Tactics cards (catenaccio) set the base; packs and boosters adjust from there.
   const maxFlicks = { attack: maxFlicksFor(state.meta[attackTeam], 'attack'), defense: maxFlicksFor(state.meta[defenseTeam], 'defense') };
   const sides = [
     [attackPlan, attackTeam, 'attack'],
@@ -274,19 +265,16 @@ export function resolveTurn(
   for (const [plan, team, role] of sides) {
     if (plan.team !== team) continue;
     const m = meta[team];
-    let bonus = m.bonus; // a free roll banked at the end of the previous turn
-    m.bonus = 0;
-    if (plan.dice) {
-      if (m.blocked > 0) {
-        events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'dice are blocked' });
+    // A pack traded for a flick: the card goes into the hand now, so it can be armed this very turn.
+    if (plan.pack) {
+      if (m.boosters.length >= MAX_BOOSTERS) {
+        events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'hand full' });
       } else {
         maxFlicks[role] -= 1;
-        bonus += plan.dice.bonus;
-        bankRoll(m, plan.dice);
-        events.push({ t, type: 'dice', team, roll: plan.dice, free: false });
+        m.boosters.push(plan.pack);
+        events.push({ t, type: 'pack', team, booster: plan.pack, free: false });
       }
     }
-    mods[team].bonus = Math.min(MAX_DICE_BONUS, bonus);
     if (plan.booster) {
       const i = m.boosters.indexOf(plan.booster);
       if (i < 0) {
@@ -437,7 +425,7 @@ export function resolveTurn(
 
       // One roll per defender per segment, the first tick they are in reach.
       // Keepers have a longer reach and use the save odds; outfield use tackle/block odds.
-      // The dice bonus shifts every roll in its owner's favour; boosters tweak the keeper.
+      // Boosters tweak the keeper; stats and tactics shift the odds.
       let stopped = false;
       for (const p of players) {
         if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
@@ -447,7 +435,6 @@ export function resolveTurn(
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
         let chance = p.keeper ? SAVE_CHANCE : seg.shot ? BLOCK_CHANCE : INTERCEPT_CHANCE;
-        chance += mods[defenseTeam].bonus - mods[attackTeam].bonus;
         // Stats: the stopper's tackle/keeping against the kicker's pass/shot.
         chance += statOdds(p.keeper ? p.stats.keeping : p.stats.tackle);
         chance -= statOdds(seg.shot ? seg.kicker.stats.shot : seg.kicker.stats.pass);
@@ -565,14 +552,15 @@ export function resolveTurn(
       break;
   }
 
-  // ---- Overtake: the interceptor's side gets a free roll banked for its next turn ----
+  // ---- Overtake: the interceptor's side gets a free booster pack, if its hand has room ----
   if (outcome.kind === 'settled' && possession.team === defenseTeam && events.some((e) => e.type === 'intercept')) {
-    const roll = rollDice(rng);
-    meta[defenseTeam].bonus = roll.bonus;
-    bankRoll(meta[defenseTeam], roll);
-    events.push({ t, type: 'dice', team: defenseTeam, roll, free: true });
+    const m = meta[defenseTeam];
+    if (m.boosters.length < MAX_BOOSTERS) {
+      const booster = drawBooster(rng);
+      m.boosters.push(booster);
+      events.push({ t, type: 'pack', team: defenseTeam, booster, free: true });
+    }
   }
-  for (const team of ['home', 'away'] as const) meta[team].blocked = Math.max(0, meta[team].blocked - 1);
 
   // ---- Clock ----
   let turn = state.turn + 1;
@@ -605,17 +593,17 @@ export function resolveTurn(
 
 /**
  * After a dead-ball duel: the winner's nearest player collects the ball where
- * it stopped, and the winner gets a free roll banked for their next turn.
+ * it stopped, and the winner gets a free booster pack (null when their hand is full).
  */
-export function resolveDuel(state: MatchState, winner: Team, seed: number): { state: MatchState; roll: DiceRoll } {
+export function resolveDuel(state: MatchState, winner: Team, seed: number): { state: MatchState; booster: Booster | null } {
   const players = state.players.map((p) => ({ ...p, pos: { ...p.pos } }));
   const taker = nearestOf(players, winner, state.ball);
   taker.pos = { ...state.ball };
-  const roll = rollDice(mulberry32(seed));
-  const m: TeamMeta = { ...state.meta[winner], boosters: [...state.meta[winner].boosters], bonus: roll.bonus };
-  bankRoll(m, roll);
+  const m: TeamMeta = { ...state.meta[winner], boosters: [...state.meta[winner].boosters] };
+  const booster = m.boosters.length < MAX_BOOSTERS ? drawBooster(mulberry32(seed)) : null;
+  if (booster) m.boosters.push(booster);
   const meta = { ...state.meta, [winner]: m };
-  return { state: { ...state, status: 'playing', players, possession: { team: winner, playerId: taker.id }, meta }, roll };
+  return { state: { ...state, status: 'playing', players, possession: { team: winner, playerId: taker.id }, meta }, booster };
 }
 
 /** Acknowledge half-time; the second-half kickoff is already set up. */

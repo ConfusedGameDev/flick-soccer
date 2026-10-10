@@ -1,4 +1,4 @@
-import { BOOSTER_INFO } from '../engine/dice';
+import { BOOSTER_INFO } from '../engine/boosters';
 import { MAX_TACTICS, TACTIC_INFO } from '../engine/tactics';
 import type { Tactic } from '../engine/types';
 import { ERA_INFO, LEAGUE_INFO, STAT_KEYS, cost, type PoolPlayer, type Stats } from '../engine/pool';

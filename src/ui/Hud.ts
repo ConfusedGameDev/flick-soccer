@@ -1,4 +1,4 @@
-import { BOOSTER_INFO } from '../engine/dice';
+import { BOOSTER_INFO, MAX_BOOSTERS } from '../engine/boosters';
 import type { Booster, MatchState, PlayerStats, Team } from '../engine/types';
 import { TURNS_PER_HALF } from '../engine/pitch';
 import { hex, type Kit } from '../render/kits';
@@ -12,12 +12,8 @@ const STAT_LABELS: [keyof PlayerStats, string][] = [
 ];
 
 export interface ExtrasSpec {
-  canRoll: boolean;
-  rolled: boolean;
-  /** Turns the dice stay blocked, 0 if usable. */
-  blocked: number;
-  /** Total success bonus for this turn (banked + rolled). */
-  bonus: number;
+  /** The booster pack button: `can` enables it, `opened` once this turn's pack is open, `full` when the hand has no room. */
+  pack: { can: boolean; opened: boolean; full: boolean };
   boosters: { booster: Booster; usable: boolean; fresh?: boolean }[];
   armed: Booster | null;
   /** The Shoot button (attack only): shown when set, enabled when the carrier is in range of goal. */
@@ -46,7 +42,7 @@ export class Hud {
 
   onUndo: () => void = () => {};
   onConfirm: () => void = () => {};
-  onRoll: () => void = () => {};
+  onPack: () => void = () => {};
   onShoot: () => void = () => {};
   onBooster: (b: Booster) => void = () => {};
   onMute: () => void = () => {};
@@ -174,7 +170,7 @@ export class Hud {
     }
   }
 
-  /** Dice and booster controls during planning; pass null to clear. */
+  /** Pack and booster controls during planning; pass null to clear. */
   setExtras(spec: ExtrasSpec | null): void {
     this.extras.innerHTML = '';
     if (!spec) return;
@@ -187,11 +183,12 @@ export class Hud {
       shoot.addEventListener('click', () => this.onShoot());
       this.extras.appendChild(shoot);
     }
-    const roll = document.createElement('button');
-    roll.textContent = spec.rolled ? '🎲 Rolled' : spec.blocked > 0 ? `🎲 Blocked (${spec.blocked})` : '🎲 Roll (−1 flick)';
-    roll.disabled = !spec.canRoll;
-    roll.addEventListener('click', () => this.onRoll());
-    this.extras.appendChild(roll);
+    const pack = document.createElement('button');
+    pack.textContent = spec.pack.opened ? '🃏 Opened' : spec.pack.full ? '🃏 Hand full' : '🃏 Open pack (−1 flick)';
+    pack.title = spec.pack.full ? `You already hold ${MAX_BOOSTERS} boosters` : 'Give up one flick to open a pack: pick one of three cards and get a booster';
+    pack.disabled = !spec.pack.can;
+    pack.addEventListener('click', () => this.onPack());
+    this.extras.appendChild(pack);
     for (const b of spec.boosters) {
       const btn = document.createElement('button');
       btn.textContent = `${BOOSTER_INFO[b.booster].name}${b.fresh ? ' ✨' : ''}`;
@@ -200,12 +197,6 @@ export class Hud {
       btn.classList.toggle('armed', spec.armed === b.booster);
       btn.addEventListener('click', () => this.onBooster(b.booster));
       this.extras.appendChild(btn);
-    }
-    if (spec.bonus > 0) {
-      const el = document.createElement('span');
-      el.className = 'bonus';
-      el.textContent = `+${Math.round(spec.bonus * 100)}% this turn`;
-      this.extras.appendChild(el);
     }
   }
 

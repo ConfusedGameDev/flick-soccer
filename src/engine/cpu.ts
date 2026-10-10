@@ -13,7 +13,7 @@ import {
   other,
   targetGoalY,
 } from './pitch';
-import { BOOSTER_INFO, rollDice } from './dice';
+import { BOOSTER_INFO, MAX_BOOSTERS, drawBooster } from './boosters';
 import { mulberry32 } from './rng';
 import { maxFlicksFor } from './tactics';
 import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, resolveTurn, setPieceStrength, spotTaken } from './sim';
@@ -217,7 +217,7 @@ function sampleAttack(state: MatchState, team: Team, rng: Rng, maxFlicks: number
   return { team, flicks };
 }
 
-/** Jitter a plan's directions and strengths; everything else (dice, booster, shot markers) is kept. */
+/** Jitter a plan's directions and strengths; everything else (pack, booster, shot markers) is kept. */
 function addNoise(plan: Plan, noise: number, rng: Rng): Plan {
   if (noise === 0) return plan;
   return {
@@ -257,12 +257,12 @@ function rankAttacks(
   params: Params,
   seed: number,
   count: number,
-  extras: Pick<Plan, 'dice' | 'booster'> = {},
+  extras: Pick<Plan, 'pack' | 'booster'> = {},
 ): { plan: Plan; score: number }[] {
   const rng = mulberry32(seed);
   const empty: Plan = { team: other(team), flicks: [] };
   const ranked: { plan: Plan; score: number }[] = [];
-  const maxFlicks = MAX_FLICKS.attack - (extras.dice ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
+  const maxFlicks = MAX_FLICKS.attack - (extras.pack ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
   for (let i = 0; i < params.attackSamples; i++) {
     const plan = { ...sampleAttack(state, team, rng, maxFlicks), ...extras };
     ranked.push({ plan, score: expectedScore(state, plan, empty, team, params.seeds, seed + i) });
@@ -272,17 +272,17 @@ function rankAttacks(
 }
 
 /**
- * Dice and booster choices for a turn. The CPU trades a flick for a roll
- * about a third of the time when allowed (the roll itself is made here, with
- * the same seeded rule as a human's), and plays the first held booster that
+ * Pack and booster choices for a turn. The CPU trades a flick for a pack
+ * about a third of the time when its hand has room (the card is drawn here,
+ * seeded like a human's), and plays the first held or fresh booster that
  * fits its role.
  */
-export function cpuExtras(state: MatchState, team: Team, role: 'attack' | 'defense', seed: number): Pick<Plan, 'dice' | 'booster'> {
+export function cpuExtras(state: MatchState, team: Team, role: 'attack' | 'defense', seed: number): Pick<Plan, 'pack' | 'booster'> {
   const rng = mulberry32(seed ^ 0x3c6ef372);
   const m = state.meta[team];
-  const extras: Pick<Plan, 'dice' | 'booster'> = {};
-  if (m.blocked === 0 && rng() < 0.33) extras.dice = rollDice(rng);
-  const held = [...m.boosters, ...(extras.dice?.booster ? [extras.dice.booster] : [])];
+  const extras: Pick<Plan, 'pack' | 'booster'> = {};
+  if (m.boosters.length < MAX_BOOSTERS && rng() < 0.33) extras.pack = drawBooster(rng);
+  const held = [...m.boosters, ...(extras.pack ? [extras.pack] : [])];
   const fit = held.find((b) => BOOSTER_INFO[b].roles.includes(role));
   if (fit) extras.booster = fit;
   return extras;
@@ -384,7 +384,7 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
 
   const rng = mulberry32(seed);
   const extras = cpuExtras(state, team, 'defense', seed);
-  const maxFlicks = maxFlicksFor(state.meta[team], 'defense') - (extras.dice ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
+  const maxFlicks = maxFlicksFor(state.meta[team], 'defense') - (extras.pack ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
   let best: Plan = { team, flicks: [], ...extras };
   let bestScore = Infinity;
   const candidates = [
