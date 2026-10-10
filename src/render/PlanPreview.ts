@@ -16,6 +16,8 @@ export interface GhostFlick {
 export interface DragPreview extends GhostFlick {
   /** Current pointer position in world units (the pulled-back end of the band). */
   pull: Vec2;
+  /** The second finger's position when it is aiming; the band then only shows power. */
+  aim?: Vec2 | null;
 }
 
 const COLORS: Record<GhostFlick['kind'], number> = {
@@ -59,6 +61,13 @@ export class PlanPreview {
       const b = this.pitch.toScreen(drag.pull);
       this.g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 3, color: 0xffffff, alpha: 0.6 });
       this.g.circle(b.x, b.y, 6).fill({ color: 0xffffff, alpha: 0.6 });
+      if (drag.aim) {
+        // Two fingers: a crosshair under the aiming finger and a thin line from the disc to it.
+        const c = this.pitch.toScreen(drag.aim);
+        this.g.moveTo(a.x, a.y).lineTo(c.x, c.y).stroke({ width: 1.5, color: 0xffffff, alpha: 0.35 });
+        this.g.circle(c.x, c.y, 10).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+        this.g.moveTo(c.x - 14, c.y).lineTo(c.x + 14, c.y).moveTo(c.x, c.y - 14).lineTo(c.x, c.y + 14).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+      }
     }
   }
 

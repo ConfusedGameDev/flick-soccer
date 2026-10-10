@@ -148,7 +148,7 @@ export class LocalController implements PlanController {
 
   readonly handlers: FlickGestureHandlers = {
     pick: (world) => this.pick(world),
-    onDrag: (id, flick, pull) => this.drag(id, flick, pull),
+    onDrag: (id, flick, pull, aim) => this.drag(id, flick, pull, aim),
     onRelease: (id, flick) => this.release(id, flick),
   };
 
@@ -336,9 +336,9 @@ export class LocalController implements PlanController {
     return { kind, from, to, bad: spotTaken(to, s.state.players, id, s.reserved) };
   }
 
-  private drag(id: number, flick: Flick, pull: Vec2): void {
+  private drag(id: number, flick: Flick, pull: Vec2, aim: Vec2 | null): void {
     if (!this.session) return;
-    const drag: DragPreview = { ...this.ghostFor(id, flick), pull };
+    const drag: DragPreview = { ...this.ghostFor(id, flick), pull, aim };
     this.deps.preview.draw(this.session.ghosts, drag);
   }
 
