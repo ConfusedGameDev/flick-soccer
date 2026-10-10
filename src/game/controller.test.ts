@@ -18,6 +18,7 @@ function harness() {
     onConfirm: () => {},
     onPack: () => {},
     onShoot: () => {},
+    onKeeper: () => {},
     onBooster: () => {},
     planning: null as { canUndo: boolean; canConfirm: boolean } | null,
     setPlanning(p: { canUndo: boolean; canConfirm: boolean } | null) {
@@ -41,14 +42,17 @@ function harness() {
   local.timed = false;
   // Private access for the test: the draft, the actions and the buttons.
   const priv = local as unknown as {
-    session: { draft: Flick[] } | null;
+    session: { draft: Flick[]; pack: string | null; keeperGame: number | null } | null;
     shoot: () => Promise<void>;
+    keeperGame: () => Promise<void>;
+    toggleBooster: (b: string) => void;
+    kindFor: (id: number) => string | null;
     undo: () => void;
     release: (id: number, flick: Flick | null) => void;
     confirm: () => void;
     canUndo: () => boolean;
   };
-  return { local, priv, hud, calls };
+  return { local, priv, hud, calls, deps };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -121,5 +125,79 @@ describe('LocalController undo', () => {
     priv.undo();
     expect(priv.session!.draft).toHaveLength(0);
     expect(priv.canUndo()).toBe(false);
+  });
+});
+
+describe('LocalController keeper game', () => {
+  const defenders = (state: MatchState) => state.players.filter((p) => p.team === 'away').map((p) => p.id);
+
+  it('spends both flicks, is final, and rides the plan', async () => {
+    const { local, priv, hud } = harness();
+    const state = shootingState();
+    const planned = local.plan(state, 'away', 'defense');
+    expect(defenders(state).some((id) => priv.kindFor(id) !== null)).toBe(true);
+    await priv.keeperGame();
+    expect(priv.session!.keeperGame).toBe(1);
+    expect(defenders(state).every((id) => priv.kindFor(id) === null)).toBe(true);
+    expect(hud.planning!.canUndo).toBe(false);
+    priv.undo();
+    expect(priv.session!.keeperGame).toBe(1);
+    priv.confirm();
+    const plan: Plan = await planned;
+    expect(plan.flicks).toHaveLength(0);
+    expect(plan.keeperGame).toEqual({ accuracy: 1 });
+  });
+
+  it('is not offered while resting, after a flick is used, or on the attack', async () => {
+    const { local, priv } = harness();
+    const resting = shootingState();
+    resting.meta.away.keeperCooldown = 1;
+    void local.plan(resting, 'away', 'defense');
+    await priv.keeperGame();
+    expect(priv.session!.keeperGame).toBeNull();
+    priv.confirm();
+
+    const state = shootingState();
+    void local.plan(state, 'away', 'defense');
+    const back = state.players.find((p) => p.team === 'away' && p.number === 5)!;
+    priv.release(back.id, { playerId: back.id, dir: { x: 0, y: 1 }, strength: 0.5 });
+    expect(priv.session!.draft).toHaveLength(1);
+    await priv.keeperGame();
+    expect(priv.session!.keeperGame).toBeNull();
+    priv.confirm();
+
+    void local.plan(state, 'home', 'attack');
+    await priv.keeperGame();
+    expect(priv.session!.keeperGame).toBeNull();
+    priv.confirm();
+  });
+
+  it('is simply not played when the clock runs out with the scene up', async () => {
+    const { local, priv, deps } = harness();
+    let finish: (r: { x: number; accuracy: number; height: number }) => void = () => {};
+    deps.setPiece.run = () => new Promise((r) => (finish = r));
+    const planned = local.plan(shootingState(), 'away', 'defense');
+    const game = priv.keeperGame();
+    await tick();
+    priv.confirm();
+    finish({ x: 0, accuracy: 1, height: 0.5 });
+    await game;
+    const plan = await planned;
+    expect(plan.keeperGame).toBeUndefined();
+    expect(plan.flicks).toHaveLength(0);
+  });
+
+  it('keeps the flicks it spent: an extra flick cannot be disarmed from under it', async () => {
+    const { local, priv, calls } = harness();
+    const state = shootingState();
+    state.meta.away.boosters = ['extra-flick'];
+    void local.plan(state, 'away', 'defense');
+    priv.session!.pack = 'double-speed';
+    priv.toggleBooster('extra-flick');
+    await priv.keeperGame();
+    expect(priv.session!.keeperGame).toBe(1);
+    priv.toggleBooster('extra-flick');
+    expect(calls).toContain('toast:The keeper is set');
+    priv.confirm();
   });
 });

@@ -81,7 +81,7 @@ async function boot(): Promise<void> {
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
   const pack = new PackView(overlay, () => sfx.flip());
   const toss = new CoinToss(overlay, () => sfx.flip());
-  const setPiece = new SetPiece(overlay, { tick: () => sfx.click(), kick: () => sfx.kick(1) });
+  const setPiece = new SetPiece(overlay, { tick: () => sfx.click(), kick: () => sfx.kick(1), catch: () => sfx.save() });
   const cutscene = new Cutscene(overlay);
   const coach = new Coach(overlay);
   const store = new Store(overlay);
@@ -134,7 +134,7 @@ async function boot(): Promise<void> {
 
   if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = match;
 
-  // Art previews (`?demo=sheet|frames|pitch|cutscenes|shot|pack|toss`), see ui/demo.ts; loaded on demand so they cost nothing otherwise.
+  // Art previews (`?demo=sheet|frames|pitch|cutscenes|shot|keeper|pack|toss`), see ui/demo.ts; loaded on demand so they cost nothing otherwise.
   const demo = new URLSearchParams(location.search).get('demo');
   if (demo) {
     const { runDemo } = await import('./ui/demo');

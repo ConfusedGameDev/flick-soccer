@@ -14,7 +14,7 @@ import type { SetPiece } from './SetPiece';
 import type { CoinToss } from './CoinToss';
 import type { PackView } from './PackView';
 
-// Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot|pack|toss`),
+// Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot|keeper|pack|toss`),
 // loaded on demand from main.ts. They exist so the figures can be iterated
 // against screenshots, and checked on a preview deploy, without playing a match.
 
@@ -39,6 +39,7 @@ export async function runDemo(route: string, deps: DemoDeps): Promise<void> {
   if (route === 'pitch') return pitchLoop(deps.pieces, deps.player, kit, other, q);
   if (route === 'cutscenes') return cutscenes(deps.cutscene, kit, other, q);
   if (route === 'shot') return shot(deps.setPiece, kit, other, q);
+  if (route === 'keeper') return keeperGame(deps.setPiece, other);
   if (route === 'pack') return pack(deps.pack, kit, q);
   if (route === 'toss') return toss(deps.toss, kit, q);
 }
@@ -172,4 +173,11 @@ async function shot(setPiece: SetPiece, kit: Kit, other: Kit, q: URLSearchParams
     goalie: { kit: other, name: 'Cortois', x: 0.3, depth },
     offset: 0,
   });
+}
+
+/** The keeper game, over and over. */
+async function keeperGame(setPiece: SetPiece, kit: Kit): Promise<void> {
+  for (;;) {
+    await setPiece.run({ kind: 'keeper', kit, keeper: true, name: 'Cortois', stat: 4, goal: 'none', number: 1, hint: 'Tap to set the keeper in the middle of his goal, then tap when the cursor is on the block.' });
+  }
 }

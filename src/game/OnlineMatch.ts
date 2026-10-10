@@ -378,6 +378,9 @@ export class OnlineMatch {
       case 'booster':
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);
         break;
+      case 'keeper-game':
+        hud.toast(`${teamName(e.team)}: the keeper is set!`);
+        break;
       default:
         break;
     }

@@ -58,6 +58,8 @@ export interface TeamMeta {
   boosters: Booster[];
   /** Tactics cards in play for the whole match (season run); absent means none. */
   tactics?: Tactic[];
+  /** Turns to wait before the keeper game can be used again; absent means it is ready. */
+  keeperCooldown?: number;
 }
 
 /** Passive rules a team carries through a season run; effects live in engine/tactics.ts. */
@@ -118,6 +120,12 @@ export interface Plan {
   pack?: Booster;
   /** A held booster to use this turn. */
   booster?: Booster;
+  /**
+   * Defense only: the keeper game was played this turn. It costs KEEPER_GAME_COST flicks
+   * and rests for KEEPER_GAME_COOLDOWN turns; `accuracy` (0..1) is the mini-game's result,
+   * client-claimed like `Aim.accuracy`, and grows the keeper's reach and save chance on shots.
+   */
+  keeperGame?: { accuracy: number };
 }
 
 /** What a flick means, decided by who was flicked and from where. */
@@ -139,6 +147,8 @@ export type TimelineEvent = { t: number } & (
   | { type: 'dead-ball' }
   | { type: 'pack'; team: Team; booster: Booster; free: boolean }
   | { type: 'booster'; team: Team; booster: Booster }
+  /** The defence spent its flicks on the keeper game. */
+  | { type: 'keeper-game'; team: Team; accuracy: number }
   | { type: 'invalid-flick'; playerId: number; reason: string }
   | { type: 'half-time' }
   | { type: 'full-time' }

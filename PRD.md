@@ -45,6 +45,7 @@ All three modes run on one shared match engine. The only difference between them
 ### 3.4 Defender: 2 flicks per turn
 - **Tackle:** flick an outfield player toward where you expect the pass to go. They slide along that line, and pull length sets the slide distance.
 - **Goalkeeper dive:** flick the goalkeeper to cover a shot.
+- **Set keeper (the keeper game):** instead of flicking, spend both defensive flicks on the keeper's positioning-and-reflex mini-game (set him in the middle of his goal, then hit the timing bar). Its accuracy (0–1) stretches his reach against shots by up to 75% and raises his save chance by up to 25 points; passes are unaffected. It can be used on any defensive turn but then rests for one turn. A side with Catenaccio keeps its third flick. Online the server clamps the claimed accuracy and the engine enforces the cost and the rest.
 
 ### 3.5 Resolution and interception (proposed)
 - The ball moves along the attacker's chain at a fixed speed. Defender movements start at t=0 and run alongside it.
@@ -103,7 +104,7 @@ A booster pack contains one random booster. A player can hold at most 2 boosters
 | Unstoppable pass | One pass this turn cannot be intercepted (passes only, not shots) |
 | Super goalkeeper | Goalkeeper reach ×2 and +25% save chance this turn |
 
-Unstoppable pass and super goalkeeper never conflict, because one affects passes and the other affects shots.
+Unstoppable pass and super goalkeeper never conflict, because one affects passes and the other affects shots. Super goalkeeper stacks with the keeper game (§3.4).
 
 ## 5. Teams
 

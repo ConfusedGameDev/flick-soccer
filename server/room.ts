@@ -143,6 +143,8 @@ export class Room {
     const out: Plan = { team: side, flicks };
     if (plan.pack) out.pack = drawBooster(mulberry32(packSeed(this.seed, this.state!, side)));
     if (plan.booster) out.booster = plan.booster;
+    // The keeper game's result is client-claimed like a shot's accuracy; the engine checks its legality.
+    if (plan.keeperGame && typeof plan.keeperGame === 'object') out.keeperGame = { accuracy: clamp01(plan.keeperGame.accuracy) };
     return out;
   }
 

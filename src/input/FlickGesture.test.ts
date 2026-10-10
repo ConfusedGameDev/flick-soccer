@@ -31,6 +31,19 @@ function harness() {
 const last = <T>(a: T[]) => a[a.length - 1];
 
 describe('FlickGesture', () => {
+  it('a cancelled pointer commits the pull as it stood, or nothing if there was no pull', () => {
+    const { fire, releases } = harness();
+    fire('pointerdown', 1, 50, 50);
+    fire('pointermove', 1, 50, 60);
+    fire('pointercancel', 1, 50, 60);
+    expect(releases).toHaveLength(1);
+    expect(releases[0]!.dir).toEqual({ x: 0, y: -1 });
+    fire('pointerdown', 1, 50, 50);
+    fire('pointercancel', 1, 50, 50);
+    expect(releases).toHaveLength(2);
+    expect(releases[1]).toBeNull();
+  });
+
   it('one finger: pull back, the flick goes the other way with the pull length as strength', () => {
     const { fire, drags, releases } = harness();
     fire('pointerdown', 1, 50, 50);

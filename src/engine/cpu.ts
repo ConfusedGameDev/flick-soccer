@@ -1,6 +1,7 @@
 import {
   DIVE_RANGE,
   GOAL_W,
+  KEEPER_GAME_COST,
   MAX_FLICKS,
   PASS_RANGE,
   PITCH_L,
@@ -42,11 +43,13 @@ interface Params {
   aim: { mean: number; spread: number };
   /** Range of shot heights it picks (above OVER_BAR risks going over). */
   height: { min: number; max: number };
+  /** Its result in the keeper game: mean ± spread, clamped to 0..1. */
+  keeper: { mean: number; spread: number };
 }
 
 export const CPU_PARAMS: Record<Difficulty, Params> = {
-  easy: { attackSamples: 18, defenseSamples: 12, predictions: 2, seeds: 2, noise: 0.22, mashRate: 5.5, aim: { mean: 0.55, spread: 0.3 }, height: { min: 0.25, max: 0.85 } },
-  normal: { attackSamples: 60, defenseSamples: 36, predictions: 3, seeds: 3, noise: 0, mashRate: 8.5, aim: { mean: 0.82, spread: 0.18 }, height: { min: 0.4, max: 0.75 } },
+  easy: { attackSamples: 18, defenseSamples: 12, predictions: 2, seeds: 2, noise: 0.22, mashRate: 5.5, aim: { mean: 0.55, spread: 0.3 }, height: { min: 0.25, max: 0.85 }, keeper: { mean: 0.5, spread: 0.3 } },
+  normal: { attackSamples: 60, defenseSamples: 36, predictions: 3, seeds: 3, noise: 0, mashRate: 8.5, aim: { mean: 0.82, spread: 0.18 }, height: { min: 0.4, max: 0.75 }, keeper: { mean: 0.8, spread: 0.2 } },
 };
 
 type Rng = () => number;
@@ -391,6 +394,15 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
     best,
     ...Array.from({ length: params.defenseSamples }, () => ({ ...sampleDefense(state, team, predicted, rng, maxFlicks), ...extras })),
   ];
+  // The keeper game, evaluated at the CPU's mean skill: it competes with the slides and dives on
+  // the same footing, so it wins when the predicted attacks end in shots. Any flicks left over
+  // (catenaccio) still go to a couple of sampled moves.
+  if (!state.meta[team].keeperCooldown && maxFlicks >= KEEPER_GAME_COST) {
+    const keeperGame = { accuracy: params.keeper.mean };
+    candidates.push({ team, flicks: [], ...extras, keeperGame });
+    const spare = maxFlicks - KEEPER_GAME_COST;
+    if (spare > 0) for (let i = 0; i < 2; i++) candidates.push({ ...sampleDefense(state, team, predicted, rng, spare), ...extras, keeperGame });
+  }
   candidates.forEach((candidate) => {
     let total = 0;
     // The same seeds for every candidate, so they are compared on the same luck, not on noise.
@@ -401,5 +413,10 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
       best = candidate;
     }
   });
+  // Like the aim: the plan was judged at the mean skill, the actual result is drawn afterwards.
+  if (best.keeperGame) {
+    const r = mulberry32(seed ^ 0x85ebca6b);
+    best = { ...best, keeperGame: { accuracy: clamp(params.keeper.mean + (r() * 2 - 1) * params.keeper.spread, 0, 1) } };
+  }
   return settleMoves(addNoise(best, params.noise, mulberry32(seed ^ 0x27d4eb2f)), state, 'defense');
 }

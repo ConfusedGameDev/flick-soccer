@@ -26,6 +26,7 @@ export interface FlickGestureHandlers {
  * takes over the aim. The first finger's pull length is then only the power
  * and the flick goes from the disc toward the second finger. Lifting the second
  * finger goes back to one-finger aiming; lifting the first commits the flick.
+ * A cancelled pointer (an OS edge gesture) commits the pull as it stood.
  */
 export class FlickGesture {
   enabled = false;
@@ -153,9 +154,12 @@ export class FlickGesture {
       return;
     }
     if (e.pointerId !== this.pointerId) return;
+    // The browser or OS took the pointer (an edge gesture near the screen border): the
+    // pull so far was on screen as a ghost, so commit it like a release rather than lose it.
     const id = this.playerId;
+    const flick = this.flick();
     this.reset();
-    this.handlers.onRelease(id, null);
+    this.handlers.onRelease(id, flick);
   };
 
   private reset(): void {
