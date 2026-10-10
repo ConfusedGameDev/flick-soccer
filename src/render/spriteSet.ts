@@ -1,5 +1,7 @@
-// Which player art the pitch uses: the imported frames (art/frames) or the
-// typed 16x24 templates. `?sprites=classic|generated` picks and remembers.
+// Which player art the pitch uses: the typed 16x24 templates (the default,
+// what ships) or the imported frames (art/frames), which are still being
+// generated and are only for testing. `?sprites=generated|classic` picks and
+// remembers; a stored choice is cleared again by `?sprites=classic`.
 
 export type SpriteSet = 'generated' | 'classic';
 
@@ -16,6 +18,6 @@ export function spriteSet(): SpriteSet {
   } catch {
     /* no storage */
   }
-  current = v === 'classic' ? 'classic' : 'generated';
+  current = v === 'generated' ? 'generated' : 'classic';
   return current;
 }

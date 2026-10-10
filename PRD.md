@@ -118,7 +118,7 @@ Unstoppable pass and super goalkeeper never conflict, because one affects passes
 ## 6. Presentation
 
 ### 6.1 Art
-An SNES look in the style of *ISS Deluxe*: pixel-art sprites on an angled pitch. The simulation runs in flat top-down 2D, and only the rendering adds the pseudo-3D angle. Pitch players are generated 48×48 frames in eight directions (`art/frames`, imported into material templates so kits and looks recolour them); the typed 16×24 templates remain behind `?sprites=classic` and for the poses not generated yet.
+An SNES look in the style of *ISS Deluxe*: pixel-art sprites on an angled pitch. The simulation runs in flat top-down 2D, and only the rendering adds the pseudo-3D angle. Pitch players are the typed 16×24 templates. Generated 48×48 frames in eight directions (`art/frames`, imported into material templates so kits and looks recolour them) exist behind `?sprites=generated` for testing until the set is complete and approved.
 
 ### 6.2 Input
 Touch-first. The pull-back-and-release gesture must feel right on a phone browser from M0, and the same gesture works with a mouse. With two fingers, the first finger's pull sets only the power and the second finger points where the flick goes; lifting the second finger returns to one-finger aiming, lifting the first releases the flick.
