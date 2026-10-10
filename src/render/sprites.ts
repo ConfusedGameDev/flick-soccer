@@ -1,6 +1,7 @@
 import { Texture } from 'pixi.js';
 import { hex, shirtColorAt, type Kit } from './kits';
 import { HERO_POSES, HERO_RIGS, LETTERS, isHeroPose, rasterise, type HeroPose, type JerseyFrame, type Material } from './rig';
+import { frame, frameRows, type Dir8, type FrameState } from './frames';
 
 // Pixel-art player sprites painted from ASCII templates, in the spirit of
 // 16-bit football games: a 16x24 figure seen from the front, slightly above,
@@ -408,11 +409,19 @@ export function templateRows(pose: Pose, look: Look, flip = false): string[] {
   return rows;
 }
 
-function jerseyColor(kit: Kit, keeper: boolean, pose: Pose, x: number, y: number, frame?: JerseyFrame): number {
+/** How a template maps shirt pixels onto the kit pattern: an affine frame (rigs) or an axis-aligned box. */
+type JerseyMap = JerseyFrame | { box: [number, number, number, number] };
+
+function jerseyColor(kit: Kit, keeper: boolean, pose: Pose, x: number, y: number, map?: JerseyMap): number {
   if (keeper) return kit.keeper.jersey;
   let u: number;
   let v: number;
-  if (frame) {
+  if (map && 'box' in map) {
+    const [top, rows, left, cols] = map.box;
+    u = (x - left + 0.5) / cols;
+    v = (y - top + 0.5) / rows;
+  } else if (map) {
+    const frame = map;
     // Hero poses carry the shirt as an affine frame, so the pattern follows a leaning torso.
     const px = x + 0.5 - frame.origin[0];
     const py = y + 0.5 - frame.origin[1];
@@ -429,7 +438,7 @@ function jerseyColor(kit: Kit, keeper: boolean, pose: Pose, x: number, y: number
 }
 
 /** The base colour of a material for a kit and look; `alt` is the palette's second colour where one exists. */
-function materialColor(mat: Material, alt: boolean, kit: Kit, keeper: boolean, look: Look, pose: Pose, x: number, y: number, frame?: JerseyFrame): string {
+function materialColor(mat: Material, alt: boolean, kit: Kit, keeper: boolean, look: Look, pose: Pose, x: number, y: number, frame?: JerseyMap): string {
   const [skin, skinShade] = SKINS[look.skin] ?? SKINS[1];
   const [hair, hairHi] = HAIRS[look.hair] ?? HAIRS[0];
   switch (mat) {
@@ -459,7 +468,15 @@ function materialColor(mat: Material, alt: boolean, kit: Kit, keeper: boolean, l
 export function paintSprite(ctx: CanvasRenderingContext2D, pose: Pose, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look = DEFAULT_LOOK, flip = false): void {
   const hero = isHeroPose(pose) ? heroTemplate(pose, look, flip) : null;
   const rows = hero ? hero.rows : templateRows(pose, look);
-  const frame = hero?.jersey;
+  paintRows(ctx, rows, hero?.jersey, pose, kit, keeper, x, y, k, look);
+}
+
+/** Paint an imported frame (art/frames) at integer scale `k`; same letters, same kit and look rules. */
+export function paintFrame(ctx: CanvasRenderingContext2D, state: FrameState, dir: Dir8, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look = DEFAULT_LOOK): void {
+  paintRows(ctx, frameRows(state, dir, look), { box: frame(state, dir).jersey }, 'stand', kit, keeper, x, y, k, look);
+}
+
+function paintRows(ctx: CanvasRenderingContext2D, rows: string[], frame: JerseyMap | undefined, pose: Pose, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look): void {
   for (let j = 0; j < rows.length; j++) {
     for (let i = 0; i < rows[j].length; i++) {
       const c = rows[j][i];
@@ -541,7 +558,31 @@ export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boo
   }
 }
 
+/** A standalone canvas holding one imported frame at scale `k`. */
+export function frameCanvas(state: FrameState, dir: Dir8, kit: Kit, keeper: boolean, k: number, look: Look = DEFAULT_LOOK): HTMLCanvasElement {
+  const rows = frameRows(state, dir, look);
+  const c = document.createElement('canvas');
+  c.width = rows[0].length * k;
+  c.height = rows.length * k;
+  paintFrame(c.getContext('2d')!, state, dir, kit, keeper, 0, 0, k, look);
+  return c;
+}
+
 const cache = new Map<string, Texture>();
+
+const kitKey = (kit: Kit, keeper: boolean) => `${kit.id}:${keeper ? 'gk' : 'out'}:${kit.design ? kit.design.pixels.join('') : ''}:${kit.shorts}:${kit.socks}`;
+
+/** Pixi texture for an imported frame at 1:1 pixels. */
+export function frameTexture(state: FrameState, dir: Dir8, kit: Kit, keeper: boolean, look: Look = DEFAULT_LOOK): Texture {
+  const key = `frame:${state}:${dir}:${look.skin}${look.hair}${look.style}:${kitKey(kit, keeper)}`;
+  let t = cache.get(key);
+  if (!t) {
+    t = Texture.from(frameCanvas(state, dir, kit, keeper, 1, look));
+    t.source.scaleMode = 'nearest';
+    cache.set(key, t);
+  }
+  return t;
+}
 
 /** Pixi texture for a pose at 1:1 pixels; scale the sprite by an integer for crisp pixels. */
 export function spriteTexture(pose: Pose, kit: Kit, keeper: boolean, look: Look = DEFAULT_LOOK): Texture {

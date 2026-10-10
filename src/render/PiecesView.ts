@@ -1,8 +1,10 @@
-import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { PlayerState, Team, Vec2 } from '../engine/types';
 import { KITS, type Kit } from './kits';
 import type { PitchView } from './PitchView';
-import { SPRITE_H, ballTexture, lookFor, spriteTexture, type Pose } from './sprites';
+import { FRAME_FIGURE_H, dirFromDelta, frame, type Dir8, type FrameState } from './frames';
+import { spriteSet } from './spriteSet';
+import { SPRITE_H, ballTexture, frameTexture, lookFor, spriteTexture, type Pose } from './sprites';
 
 export const PLAYER_RADIUS_M = 1.3;
 /** How tall a player sprite is in world meters; larger than life, as in 16-bit football games. */
@@ -21,6 +23,8 @@ interface Piece {
   last: Vec2 | null;
   moving: boolean;
   facing: 1 | -1;
+  /** Eight-way facing for the imported frames (screen space). */
+  dir: Dir8;
   sliding: boolean;
 }
 
@@ -60,9 +64,32 @@ export class PiecesView {
     return this.kits;
   }
 
+  /** The imported frames (art/frames) or the typed templates. */
+  private readonly frames = spriteSet() === 'generated';
+
   /** Integer pixel scale that makes a sprite about SPRITE_HEIGHT_M tall. */
   private get k(): number {
-    return Math.max(1, Math.round((SPRITE_HEIGHT_M * this.pitch.scale) / SPRITE_H));
+    return Math.max(1, Math.round((SPRITE_HEIGHT_M * this.pitch.scale) / (this.frames ? FRAME_FIGURE_H : SPRITE_H)));
+  }
+
+  /** The texture for a piece's current pose and facing. */
+  private textureFor(piece: Piece, p: PlayerState, runFrame: 0 | 1): Texture {
+    const look = lookFor(p.name);
+    if (this.frames) {
+      // One run frame so far: the cycle alternates the stride with the idle stance.
+      const state: FrameState = piece.sliding ? 'slide' : piece.moving && runFrame === 0 ? 'run' : 'idle';
+      return frameTexture(state, piece.dir, this.kits[p.team], p.keeper, look);
+    }
+    const pose: Pose = piece.sliding ? 'slide' : piece.moving ? (runFrame === 0 ? 'run1' : 'run2') : 'stand';
+    return spriteTexture(pose, this.kits[p.team], p.keeper, look);
+  }
+
+  /** Feet on the piece position: the frame's baseline row, or the bottom of a typed template. */
+  private anchorFor(piece: Piece): void {
+    if (!this.frames) return;
+    const state: FrameState = piece.sliding ? 'slide' : piece.moving ? 'run' : 'idle';
+    const f = frame(state, piece.dir);
+    piece.sprite.anchor.set(0.5, (f.baseline + 1) / f.rows.length);
   }
 
   /** Replace every piece (new squads or kits). */
@@ -74,7 +101,10 @@ export class PiecesView {
       const root = new Container();
       const shadow = new Graphics();
       const ring = new Graphics();
-      const sprite = new Sprite(spriteTexture('stand', this.kits[p.team], p.keeper, lookFor(p.name)));
+      // Kickoff facing: toward the goal each side attacks (home up the screen).
+      const dir: Dir8 = p.team === 'home' ? 'n' : 's';
+      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false };
+      const sprite = new Sprite(this.frames ? frameTexture('idle', dir, this.kits[p.team], p.keeper, lookFor(p.name)) : spriteTexture('stand', this.kits[p.team], p.keeper, lookFor(p.name)));
       sprite.anchor.set(0.5, 1);
       const name = new Text({
         text: p.name,
@@ -90,7 +120,9 @@ export class PiecesView {
       root.addChild(shadow, ring, sprite, name);
       // Insert under the ball so the ball stays visible; keep insertion order for depth.
       this.root.addChildAt(root, this.root.getChildIndex(this.ballShadow));
-      this.pieces.push({ root, shadow, ring, sprite, name, last: null, moving: false, facing: 1, sliding: false });
+      const piece: Piece = { root, shadow, ring, sprite, name, ...piece0 };
+      this.anchorFor(piece);
+      this.pieces.push(piece);
     }
     this.carrierId = null;
     this.flickable = new Set();
@@ -128,7 +160,7 @@ export class PiecesView {
     players.forEach((_, i) => {
       const piece = this.pieces[i];
       if (!piece) return;
-      piece.sprite.scale.set(k * piece.facing, k);
+      piece.sprite.scale.set(this.frames ? k : k * piece.facing, k);
       piece.shadow
         .clear()
         .ellipse(0, 0, r * 0.9, r * 0.45)
@@ -172,14 +204,16 @@ export class PiecesView {
   /** Advance the run animation; call once per frame. */
   tick(dtSeconds: number): void {
     this.runClock += dtSeconds * 1000;
-    const frame: Pose = Math.floor(this.runClock / RUN_FRAME_MS) % 2 === 0 ? 'run1' : 'run2';
+    const runFrame: 0 | 1 = Math.floor(this.runClock / RUN_FRAME_MS) % 2 === 0 ? 0 : 1;
     this.pieces.forEach((piece, i) => {
       const p = this.players[i];
       if (!p) return;
-      const pose: Pose = piece.sliding ? 'slide' : piece.moving ? frame : 'stand';
-      const tex = spriteTexture(pose, this.kits[p.team], p.keeper, lookFor(p.name));
-      if (piece.sprite.texture !== tex) piece.sprite.texture = tex;
-      piece.sprite.scale.x = this.k * piece.facing;
+      const tex = this.textureFor(piece, p, runFrame);
+      if (piece.sprite.texture !== tex) {
+        piece.sprite.texture = tex;
+        this.anchorFor(piece);
+      }
+      piece.sprite.scale.x = this.frames ? this.k : this.k * piece.facing;
     });
   }
 
@@ -195,6 +229,11 @@ export class PiecesView {
         const dy = p.y - piece.last.y;
         const moved = Math.hypot(dx, dy) > 0.02;
         if (moved && Math.abs(dx) > 0.01) piece.facing = dx < 0 ? -1 : 1;
+        if (moved) {
+          // Facing follows the movement on screen, so it is right whichever way the pitch is drawn.
+          const from = this.pitch.toScreen(piece.last);
+          piece.dir = dirFromDelta(s.x - from.x, s.y - from.y);
+        }
         if (!moved && piece.moving) piece.sliding = false;
         piece.moving = moved;
       }

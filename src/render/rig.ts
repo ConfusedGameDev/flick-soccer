@@ -12,7 +12,8 @@ export type Vec = [number, number];
 /**
  * Every template letter: its material and tone. 1 is the base colour, a
  * fraction darkens it, above 1 lightens it, and 'alt' is the palette's second
- * colour (skin shade, hair highlight, glove shade, ball shade).
+ * colour (skin shade, hair highlight, glove shade, ball shade). The 0.86 mid
+ * tones (m, n, o) only come from imported frames (scripts/import-frames.mjs).
  */
 export const LETTERS: Record<string, { mat: Material | 'outline'; tone: number | 'alt' }> = {
   O: { mat: 'outline', tone: 1 },
@@ -30,14 +31,17 @@ export const LETTERS: Record<string, { mat: Material | 'outline'; tone: number |
   j: { mat: 'jersey', tone: 0.72 },
   q: { mat: 'jersey', tone: 0.5 },
   I: { mat: 'jersey', tone: 1.15 },
+  m: { mat: 'jersey', tone: 0.86 },
   C: { mat: 'collar', tone: 1 },
   c: { mat: 'collar', tone: 0.72 },
   P: { mat: 'shorts', tone: 1 },
   p: { mat: 'shorts', tone: 0.72 },
   w: { mat: 'shorts', tone: 0.5 },
+  n: { mat: 'shorts', tone: 0.86 },
   K: { mat: 'socks', tone: 1 },
   k: { mat: 'socks', tone: 0.72 },
   v: { mat: 'socks', tone: 0.5 },
+  o: { mat: 'socks', tone: 0.86 },
   B: { mat: 'boots', tone: 1 },
   b: { mat: 'boots', tone: 1.6 },
   W: { mat: 'ball', tone: 1 },

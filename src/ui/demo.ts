@@ -1,13 +1,20 @@
+import { planAttack, planDefense } from '../engine/cpu';
+import { initialMatch } from '../engine/setup';
+import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
+import type { MatchState } from '../engine/types';
 import { KITS, type Kit } from '../render/kits';
 import { drawBooster, flipCoin } from '../engine/boosters';
 import { mulberry32 } from '../engine/rng';
-import { HERO_POSES, spriteCanvas, type HeroPose } from '../render/sprites';
+import type { PiecesView } from '../render/PiecesView';
+import type { TimelinePlayer } from '../render/TimelinePlayer';
+import { DIRS, FRAME_STATES } from '../render/frames';
+import { HERO_POSES, frameCanvas, spriteCanvas, type HeroPose } from '../render/sprites';
 import type { Cutscene, CutsceneKind } from './Cutscene';
 import type { SetPiece } from './SetPiece';
 import type { CoinToss } from './CoinToss';
 import type { PackView } from './PackView';
 
-// Preview routes for the procedural art (`?demo=sheet|cutscenes|shot|pack|toss`),
+// Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot|pack|toss`),
 // loaded on demand from main.ts. They exist so the figures can be iterated
 // against screenshots, and checked on a preview deploy, without playing a match.
 
@@ -15,6 +22,8 @@ export interface DemoDeps {
   overlay: HTMLElement;
   cutscene: Cutscene;
   setPiece: SetPiece;
+  pieces: PiecesView;
+  player: TimelinePlayer;
   pack: PackView;
   toss: CoinToss;
 }
@@ -26,6 +35,8 @@ export async function runDemo(route: string, deps: DemoDeps): Promise<void> {
   const kit = KITS[Number(q.get('kit') ?? 1) % KITS.length];
   const other = KITS[Number(q.get('other') ?? 0) % KITS.length];
   if (route === 'sheet') return sheet(deps.overlay, kit, q);
+  if (route === 'frames') return frames(deps.overlay, kit, other, q);
+  if (route === 'pitch') return pitchLoop(deps.pieces, deps.player, kit, other, q);
   if (route === 'cutscenes') return cutscenes(deps.cutscene, kit, other, q);
   if (route === 'shot') return shot(deps.setPiece, kit, other, q);
   if (route === 'pack') return pack(deps.pack, kit, q);
@@ -71,6 +82,60 @@ function sheet(overlay: HTMLElement, kit: Kit, q: URLSearchParams): void {
     root.appendChild(row);
   }
   overlay.appendChild(root);
+}
+
+/** The imported frames: every state and direction, in two kits, four looks and the keeper colours. */
+function frames(overlay: HTMLElement, kit: Kit, other: Kit, q: URLSearchParams): void {
+  const k = Number(q.get('k') ?? 3);
+  const root = document.createElement('div');
+  root.className = 'demo-sheet';
+  for (const state of FRAME_STATES) {
+    for (const [i, k2] of [kit, other].entries()) {
+      const row = document.createElement('div');
+      row.className = 'demo-row';
+      const label = document.createElement('div');
+      label.className = 'demo-label';
+      label.textContent = `${state} · ${k2.name}`;
+      row.appendChild(label);
+      for (const dir of DIRS) row.appendChild(frameCanvas(state, dir, k2, false, k, { skin: (i + DIRS.indexOf(dir)) % 4, hair: DIRS.indexOf(dir) % 5, style: DIRS.indexOf(dir) % 4 }));
+      row.appendChild(frameCanvas(state, 's', k2, true, k, { skin: 1, hair: 2, style: 0 }));
+      root.appendChild(row);
+    }
+  }
+  overlay.appendChild(root);
+}
+
+/** CPU vs CPU turns played on the pitch forever, to see the player sprites move (`&speed=0.5` slows it). */
+async function pitchLoop(pieces: PiecesView, player: TimelinePlayer, kit: Kit, other: Kit, q: URLSearchParams): Promise<void> {
+  const speed = Number(q.get('speed') ?? 0.6);
+  pieces.setKits({ home: kit, away: other });
+  let s: MatchState = initialMatch();
+  pieces.rebuild(s.players);
+  let turn = 0;
+  for (;;) {
+    turn++;
+    const seed = 1000 + turn;
+    const att = s.possession.team;
+    const def = att === 'home' ? 'away' : 'home';
+    const r = resolveTurn(s, planAttack(s, att, 'normal', seed), planDefense(s, def, 'normal', seed + 7), seed);
+    pieces.setPositions(
+      s.players.map((p) => p.pos),
+      s.ball,
+    );
+    await player.play(r, speed);
+    s = r.state;
+    if (s.status === 'duel') s = resolveDuel(s, turn % 2 ? 'home' : 'away', seed).state;
+    if (s.status === 'half-time') s = continueMatch(s);
+    if (s.status === 'full-time') {
+      s = initialMatch();
+      pieces.rebuild(s.players);
+    }
+    pieces.setPositions(
+      s.players.map((p) => p.pos),
+      s.ball,
+    );
+    await new Promise((res) => setTimeout(res, 600));
+  }
 }
 
 async function cutscenes(cutscene: Cutscene, kit: Kit, other: Kit, q: URLSearchParams): Promise<void> {
