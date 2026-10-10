@@ -3,14 +3,18 @@ import { initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
 import type { MatchState } from '../engine/types';
 import { KITS, type Kit } from '../render/kits';
+import { drawBooster, flipCoin } from '../engine/boosters';
+import { mulberry32 } from '../engine/rng';
 import type { PiecesView } from '../render/PiecesView';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import { DIRS, FRAME_STATES } from '../render/frames';
 import { HERO_POSES, frameCanvas, spriteCanvas, type HeroPose } from '../render/sprites';
 import type { Cutscene, CutsceneKind } from './Cutscene';
 import type { SetPiece } from './SetPiece';
+import type { CoinToss } from './CoinToss';
+import type { PackView } from './PackView';
 
-// Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot`),
+// Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot|pack|toss`),
 // loaded on demand from main.ts. They exist so the figures can be iterated
 // against screenshots, and checked on a preview deploy, without playing a match.
 
@@ -20,6 +24,8 @@ export interface DemoDeps {
   setPiece: SetPiece;
   pieces: PiecesView;
   player: TimelinePlayer;
+  pack: PackView;
+  toss: CoinToss;
 }
 
 const KINDS: CutsceneKind[] = ['goal', 'save', 'overtake', 'duel', 'corner', 'throw-in'];
@@ -33,6 +39,25 @@ export async function runDemo(route: string, deps: DemoDeps): Promise<void> {
   if (route === 'pitch') return pitchLoop(deps.pieces, deps.player, kit, other, q);
   if (route === 'cutscenes') return cutscenes(deps.cutscene, kit, other, q);
   if (route === 'shot') return shot(deps.setPiece, kit, other, q);
+  if (route === 'pack') return pack(deps.pack, kit, q);
+  if (route === 'toss') return toss(deps.toss, kit, q);
+}
+
+/** A pack opening, over and over; `&auto=1` lets the middle card turn by itself, `&seed=` picks the card. */
+async function pack(view: PackView, kit: Kit, q: URLSearchParams): Promise<void> {
+  const auto = q.get('auto') === '1';
+  for (let i = Number(q.get('seed') ?? 1); ; i++) {
+    await view.show({ title: auto ? 'Away (CPU) open a pack' : 'Home: trade a flick for a card', booster: drawBooster(mulberry32(i)), pick: !auto, kit });
+  }
+}
+
+/** The toss: call, then the coin lands on the seeded face; `&seed=` picks the face. */
+async function toss(view: CoinToss, kit: Kit, q: URLSearchParams): Promise<void> {
+  for (let i = Number(q.get('seed') ?? 1); ; i++) {
+    const call = await view.call({ title: 'Home call the toss', text: 'Heads or tails? Call it right and you attack first.', kit });
+    const coin = flipCoin(mulberry32(i));
+    await view.flip({ title: 'The toss', coin, caption: `Home called ${call}: it is ${coin}. ${coin === call ? 'Home' : 'Away'} attack first.`, kit, button: 'Kick off' });
+  }
 }
 
 /** Every hero pose, four hair styles, outfield and keeper, on black. */

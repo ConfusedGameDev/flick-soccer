@@ -1,5 +1,5 @@
 import type { Difficulty } from '../engine/cpu';
-import { BOOSTERS, MAX_BOOSTERS } from '../engine/dice';
+import { MAX_BOOSTERS, drawBooster } from '../engine/boosters';
 import { FORMATION_NAMES, LEAGUES, STAT_KEYS, cost, cpuSquad, leaguePool, type League, type PoolPlayer, type Squad, type Stats } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { MAX_TACTICS, TACTICS, TACTIC_INFO } from '../engine/tactics';
@@ -138,8 +138,7 @@ export function hire(run: RunState, offer: PoolPlayer): RunState | null {
 /** A booster pack: one seeded random booster, up to the hand limit. */
 export function buyPack(run: RunState): RunState | null {
   if (run.coins < PACK_COST || run.boosters.length >= MAX_BOOSTERS) return null;
-  const rng = mulberry32(stageSeed(run, 11 + run.boosters.length + run.results.length));
-  const booster = BOOSTERS[Math.floor(rng() * BOOSTERS.length)];
+  const booster = drawBooster(mulberry32(stageSeed(run, 11 + run.boosters.length + run.results.length)));
   return { ...run, coins: run.coins - PACK_COST, boosters: [...run.boosters, booster] };
 }
 

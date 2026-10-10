@@ -7,11 +7,17 @@ import { clamp } from './vec';
 // auto-picker and the match setup.
 
 export type League = 'mx' | 'en' | 'it' | 'es' | 'de';
+/** All-time greats before the modern era, or today's players. */
+export type Era = 'classic' | 'modern';
 export type Position = 'GK' | 'DF' | 'MF' | 'FW';
 
 export const LEAGUES: League[] = ['mx', 'en', 'it', 'es', 'de'];
-/** Players per league in the pool (the 26 best of each). */
-export const POOL_PER_LEAGUE = 26;
+export const ERAS: Era[] = ['classic', 'modern'];
+export const ERA_INFO: Record<Era, { name: string }> = { classic: { name: 'Classic' }, modern: { name: 'Modern' } };
+/** Players per league and era in the pool (the 26 best of each). */
+export const POOL_PER_ERA = 26;
+/** Players per league: the classic and the modern 26. */
+export const POOL_PER_LEAGUE = POOL_PER_ERA * ERAS.length;
 export const LEAGUE_INFO: Record<League, { name: string; short: string; flag: string }> = {
   mx: { name: 'Mexico', short: 'MEX', flag: '🇲🇽' },
   en: { name: 'England', short: 'ENG', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
@@ -33,6 +39,7 @@ export interface PoolPlayer extends Stats {
   name: string;
   short: string;
   league: League;
+  era: Era;
   club: string;
   position: Position;
 }
@@ -204,6 +211,7 @@ export function defaultSquad(team: 'home' | 'away', formation: FormationName = '
     name: `${team === 'home' ? 'Home' : 'Away'} #${i + 1}`,
     short: `#${i + 1}`,
     league: 'mx',
+    era: 'modern',
     club: '',
     position: s.role,
     pass: STAT_BASE,

@@ -1,131 +1,261 @@
-league,id,real_name,name,short,club,position,pass,shot,speed,tackle,keeping
-en,allison,Alisson Becker,Allison Baker,Allison,Liverpool,GK,3,1,3,2,5
-en,rayo,David Raya,Davi Rayo,Rayo,Arsenal,GK,4,1,3,2,4
-en,donnaroma,Gianluigi Donnarumma,Gigi Donnaroma,Donnaroma,Manchester City,GK,2,1,2,2,5
-en,vandyke,Virgil van Dijk,Virgil van Dyke,Van Dyke,Liverpool,DF,4,2,3,5,1
-en,salibo,William Saliba,Will Salibo,Salibo,Arsenal,DF,3,1,4,5,1
-en,magalhao,Gabriel Magalhães,Gabi Magalhao,Magalhao,Arsenal,DF,2,2,3,5,1
-en,diaz,Rúben Dias,Ruben Diaz,Diaz,Manchester City,DF,3,1,3,4,1
-en,gardiol,Joško Gvardiol,Josko Gardiol,Gardiol,Manchester City,DF,3,1,4,4,1
-en,romeiro,Cristian Romero,Cuti Romeiro,Romeiro,Tottenham,DF,2,1,3,5,1
-en,cucurello,Marc Cucurella,Marc Cucurello,Cucurello,Chelsea,DF,4,2,4,3,1
-en,rize,Declan Rice,Declan Rize,Rize,Arsenal,MF,4,3,3,3,1
-en,odegard,Martin Ødegaard,Martin Odegard,Odegard,Arsenal,MF,5,3,3,2,1
-en,fernandez,Bruno Fernandes,Bruno Fernandez,Fernandez,Manchester United,MF,5,4,3,2,1
-en,parmer,Cole Palmer,Cole Parmer,Parmer,Chelsea,MF,5,4,3,1,1
-en,caicido,Moisés Caicedo,Moises Caicido,Caicido,Chelsea,MF,4,2,4,5,1
-en,macalastair,Alexis Mac Allister,Alexis Mac Alastair,Mac Alastair,Liverpool,MF,5,3,3,3,1
-en,wertz,Florian Wirtz,Florian Wertz,Wertz,Liverpool,MF,5,4,4,2,1
-en,rodgers,Morgan Rogers,Morgan Rodgers,Rodgers,Chelsea,MF,3,4,4,2,1
-en,holland,Erling Haaland,Erling Holland,Holland,Manchester City,FW,2,5,5,1,1
-en,saleh,Mohamed Salah,Mo Saleh,Saleh,Liverpool,FW,4,5,4,1,1
-en,sako,Bukayo Saka,Bukayo Sako,Sako,Arsenal,FW,4,4,4,2,1
-en,isaac,Alexander Isak,Alex Isaac,Isaac,Liverpool,FW,3,5,4,1,1
-en,jokeres,Viktor Gyökeres,Viktor Jokeres,Jokeres,Arsenal,FW,2,5,3,1,1
-en,fodden,Phil Foden,Phil Fodden,Fodden,Manchester City,FW,4,4,3,1,1
-en,ekitika,Hugo Ekitiké,Hugo Ekitika,Ekitika,Liverpool,FW,2,4,4,1,1
-en,barcolo,Bradley Barcola,Bradley Barcolo,Barcolo,Liverpool,FW,3,3,5,1,1
-es,cortois,Thibaut Courtois,Tibo Cortois,Cortois,Real Madrid,GK,2,1,2,2,5
-es,oblek,Jan Oblak,Jan Oblek,Oblek,Atlético de Madrid,GK,2,1,3,2,5
-es,garcio,Joan García,Joan Garcio,Garcio,Barcelona,GK,3,1,3,2,4
-es,cubarso,Pau Cubarsí,Pau Cubarso,Cubarso,Barcelona,DF,4,1,3,5,1
-es,kounda,Jules Koundé,Jules Kounda,Kounda,Barcelona,DF,3,1,4,4,1
-es,baldo,Alejandro Balde,Alex Baldo,Baldo,Barcelona,DF,3,2,5,3,1
-es,arnald,Trent Alexander-Arnold,Trent Arnald,Arnald,Real Madrid,DF,5,3,3,3,1
-es,huisen,Dean Huijsen,Dean Huisen,Huisen,Real Madrid,DF,4,1,3,4,1
-es,militano,Éder Militão,Eder Militano,Militano,Real Madrid,DF,3,1,4,5,1
-es,carretas,Álvaro Carreras,Alvaro Carretas,Carretas,Real Madrid,DF,3,2,4,3,1
-es,pedrin,Pedri,Pedrín Gonzales,Pedrín,Barcelona,MF,5,3,3,3,1
-es,dejonk,Frenkie de Jong,Frankie de Jonk,De Jonk,Barcelona,MF,5,2,3,3,1
-es,billingham,Jude Bellingham,Jude Billingham,Billingham,Real Madrid,MF,4,4,4,3,1
-es,valverdi,Federico Valverde,Fede Valverdi,Valverdi,Real Madrid,MF,4,4,5,4,1
-es,tchouamini,Aurélien Tchouaméni,Aurelien Tchouamini,Tchouamini,Real Madrid,MF,4,2,3,4,1
-es,gulen,Arda Güler,Arda Gulen,Gulen,Real Madrid,MF,5,4,3,1,1
-es,olmos,Dani Olmo,Dani Olmos,Olmos,Barcelona,MF,4,3,3,2,1
-es,rodry,Rodri,Rodry Hernandes,Rodry,Barcelona,MF,5,3,3,5,1
-es,mbappo,Kylian Mbappé,Kylian Mbappo,Mbappo,Real Madrid,FW,3,5,5,1,1
-es,yamel,Lamine Yamal,Lamine Yamel,Yamel,Barcelona,FW,5,4,5,1,1
-es,rafinho,Raphinha,Rafinho,Rafinho,Barcelona,FW,4,5,4,1,1
-es,vinizius,Vinícius Júnior,Vinizius Jr,Vinizius,Real Madrid,FW,3,4,5,1,1
-es,alvarado,Julián Álvarez,Julian Alvarado,Alvarado,Atlético de Madrid,FW,3,5,4,1,1
-es,grizzman,Antoine Griezmann,Antoine Grizzman,Grizzman,Atlético de Madrid,FW,4,4,3,1,1
-es,wilhelms,Nico Williams,Nico Wilhelms,Wilhelms,Athletic Club,FW,3,3,5,1,1
-es,diomandi,Yan Diomande,Yan Diomandi,Diomandi,Real Madrid,FW,2,4,4,1,1
-it,magnan,Mike Maignan,Mike Magnan,Magnan,Milan,GK,3,1,3,2,5
-it,summer,Yann Sommer,Yann Summer,Summer,Inter,GK,2,1,2,2,4
-it,digregori,Michele Di Gregorio,Michele Di Gregori,Di Gregori,Juventus,GK,2,1,3,2,4
-it,bastioni,Alessandro Bastoni,Alessandro Bastioni,Bastioni,Inter,DF,4,2,3,5,1
-it,dimarco,Federico Dimarco,Federico Di Marco,Di Marco,Inter,DF,5,3,4,3,1
-it,dumfrees,Denzel Dumfries,Denzel Dumfrees,Dumfrees,Inter,DF,3,3,5,3,1
-it,bremmer,Gleison Bremer,Gleison Bremmer,Bremmer,Juventus,DF,2,1,3,5,1
-it,buonasera,Alessandro Buongiorno,Alessandro Buonasera,Buonasera,Napoli,DF,2,1,3,5,1
-it,dilorenzi,Giovanni Di Lorenzo,Giovanni Di Lorenzi,Di Lorenzi,Napoli,DF,3,2,4,4,1
-it,tomoro,Fikayo Tomori,Fik Tomoro,Tomoro,Milan,DF,2,1,4,4,1
-it,barello,Nicolò Barella,Nicolo Barello,Barello,Inter,MF,5,3,4,4,1
-it,calhanoglo,Hakan Çalhanoğlu,Hakan Calhanoglo,Calhanoglo,Inter,MF,5,4,2,3,1
-it,mactominay,Scott McTominay,Scott MacTominay,MacTominay,Napoli,MF,4,4,3,4,1
-it,debruin,Kevin De Bruyne,Kevin De Bruin,De Bruin,Napoli,MF,5,4,2,2,1
-it,lobotko,Stanislav Lobotka,Stanislav Lobotko,Lobotko,Napoli,MF,5,2,3,2,1
-it,rabiaux,Adrien Rabiot,Adrien Rabiaux,Rabiaux,Milan,MF,4,3,3,3,1
-it,anguisso,Frank Anguissa,Frank Anguisso,Anguisso,Napoli,MF,4,3,4,3,1
-it,locatello,Manuel Locatelli,Manuel Locatello,Locatello,Juventus,MF,4,2,3,3,1
-it,martines,Lautaro Martínez,Lautaro Martines,Martines,Inter,FW,3,5,4,2,1
-it,thurman,Marcus Thuram,Marcus Thurman,Thurman,Inter,FW,3,4,4,1,1
-it,leon,Rafael Leão,Rafa Leon,Leon,Milan,FW,3,4,5,1,1
-it,pulisek,Christian Pulisic,Chris Pulisek,Pulisek,Milan,FW,4,4,4,1,1
-it,yildaz,Kenan Yıldız,Kenan Yildaz,Yildaz,Juventus,FW,4,4,3,1,1
-it,dybalo,Paulo Dybala,Paulo Dybalo,Dybalo,Roma,FW,5,4,3,1,1
-it,keen,Moise Kean,Moise Keen,Keen,Fiorentina,FW,2,5,3,1,1
-it,ramus,Gonçalo Ramos,Goncalo Ramus,Ramus,Milan,FW,3,4,3,1,1
-de,neuner,Manuel Neuer,Manuel Neuner,Neuner,Bayern München,GK,4,1,3,2,5
-de,kobol,Gregor Kobel,Gregor Kobol,Kobol,Borussia Dortmund,GK,3,1,3,2,5
-de,gulaschi,Péter Gulácsi,Peter Gulaschi,Gulaschi,RB Leipzig,GK,2,1,2,2,4
-de,upamecana,Dayot Upamecano,Dayot Upamecana,Upamecana,Bayern München,DF,3,1,4,5,1
-de,taah,Jonathan Tah,Jonathan Taah,Taah,Bayern München,DF,3,1,3,5,1
-de,davis,Alphonso Davies,Alphonso Davis,Davis,Bayern München,DF,3,2,5,4,1
-de,schlotterbach,Nico Schlotterbeck,Nico Schlotterbach,Schlotterbach,Borussia Dortmund,DF,4,2,3,5,1
-de,grimaldi,Alejandro Grimaldo,Alex Grimaldi,Grimaldi,Bayer Leverkusen,DF,5,4,4,3,1
-de,lukebo,Castello Lukeba,Castello Lukebo,Lukebo,RB Leipzig,DF,3,1,4,4,1
-de,anten,Waldemar Anton,Waldemar Anten,Anten,Borussia Dortmund,DF,3,1,3,4,1
-de,kimmach,Joshua Kimmich,Joshua Kimmach,Kimmach,Bayern München,MF,5,3,3,4,1
-de,musialo,Jamal Musiala,Jamal Musialo,Musialo,Bayern München,MF,5,4,4,2,1
-de,pavlovitch,Aleksandar Pavlović,Aleks Pavlovitch,Pavlovitch,Bayern München,MF,4,2,3,3,1
-de,brant,Julian Brandt,Julian Brant,Brant,Borussia Dortmund,MF,4,4,3,2,1
-de,stillner,Angelo Stiller,Angelo Stillner,Stillner,VfB Stuttgart,MF,5,2,3,3,1
-de,palacio,Exequiel Palacios,Exequiel Palacio,Palacio,Bayer Leverkusen,MF,4,3,3,4,1
-de,nmecho,Felix Nmecha,Felix Nmecho,Nmecho,Borussia Dortmund,MF,4,3,4,3,1
-de,jbillingham,Jobe Bellingham,Jobe Billingham,J. Billingham,Borussia Dortmund,MF,3,3,4,3,1
-de,cane,Harry Kane,Harry Cane,Cane,Bayern München,FW,4,5,3,1,1
-de,olisse,Michael Olise,Mike Olisse,Olisse,Bayern München,FW,5,4,4,1,1
-de,diez,Luis Díaz,Luis Diez,Diez,Bayern München,FW,3,4,5,1,1
-de,guirassi,Serhou Guirassy,Serhou Guirassi,Guirassi,Borussia Dortmund,FW,2,5,3,1,1
-de,adeyemo,Karim Adeyemi,Karim Adeyemo,Adeyemo,Borussia Dortmund,FW,3,3,5,1,1
-de,schock,Patrik Schick,Patrik Schock,Schock,Bayer Leverkusen,FW,2,5,3,1,1
-de,undaf,Deniz Undav,Deniz Undaf,Undaf,VfB Stuttgart,FW,3,4,3,1,1
-de,burkhart,Jonathan Burkardt,Jonathan Burkhart,Burkhart,Eintracht Frankfurt,FW,3,4,4,1,1
-mx,malagan,Luis Malagón,Luis Malagan,Malagan,América,GK,3,1,3,2,5
-mx,mear,Kevin Mier,Kevin Mear,Mear,Cruz Azul,GK,3,1,3,2,4
-mx,rangal,Raúl Rangel,Raul Rangal,Rangal,Chivas,GK,2,1,3,2,4
-mx,reyas,Israel Reyes,Israel Reyas,Reyas,América,DF,3,2,4,4,1
-mx,caceras,Sebastián Cáceres,Sebastian Caceras,Caceras,América,DF,3,1,3,5,1
-mx,alvares,Kevin Álvarez,Kevin Alvares,Alvares,América,DF,4,2,5,3,1
-mx,dito,Willer Ditta,Willer Dito,Dito,Cruz Azul,DF,2,1,3,5,1
-mx,gallardi,Jesús Gallardo,Jesus Gallardi,Gallardi,Toluca,DF,4,2,4,3,1
-mx,artiaga,Gerardo Arteaga,Gerardo Artiaga,Artiaga,Monterrey,DF,3,2,4,4,1
-mx,pereiro,Joaquim Pereira,Joaquim Pereiro,Pereiro,Tigres,DF,3,1,3,5,1
-mx,fidalgos,Álvaro Fidalgo,Alvaro Fidalgos,Fidalgos,América,MF,5,3,3,3,1
-mx,brunetto,Juan Brunetta,Juan Brunetto,Brunetto,Tigres,MF,5,4,3,2,1
-mx,gorriarin,Fernando Gorriarán,Fernando Gorriarin,Gorriarin,Tigres,MF,4,3,4,4,1
-mx,rodrigues,Carlos Rodríguez,Charly Rodrigues,Rodrigues,Cruz Azul,MF,4,2,3,4,1
-mx,faravello,Lorenzo Faravelli,Lorenzo Faravello,Faravello,Cruz Azul,MF,4,3,3,3,1
-mx,ruis,Marcel Ruiz,Marcel Ruis,Ruis,Toluca,MF,4,3,3,3,1
-mx,canalez,Sergio Canales,Sergio Canalez,Canalez,Monterrey,MF,5,4,2,2,1
-mx,alvarada,Roberto Alvarado,Roberto Alvarada,Alvarada,Chivas,MF,4,4,4,2,1
-mx,marten,Henry Martín,Henry Marten,Marten,América,FW,3,5,3,1,1
-mx,zendejos,Alejandro Zendejas,Alex Zendejos,Zendejos,América,FW,4,4,4,1,1
-mx,paulinio,Paulinho,Paulinio,Paulinio,Toluca,FW,3,5,3,1,1
-mx,vego,Alexis Vega,Alexis Vego,Vego,Toluca,FW,4,4,3,1,1
-mx,sepulvedo,Ángel Sepúlveda,Angel Sepulvedo,Sepulvedo,Cruz Azul,FW,2,4,3,1,1
-mx,berteramo,Germán Berterame,German Berteramo,Berteramo,Monterrey,FW,3,4,3,1,1
-mx,corria,Ángel Correa,Angel Corria,Corria,Tigres,FW,4,4,4,2,1
-mx,gonzalvez,Armando González,Armando Gonzalvez,Gonzalvez,Chivas,FW,2,4,4,1,1
+league,era,id,real_name,name,short,club,position,pass,shot,speed,tackle,keeping
+en,modern,allison,Alisson Becker,Allison Baker,Allison,Liverpool,GK,3,1,3,2,5
+en,modern,rayo,David Raya,Davi Rayo,Rayo,Arsenal,GK,4,1,3,2,4
+en,modern,donnaroma,Gianluigi Donnarumma,Gigi Donnaroma,Donnaroma,Manchester City,GK,2,1,2,2,5
+en,modern,vandyke,Virgil van Dijk,Virgil van Dyke,Van Dyke,Liverpool,DF,4,2,3,5,1
+en,modern,salibo,William Saliba,Will Salibo,Salibo,Arsenal,DF,3,1,4,5,1
+en,modern,magalhao,Gabriel Magalhães,Gabi Magalhao,Magalhao,Arsenal,DF,2,2,3,5,1
+en,modern,diaz,Rúben Dias,Ruben Diaz,Diaz,Manchester City,DF,3,1,3,4,1
+en,modern,gardiol,Joško Gvardiol,Josko Gardiol,Gardiol,Manchester City,DF,3,1,4,4,1
+en,modern,romeiro,Cristian Romero,Cuti Romeiro,Romeiro,Tottenham,DF,2,1,3,5,1
+en,modern,cucurello,Marc Cucurella,Marc Cucurello,Cucurello,Chelsea,DF,4,2,4,3,1
+en,modern,rize,Declan Rice,Declan Rize,Rize,Arsenal,MF,4,3,3,3,1
+en,modern,odegard,Martin Ødegaard,Martin Odegard,Odegard,Arsenal,MF,5,3,3,2,1
+en,modern,fernandez,Bruno Fernandes,Bruno Fernandez,Fernandez,Manchester United,MF,5,4,3,2,1
+en,modern,parmer,Cole Palmer,Cole Parmer,Parmer,Chelsea,MF,5,4,3,1,1
+en,modern,caicido,Moisés Caicedo,Moises Caicido,Caicido,Chelsea,MF,4,2,4,5,1
+en,modern,macalastair,Alexis Mac Allister,Alexis Mac Alastair,Mac Alastair,Liverpool,MF,5,3,3,3,1
+en,modern,wertz,Florian Wirtz,Florian Wertz,Wertz,Liverpool,MF,5,4,4,2,1
+en,modern,rodgers,Morgan Rogers,Morgan Rodgers,Rodgers,Chelsea,MF,3,4,4,2,1
+en,modern,holland,Erling Haaland,Erling Holland,Holland,Manchester City,FW,2,5,5,1,1
+en,modern,saleh,Mohamed Salah,Mo Saleh,Saleh,Liverpool,FW,4,5,4,1,1
+en,modern,sako,Bukayo Saka,Bukayo Sako,Sako,Arsenal,FW,4,4,4,2,1
+en,modern,isaac,Alexander Isak,Alex Isaac,Isaac,Liverpool,FW,3,5,4,1,1
+en,modern,jokeres,Viktor Gyökeres,Viktor Jokeres,Jokeres,Arsenal,FW,2,5,3,1,1
+en,modern,fodden,Phil Foden,Phil Fodden,Fodden,Manchester City,FW,4,4,3,1,1
+en,modern,ekitika,Hugo Ekitiké,Hugo Ekitika,Ekitika,Liverpool,FW,2,4,4,1,1
+en,modern,barcolo,Bradley Barcola,Bradley Barcolo,Barcolo,Liverpool,FW,3,3,5,1,1
+es,modern,cortois,Thibaut Courtois,Tibo Cortois,Cortois,Real Madrid,GK,2,1,2,2,5
+es,modern,oblek,Jan Oblak,Jan Oblek,Oblek,Atlético de Madrid,GK,2,1,3,2,5
+es,modern,garcio,Joan García,Joan Garcio,Garcio,Barcelona,GK,3,1,3,2,4
+es,modern,cubarso,Pau Cubarsí,Pau Cubarso,Cubarso,Barcelona,DF,4,1,3,5,1
+es,modern,kounda,Jules Koundé,Jules Kounda,Kounda,Barcelona,DF,3,1,4,4,1
+es,modern,baldo,Alejandro Balde,Alex Baldo,Baldo,Barcelona,DF,3,2,5,3,1
+es,modern,arnald,Trent Alexander-Arnold,Trent Arnald,Arnald,Real Madrid,DF,5,3,3,3,1
+es,modern,huisen,Dean Huijsen,Dean Huisen,Huisen,Real Madrid,DF,4,1,3,4,1
+es,modern,militano,Éder Militão,Eder Militano,Militano,Real Madrid,DF,3,1,4,5,1
+es,modern,carretas,Álvaro Carreras,Alvaro Carretas,Carretas,Real Madrid,DF,3,2,4,3,1
+es,modern,pedrin,Pedri,Pedrín Gonzales,Pedrín,Barcelona,MF,5,3,3,3,1
+es,modern,dejonk,Frenkie de Jong,Frankie de Jonk,De Jonk,Barcelona,MF,5,2,3,3,1
+es,modern,billingham,Jude Bellingham,Jude Billingham,Billingham,Real Madrid,MF,4,4,4,3,1
+es,modern,valverdi,Federico Valverde,Fede Valverdi,Valverdi,Real Madrid,MF,4,4,5,4,1
+es,modern,tchouamini,Aurélien Tchouaméni,Aurelien Tchouamini,Tchouamini,Real Madrid,MF,4,2,3,4,1
+es,modern,gulen,Arda Güler,Arda Gulen,Gulen,Real Madrid,MF,5,4,3,1,1
+es,modern,olmos,Dani Olmo,Dani Olmos,Olmos,Barcelona,MF,4,3,3,2,1
+es,modern,rodry,Rodri,Rodry Hernandes,Rodry,Barcelona,MF,5,3,3,5,1
+es,modern,mbappo,Kylian Mbappé,Kylian Mbappo,Mbappo,Real Madrid,FW,3,5,5,1,1
+es,modern,yamel,Lamine Yamal,Lamine Yamel,Yamel,Barcelona,FW,5,4,5,1,1
+es,modern,rafinho,Raphinha,Rafinho,Rafinho,Barcelona,FW,4,5,4,1,1
+es,modern,vinizius,Vinícius Júnior,Vinizius Jr,Vinizius,Real Madrid,FW,3,4,5,1,1
+es,modern,alvarado,Julián Álvarez,Julian Alvarado,Alvarado,Atlético de Madrid,FW,3,5,4,1,1
+es,modern,grizzman,Antoine Griezmann,Antoine Grizzman,Grizzman,Atlético de Madrid,FW,4,4,3,1,1
+es,modern,wilhelms,Nico Williams,Nico Wilhelms,Wilhelms,Athletic Club,FW,3,3,5,1,1
+es,modern,diomandi,Yan Diomande,Yan Diomandi,Diomandi,Real Madrid,FW,2,4,4,1,1
+it,modern,magnan,Mike Maignan,Mike Magnan,Magnan,Milan,GK,3,1,3,2,5
+it,modern,summer,Yann Sommer,Yann Summer,Summer,Inter,GK,2,1,2,2,4
+it,modern,digregori,Michele Di Gregorio,Michele Di Gregori,Di Gregori,Juventus,GK,2,1,3,2,4
+it,modern,bastioni,Alessandro Bastoni,Alessandro Bastioni,Bastioni,Inter,DF,4,2,3,5,1
+it,modern,dimarco,Federico Dimarco,Federico Di Marco,Di Marco,Inter,DF,5,3,4,3,1
+it,modern,dumfrees,Denzel Dumfries,Denzel Dumfrees,Dumfrees,Inter,DF,3,3,5,3,1
+it,modern,bremmer,Gleison Bremer,Gleison Bremmer,Bremmer,Juventus,DF,2,1,3,5,1
+it,modern,buonasera,Alessandro Buongiorno,Alessandro Buonasera,Buonasera,Napoli,DF,2,1,3,5,1
+it,modern,dilorenzi,Giovanni Di Lorenzo,Giovanni Di Lorenzi,Di Lorenzi,Napoli,DF,3,2,4,4,1
+it,modern,tomoro,Fikayo Tomori,Fik Tomoro,Tomoro,Milan,DF,2,1,4,4,1
+it,modern,barello,Nicolò Barella,Nicolo Barello,Barello,Inter,MF,5,3,4,4,1
+it,modern,calhanoglo,Hakan Çalhanoğlu,Hakan Calhanoglo,Calhanoglo,Inter,MF,5,4,2,3,1
+it,modern,mactominay,Scott McTominay,Scott MacTominay,MacTominay,Napoli,MF,4,4,3,4,1
+it,modern,debruin,Kevin De Bruyne,Kevin De Bruin,De Bruin,Napoli,MF,5,4,2,2,1
+it,modern,lobotko,Stanislav Lobotka,Stanislav Lobotko,Lobotko,Napoli,MF,5,2,3,2,1
+it,modern,rabiaux,Adrien Rabiot,Adrien Rabiaux,Rabiaux,Milan,MF,4,3,3,3,1
+it,modern,anguisso,Frank Anguissa,Frank Anguisso,Anguisso,Napoli,MF,4,3,4,3,1
+it,modern,locatello,Manuel Locatelli,Manuel Locatello,Locatello,Juventus,MF,4,2,3,3,1
+it,modern,martines,Lautaro Martínez,Lautaro Martines,Martines,Inter,FW,3,5,4,2,1
+it,modern,thurman,Marcus Thuram,Marcus Thurman,Thurman,Inter,FW,3,4,4,1,1
+it,modern,leon,Rafael Leão,Rafa Leon,Leon,Milan,FW,3,4,5,1,1
+it,modern,pulisek,Christian Pulisic,Chris Pulisek,Pulisek,Milan,FW,4,4,4,1,1
+it,modern,yildaz,Kenan Yıldız,Kenan Yildaz,Yildaz,Juventus,FW,4,4,3,1,1
+it,modern,dybalo,Paulo Dybala,Paulo Dybalo,Dybalo,Roma,FW,5,4,3,1,1
+it,modern,keen,Moise Kean,Moise Keen,Keen,Fiorentina,FW,2,5,3,1,1
+it,modern,ramus,Gonçalo Ramos,Goncalo Ramus,Ramus,Milan,FW,3,4,3,1,1
+de,modern,neuner,Manuel Neuer,Manuel Neuner,Neuner,Bayern München,GK,4,1,3,2,5
+de,modern,kobol,Gregor Kobel,Gregor Kobol,Kobol,Borussia Dortmund,GK,3,1,3,2,5
+de,modern,gulaschi,Péter Gulácsi,Peter Gulaschi,Gulaschi,RB Leipzig,GK,2,1,2,2,4
+de,modern,upamecana,Dayot Upamecano,Dayot Upamecana,Upamecana,Bayern München,DF,3,1,4,5,1
+de,modern,taah,Jonathan Tah,Jonathan Taah,Taah,Bayern München,DF,3,1,3,5,1
+de,modern,davis,Alphonso Davies,Alphonso Davis,Davis,Bayern München,DF,3,2,5,4,1
+de,modern,schlotterbach,Nico Schlotterbeck,Nico Schlotterbach,Schlotterbach,Borussia Dortmund,DF,4,2,3,5,1
+de,modern,grimaldi,Alejandro Grimaldo,Alex Grimaldi,Grimaldi,Bayer Leverkusen,DF,5,4,4,3,1
+de,modern,lukebo,Castello Lukeba,Castello Lukebo,Lukebo,RB Leipzig,DF,3,1,4,4,1
+de,modern,anten,Waldemar Anton,Waldemar Anten,Anten,Borussia Dortmund,DF,3,1,3,4,1
+de,modern,kimmach,Joshua Kimmich,Joshua Kimmach,Kimmach,Bayern München,MF,5,3,3,4,1
+de,modern,musialo,Jamal Musiala,Jamal Musialo,Musialo,Bayern München,MF,5,4,4,2,1
+de,modern,pavlovitch,Aleksandar Pavlović,Aleks Pavlovitch,Pavlovitch,Bayern München,MF,4,2,3,3,1
+de,modern,brant,Julian Brandt,Julian Brant,Brant,Borussia Dortmund,MF,4,4,3,2,1
+de,modern,stillner,Angelo Stiller,Angelo Stillner,Stillner,VfB Stuttgart,MF,5,2,3,3,1
+de,modern,palacio,Exequiel Palacios,Exequiel Palacio,Palacio,Bayer Leverkusen,MF,4,3,3,4,1
+de,modern,nmecho,Felix Nmecha,Felix Nmecho,Nmecho,Borussia Dortmund,MF,4,3,4,3,1
+de,modern,jbillingham,Jobe Bellingham,Jobe Billingham,J. Billingham,Borussia Dortmund,MF,3,3,4,3,1
+de,modern,cane,Harry Kane,Harry Cane,Cane,Bayern München,FW,4,5,3,1,1
+de,modern,olisse,Michael Olise,Mike Olisse,Olisse,Bayern München,FW,5,4,4,1,1
+de,modern,diez,Luis Díaz,Luis Diez,Diez,Bayern München,FW,3,4,5,1,1
+de,modern,guirassi,Serhou Guirassy,Serhou Guirassi,Guirassi,Borussia Dortmund,FW,2,5,3,1,1
+de,modern,adeyemo,Karim Adeyemi,Karim Adeyemo,Adeyemo,Borussia Dortmund,FW,3,3,5,1,1
+de,modern,schock,Patrik Schick,Patrik Schock,Schock,Bayer Leverkusen,FW,2,5,3,1,1
+de,modern,undaf,Deniz Undav,Deniz Undaf,Undaf,VfB Stuttgart,FW,3,4,3,1,1
+de,modern,burkhart,Jonathan Burkardt,Jonathan Burkhart,Burkhart,Eintracht Frankfurt,FW,3,4,4,1,1
+mx,modern,malagan,Luis Malagón,Luis Malagan,Malagan,América,GK,3,1,3,2,5
+mx,modern,mear,Kevin Mier,Kevin Mear,Mear,Cruz Azul,GK,3,1,3,2,4
+mx,modern,rangal,Raúl Rangel,Raul Rangal,Rangal,Chivas,GK,2,1,3,2,4
+mx,modern,reyas,Israel Reyes,Israel Reyas,Reyas,América,DF,3,2,4,4,1
+mx,modern,caceras,Sebastián Cáceres,Sebastian Caceras,Caceras,América,DF,3,1,3,5,1
+mx,modern,alvares,Kevin Álvarez,Kevin Alvares,Alvares,América,DF,4,2,5,3,1
+mx,modern,dito,Willer Ditta,Willer Dito,Dito,Cruz Azul,DF,2,1,3,5,1
+mx,modern,gallardi,Jesús Gallardo,Jesus Gallardi,Gallardi,Toluca,DF,4,2,4,3,1
+mx,modern,artiaga,Gerardo Arteaga,Gerardo Artiaga,Artiaga,Monterrey,DF,3,2,4,4,1
+mx,modern,pereiro,Joaquim Pereira,Joaquim Pereiro,Pereiro,Tigres,DF,3,1,3,5,1
+mx,modern,fidalgos,Álvaro Fidalgo,Alvaro Fidalgos,Fidalgos,América,MF,5,3,3,3,1
+mx,modern,brunetto,Juan Brunetta,Juan Brunetto,Brunetto,Tigres,MF,5,4,3,2,1
+mx,modern,gorriarin,Fernando Gorriarán,Fernando Gorriarin,Gorriarin,Tigres,MF,4,3,4,4,1
+mx,modern,rodrigues,Carlos Rodríguez,Charly Rodrigues,Rodrigues,Cruz Azul,MF,4,2,3,4,1
+mx,modern,faravello,Lorenzo Faravelli,Lorenzo Faravello,Faravello,Cruz Azul,MF,4,3,3,3,1
+mx,modern,ruis,Marcel Ruiz,Marcel Ruis,Ruis,Toluca,MF,4,3,3,3,1
+mx,modern,canalez,Sergio Canales,Sergio Canalez,Canalez,Monterrey,MF,5,4,2,2,1
+mx,modern,alvarada,Roberto Alvarado,Roberto Alvarada,Alvarada,Chivas,MF,4,4,4,2,1
+mx,modern,marten,Henry Martín,Henry Marten,Marten,América,FW,3,5,3,1,1
+mx,modern,zendejos,Alejandro Zendejas,Alex Zendejos,Zendejos,América,FW,4,4,4,1,1
+mx,modern,paulinio,Paulinho,Paulinio,Paulinio,Toluca,FW,3,5,3,1,1
+mx,modern,vego,Alexis Vega,Alexis Vego,Vego,Toluca,FW,4,4,3,1,1
+mx,modern,sepulvedo,Ángel Sepúlveda,Angel Sepulvedo,Sepulvedo,Cruz Azul,FW,2,4,3,1,1
+mx,modern,berteramo,Germán Berterame,German Berteramo,Berteramo,Monterrey,FW,3,4,3,1,1
+mx,modern,corria,Ángel Correa,Angel Corria,Corria,Tigres,FW,4,4,4,2,1
+mx,modern,gonzalvez,Armando González,Armando Gonzalvez,Gonzalvez,Chivas,FW,2,4,4,1,1
+mx,classic,carbajal,Antonio Carbajal,Antonio Carbajol,Carbajol,León,GK,2,1,2,2,5
+mx,classic,campos,Jorge Campos,Jorge Campus,Campus,Pumas,GK,3,3,4,2,4
+mx,classic,marin,Miguel Marín,Miguel Marino,Marino,Cruz Azul,GK,2,1,2,2,4
+mx,classic,tena,Alfredo Tena,Alfredo Teno,Teno,América,DF,3,2,2,5,1
+mx,classic,quirarte,Fernando Quirarte,Fernando Quirarto,Quirarto,Chivas,DF,3,2,3,4,1
+mx,classic,gsepulveda,Guillermo Sepúlveda,Guillermo Sepulvida,Sepulvida,Chivas,DF,2,1,3,5,1
+mx,classic,csuarez,Claudio Suárez,Claudio Juarez,Juarez,Pumas,DF,3,2,3,5,1
+mx,classic,chavezc,Rafael Chávez Carretero,Rafael Chavez Carretera,Carretera,Cruz Azul,DF,2,1,3,4,1
+mx,classic,iflores,Ignacio Flores,Ignacio Floros,Floros,Cruz Azul,DF,3,2,3,4,1
+mx,classic,davino,Duilio Davino,Duilio Davini,Davini,América,DF,3,2,3,4,1
+mx,classic,reinoso,Carlos Reinoso,Carlos Reinaso,Reinaso,América,MF,5,4,3,2,1
+mx,classic,boy,Tomás Boy,Tomas Boyd,Boyd,Tigres,MF,5,4,2,2,1
+mx,classic,aspe,Alberto García Aspe,Alberto Garcia Aspo,Aspo,Pumas,MF,5,4,3,2,1
+mx,classic,galindo,Benjamín Galindo,Benjamin Galinda,Galinda,Chivas,MF,5,4,2,2,1
+mx,classic,aguinaga,Álex Aguinaga,Alex Aguinago,Aguinago,Necaxa,MF,5,4,3,2,1
+mx,classic,rramirez,Ramón Ramírez,Ramon Ramires,Ramires,Chivas,MF,5,3,3,2,1
+mx,classic,negrete,Manuel Negrete,Manuel Negreto,Negreto,Pumas,MF,4,4,3,2,1
+mx,classic,idiaz,Isidoro Díaz,Isidoro Dias,Dias,Chivas,MF,4,3,4,2,1
+mx,classic,hsanchez,Hugo Sánchez,Hugo Sanches,Sanches,Pumas,FW,3,5,5,1,1
+mx,classic,cabinho,Cabinho,Cabinha,Cabinha,Pumas,FW,3,5,4,1,1
+mx,classic,borja,Enrique Borja,Enrique Borjas,Borjas,América,FW,3,5,3,1,1
+mx,classic,hermosillo,Carlos Hermosillo,Carlos Hermosilla,Hermosilla,Cruz Azul,FW,3,5,3,1,1
+mx,classic,zague,Zague,Zagui,Zagui,América,FW,3,5,3,1,1
+mx,classic,blanco,Cuauhtémoc Blanco,Cuauhtemoc Blanca,Blanca,América,FW,5,5,2,1,1
+mx,classic,lgarcia,Luis García,Luis Garza,Garza,Pumas,FW,3,5,4,1,1
+mx,classic,lflores,Luis Flores,Luis Florez,Florez,Pumas,FW,3,4,4,1,1
+en,classic,banks,Gordon Banks,Gordon Bankes,Bankes,Leicester City,GK,2,1,2,2,5
+en,classic,shilton,Peter Shilton,Peter Shelton,Shelton,Nottingham Forest,GK,3,1,2,2,5
+en,classic,jennings,Pat Jennings,Pat Jenkins,Jenkins,Tottenham,GK,2,1,2,2,4
+en,classic,moore,Bobby Moore,Bobby Moor,Moor,West Ham,DF,5,2,3,5,1
+en,classic,adams,Tony Adams,Tony Addams,Addams,Arsenal,DF,3,2,3,5,1
+en,classic,hansen,Alan Hansen,Alan Hanson,Hanson,Liverpool,DF,4,2,3,4,1
+en,classic,jcharlton,Jack Charlton,Jack Charlston,J. Charlston,Leeds United,DF,2,2,2,5,1
+en,classic,pearce,Stuart Pearce,Stuart Pierce,Pierce,Nottingham Forest,DF,3,4,3,5,1
+en,classic,pallister,Gary Pallister,Gary Pallistor,Pallistor,Manchester United,DF,3,1,3,4,1
+en,classic,bruce,Steve Bruce,Steve Bruise,Bruise,Manchester United,DF,3,2,2,4,1
+en,classic,bcharlton,Bobby Charlton,Bobby Charlston,B. Charlston,Manchester United,MF,5,5,3,2,1
+en,classic,robson,Bryan Robson,Bryan Robsen,Robsen,Manchester United,MF,4,4,4,4,1
+en,classic,gascoigne,Paul Gascoigne,Paul Gascoyne,Gascoyne,Tottenham,MF,5,4,3,2,1
+en,classic,hoddle,Glenn Hoddle,Glenn Hoddel,Hoddel,Tottenham,MF,5,4,2,2,1
+en,classic,souness,Graeme Souness,Graeme Sounness,Sounness,Liverpool,MF,4,3,3,5,1
+en,classic,barnes,John Barnes,John Barns,Barns,Liverpool,MF,4,4,5,2,1
+en,classic,keane,Roy Keane,Roy Keene,Keene,Manchester United,MF,4,3,4,5,1
+en,classic,giggs,Ryan Giggs,Ryan Griggs,Griggs,Manchester United,MF,4,4,5,2,1
+en,classic,best,George Best,George Beste,Beste,Manchester United,FW,4,5,5,1,1
+en,classic,law,Denis Law,Denis Lawe,Lawe,Manchester United,FW,3,5,4,1,1
+en,classic,keegan,Kevin Keegan,Kevin Keagan,Keagan,Liverpool,FW,4,4,4,2,1
+en,classic,dalglish,Kenny Dalglish,Kenny Dalgleish,Dalgleish,Liverpool,FW,5,5,3,1,1
+en,classic,rush,Ian Rush,Ian Rushe,Rushe,Liverpool,FW,2,5,4,1,1
+en,classic,lineker,Gary Lineker,Gary Linaker,Linaker,Tottenham,FW,2,5,4,1,1
+en,classic,shearer,Alan Shearer,Alan Shearar,Shearar,Newcastle United,FW,3,5,3,2,1
+en,classic,cantona,Eric Cantona,Eric Cantone,Cantone,Manchester United,FW,5,5,3,1,1
+es,classic,zamora,Ricardo Zamora,Ricardo Zamara,Zamara,Espanyol,GK,2,1,2,2,5
+es,classic,iribar,José Ángel Iribar,Jose Angel Iribas,Iribas,Athletic Club,GK,2,1,3,2,4
+es,classic,zubizarreta,Andoni Zubizarreta,Andoni Zubizorreta,Zubizorreta,Barcelona,GK,3,1,2,2,5
+es,classic,camacho,José Antonio Camacho,Jose Antonio Camacha,Camacha,Real Madrid,DF,3,2,3,5,1
+es,classic,hierro,Fernando Hierro,Fernando Hierra,Hierra,Real Madrid,DF,5,4,2,5,1
+es,classic,koeman,Ronald Koeman,Ronald Koemann,Koemann,Barcelona,DF,5,5,2,4,1
+es,classic,migueli,Migueli,Miguelli,Miguelli,Barcelona,DF,2,1,3,5,1
+es,classic,sanchis,Manolo Sanchís,Manolo Sanchiz,Sanchiz,Real Madrid,DF,3,2,3,5,1
+es,classic,alexanko,José Ramón Alexanko,Jose Ramon Alexanca,Alexanca,Barcelona,DF,3,2,2,4,1
+es,classic,nadal,Miguel Ángel Nadal,Miguel Angel Nadel,Nadel,Barcelona,DF,3,2,3,4,1
+es,classic,lsuarez,Luis Suárez Miramontes,Luis Suares,Suares,Barcelona,MF,5,4,3,2,1
+es,classic,guardiola,Pep Guardiola,Pep Guardiolo,Guardiolo,Barcelona,MF,5,2,2,3,1
+es,classic,laudrup,Michael Laudrup,Michael Laudrop,Laudrop,Barcelona,MF,5,4,4,1,1
+es,classic,schuster,Bernd Schuster,Bernd Schuester,Schuester,Barcelona,MF,5,4,3,3,1
+es,classic,michel,Míchel,Michal,Michal,Real Madrid,MF,5,4,3,2,1
+es,classic,redondo,Fernando Redondo,Fernando Redonda,Redonda,Real Madrid,MF,5,3,3,4,1
+es,classic,pirri,Pirri,Pirry,Pirry,Real Madrid,MF,4,4,3,4,1
+es,classic,lenrique,Luis Enrique,Luis Enriquez,Enriquez,Barcelona,MF,4,4,4,3,1
+es,classic,distefano,Alfredo Di Stéfano,Alfredo Di Stefani,Di Stefani,Real Madrid,FW,5,5,4,2,1
+es,classic,puskas,Ferenc Puskás,Ferenc Puskash,Puskash,Real Madrid,FW,4,5,3,1,1
+es,classic,gento,Paco Gento,Paco Gentu,Gentu,Real Madrid,FW,3,4,5,1,1
+es,classic,kubala,László Kubala,Laszlo Kubalo,Kubalo,Barcelona,FW,5,5,3,1,1
+es,classic,cruyff,Johan Cruyff,Johan Kruyff,Kruyff,Barcelona,FW,5,5,5,1,1
+es,classic,butragueno,Emilio Butragueño,Emilio Butraguena,Butraguena,Real Madrid,FW,4,5,4,1,1
+es,classic,stoichkov,Hristo Stoichkov,Hristo Stoichkof,Stoichkof,Barcelona,FW,4,5,4,1,1
+es,classic,raul,Raúl,Raoul,Raoul,Real Madrid,FW,4,5,4,1,1
+it,classic,zoff,Dino Zoff,Dino Zoffi,Zoffi,Juventus,GK,2,1,2,2,5
+it,classic,zenga,Walter Zenga,Walter Zengo,Zengo,Inter,GK,2,1,3,2,4
+it,classic,pagliuca,Gianluca Pagliuca,Gianluca Pagliuco,Pagliuco,Sampdoria,GK,2,1,2,2,4
+it,classic,baresi,Franco Baresi,Franco Baressi,Baressi,Milan,DF,4,2,3,5,1
+it,classic,maldini,Paolo Maldini,Paolo Maldino,Maldino,Milan,DF,4,2,4,5,1
+it,classic,scirea,Gaetano Scirea,Gaetano Scireo,Scireo,Juventus,DF,4,2,3,5,1
+it,classic,facchetti,Giacinto Facchetti,Giacinto Facchetto,Facchetto,Inter,DF,3,3,4,4,1
+it,classic,gentile,Claudio Gentile,Claudio Gentili,Gentili,Juventus,DF,2,1,3,5,1
+it,classic,bergomi,Giuseppe Bergomi,Giuseppe Bergomo,Bergomo,Inter,DF,3,1,3,4,1
+it,classic,costacurta,Alessandro Costacurta,Alessandro Costacurto,Costacurto,Milan,DF,3,1,3,4,1
+it,classic,rivera,Gianni Rivera,Gianni Rivero,Rivero,Milan,MF,5,4,3,1,1
+it,classic,mazzola,Sandro Mazzola,Sandro Mazzolo,Mazzolo,Inter,MF,4,4,4,2,1
+it,classic,tardelli,Marco Tardelli,Marco Tardello,Tardello,Juventus,MF,4,3,3,4,1
+it,classic,platini,Michel Platini,Michel Platino,Platino,Juventus,MF,5,5,3,1,1
+it,classic,zidane,Zinedine Zidane,Zinedine Zidani,Zidani,Juventus,MF,5,4,3,2,1
+it,classic,rijkaard,Frank Rijkaard,Frank Rijkard,Rijkard,Milan,MF,4,3,3,5,1
+it,classic,donadoni,Roberto Donadoni,Roberto Donadono,Donadono,Milan,MF,4,3,4,2,1
+it,classic,falcao,Falcão,Falcau,Falcau,Roma,MF,5,3,3,3,1
+it,classic,baggio,Roberto Baggio,Roberto Baggia,Baggia,Juventus,FW,5,5,4,1,1
+it,classic,maradona,Diego Maradona,Diego Maradono,Maradono,Napoli,FW,5,5,5,1,1
+it,classic,vanbasten,Marco van Basten,Marco van Bastan,Van Bastan,Milan,FW,4,5,4,1,1
+it,classic,gullit,Ruud Gullit,Ruud Gullet,Gullet,Milan,FW,4,4,4,3,1
+it,classic,riva,Gigi Riva,Gigi Rivo,Rivo,Cagliari,FW,2,5,4,1,1
+it,classic,prossi,Paolo Rossi,Paolo Rosso,Rosso,Juventus,FW,3,5,4,1,1
+it,classic,batistuta,Gabriel Batistuta,Gabriel Batistuto,Batistuto,Fiorentina,FW,2,5,3,1,1
+it,classic,ronaldo,Ronaldo,Ronaldu,Ronaldu,Inter,FW,3,5,5,1,1
+de,classic,maier,Sepp Maier,Sepp Mayer,Mayer,Bayern München,GK,2,1,2,2,5
+de,classic,schumacher,Toni Schumacher,Toni Schumaker,Schumaker,1. FC Köln,GK,2,1,3,2,4
+de,classic,kahn,Oliver Kahn,Oliver Kann,Kann,Bayern München,GK,2,1,2,2,5
+de,classic,beckenbauer,Franz Beckenbauer,Franz Beckenbaur,Beckenbaur,Bayern München,DF,5,3,3,5,1
+de,classic,vogts,Berti Vogts,Berti Vogt,Vogt,Borussia Mönchengladbach,DF,2,1,3,5,1
+de,classic,kohler,Jürgen Kohler,Jurgen Koehler,Koehler,Borussia Dortmund,DF,2,1,3,5,1
+de,classic,sammer,Matthias Sammer,Matthias Sammler,Sammler,Borussia Dortmund,DF,4,3,3,5,1
+de,classic,augenthaler,Klaus Augenthaler,Klaus Augenthalter,Augenthalter,Bayern München,DF,3,3,3,4,1
+de,classic,brehme,Andreas Brehme,Andreas Brehm,Brehm,1. FC Kaiserslautern,DF,4,4,3,4,1
+de,classic,forster,Karlheinz Förster,Karlheinz Foerster,Foerster,VfB Stuttgart,DF,2,1,3,4,1
+de,classic,netzer,Günter Netzer,Gunter Netzler,Netzler,Borussia Mönchengladbach,MF,5,4,3,2,1
+de,classic,overath,Wolfgang Overath,Wolfgang Overrath,Overrath,1. FC Köln,MF,5,3,3,2,1
+de,classic,matthaus,Lothar Matthäus,Lothar Mattheus,Mattheus,Bayern München,MF,5,4,4,4,1
+de,classic,effenberg,Stefan Effenberg,Stefan Effenburg,Effenburg,Bayern München,MF,4,4,3,4,1
+de,classic,hassler,Thomas Häßler,Thomas Hessler,Hessler,1. FC Köln,MF,5,3,3,1,1
+de,classic,breitner,Paul Breitner,Paul Breitnar,Breitnar,Bayern München,MF,4,4,3,4,1
+de,classic,moller,Andreas Möller,Andreas Moler,Moler,Borussia Dortmund,MF,4,4,4,2,1
+de,classic,littbarski,Pierre Littbarski,Pierre Littbarsky,Littbarsky,1. FC Köln,MF,4,3,4,2,1
+de,classic,gmuller,Gerd Müller,Gerd Mullar,Mullar,Bayern München,FW,2,5,4,1,1
+de,classic,rummenigge,Karl-Heinz Rummenigge,Karl-Heinz Rummenigg,Rummenigg,Bayern München,FW,4,5,4,1,1
+de,classic,seeler,Uwe Seeler,Uwe Seelar,Seelar,Hamburger SV,FW,3,5,3,1,1
+de,classic,klinsmann,Jürgen Klinsmann,Jurgen Klinsman,Klinsman,VfB Stuttgart,FW,3,5,4,1,1
+de,classic,voller,Rudi Völler,Rudi Vollar,Vollar,Werder Bremen,FW,3,5,3,1,1
+de,classic,fischer,Klaus Fischer,Klaus Fisher,Fisher,Schalke 04,FW,2,5,3,1,1
+de,classic,heynckes,Jupp Heynckes,Jupp Heinckes,Heinckes,Borussia Mönchengladbach,FW,3,4,4,1,1
+de,classic,kirsten,Ulf Kirsten,Ulf Kirstin,Kirstin,Bayer Leverkusen,FW,2,4,3,1,1

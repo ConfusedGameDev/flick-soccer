@@ -188,8 +188,9 @@ export class Sfx {
     }
   }
 
-  dice(): void {
-    for (let i = 0; i < 7; i++) this.noise(0.04, { gain: 0.25, at: i * 0.07 + Math.random() * 0.02, highpass: 1800 });
+  /** A card turning over or a coin spinning: a short riffle. */
+  flip(): void {
+    for (let i = 0; i < 5; i++) this.noise(0.04, { gain: 0.22, at: i * 0.06 + Math.random() * 0.02, highpass: 1800 });
   }
 
   countdown(step: number): void {

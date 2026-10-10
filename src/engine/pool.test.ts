@@ -5,7 +5,9 @@ import {
   BUDGET,
   FORMATIONS,
   FORMATION_NAMES,
+  ERAS,
   LEAGUES,
+  POOL_PER_ERA,
   POOL_PER_LEAGUE,
   SQUAD_SIZE,
   autoAssign,
@@ -27,12 +29,16 @@ import type { MatchState } from './types';
 const pool = raw as PoolPlayer[];
 
 describe('player pool', () => {
-  it('has the 26 best players of each of the five leagues with legal stats', () => {
+  it('has 26 modern and 26 classic players for each of the five leagues with legal stats', () => {
     expect(pool).toHaveLength(LEAGUES.length * POOL_PER_LEAGUE);
     for (const league of LEAGUES) {
       const lp = leaguePool(pool, league);
       expect(lp).toHaveLength(POOL_PER_LEAGUE);
-      expect(lp.filter((p) => p.position === 'GK').length).toBeGreaterThanOrEqual(2);
+      for (const era of ERAS) {
+        const ep = lp.filter((p) => p.era === era);
+        expect(ep, `${league}/${era}`).toHaveLength(POOL_PER_ERA);
+        expect(ep.filter((p) => p.position === 'GK').length).toBeGreaterThanOrEqual(2);
+      }
     }
     expect(new Set(pool.map((p) => p.id)).size).toBe(pool.length);
     for (const p of pool) {

@@ -60,8 +60,6 @@ export function initialMatch(
 }
 
 export const emptyMeta = (boosters: Booster[] = [], tactics?: Tactic[]): TeamMeta => ({
-  blocked: 0,
-  bonus: 0,
   boosters: [...boosters],
   ...(tactics && tactics.length ? { tactics: [...tactics] } : {}),
 });

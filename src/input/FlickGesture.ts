@@ -13,19 +13,30 @@ const GRAB_RADII = 2.2;
 export interface FlickGestureHandlers {
   /** Which player a press at this world point may grab, or null. */
   pick: (world: Vec2) => number | null;
-  onDrag: (playerId: number, flick: Flick, pull: Vec2) => void;
+  /** `aim` is the second finger's world point while it is down (two-finger mode). */
+  onDrag: (playerId: number, flick: Flick, pull: Vec2, aim: Vec2 | null) => void;
   onRelease: (playerId: number, flick: Flick | null) => void;
 }
 
 /**
  * Angry Birds-style flick: press a disc, pull back, release. The flick direction
  * is opposite the pull and strength is the pull length over MAX_PULL_M.
+ *
+ * Two fingers: while the first finger holds the pull, a second touch anywhere
+ * takes over the aim. The first finger's pull length is then only the power
+ * and the flick goes from the disc toward the second finger. Lifting the second
+ * finger goes back to one-finger aiming; lifting the first commits the flick.
  */
 export class FlickGesture {
   enabled = false;
   private pointerId: number | null = null;
   private playerId: number | null = null;
   private origin: Vec2 = { x: 0, y: 0 };
+  /** Where the first finger is now. */
+  private current: Vec2 = { x: 0, y: 0 };
+  /** The second finger, when down. */
+  private aimPointerId: number | null = null;
+  private aim: Vec2 | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -59,47 +70,89 @@ export class FlickGesture {
     return this.pitch.toWorld({ x: e.clientX - r.left, y: e.clientY - r.top });
   }
 
-  private flickFrom(current: Vec2): Flick | null {
-    const pull = sub(this.origin, current);
-    const l = dist(this.origin, current);
+  /** The flick for the fingers as they are: power from the pull, direction from the second finger when there is one. */
+  private flick(): Flick | null {
+    const l = dist(this.origin, this.current);
     if (l < MIN_PULL_M) return null;
-    return { playerId: this.playerId!, dir: normalize(pull), strength: Math.min(1, l / MAX_PULL_M) };
+    const strength = Math.min(1, l / MAX_PULL_M);
+    if (this.aim) {
+      if (dist(this.origin, this.aim) < MIN_PULL_M) return null;
+      return { playerId: this.playerId!, dir: normalize(sub(this.aim, this.origin)), strength };
+    }
+    return { playerId: this.playerId!, dir: normalize(sub(this.origin, this.current)), strength };
+  }
+
+  private capture(e: PointerEvent): void {
+    try {
+      this.canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private drag(): void {
+    const id = this.playerId!;
+    const flick = this.flick() ?? { playerId: id, dir: { x: 0, y: 0 }, strength: 0 };
+    this.handlers.onDrag(id, flick, this.current, this.aim);
   }
 
   private down = (e: PointerEvent): void => {
-    if (!this.enabled || this.pointerId !== null) return;
+    if (!this.enabled) return;
     const world = this.worldOf(e);
+    if (this.pointerId !== null) {
+      // A second finger while pulling: it aims from now on.
+      if (this.aimPointerId !== null || this.playerId === null) return;
+      e.preventDefault();
+      this.aimPointerId = e.pointerId;
+      this.aim = world;
+      this.capture(e);
+      this.drag();
+      return;
+    }
     const id = this.handlers.pick(world);
     if (id === null) return;
     e.preventDefault();
     this.pointerId = e.pointerId;
     this.playerId = id;
     this.origin = world;
-    try {
-      this.canvas.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+    this.current = world;
+    this.capture(e);
   };
 
   private move = (e: PointerEvent): void => {
-    if (e.pointerId !== this.pointerId || this.playerId === null) return;
-    const current = this.worldOf(e);
-    const flick = this.flickFrom(current);
-    if (flick) this.handlers.onDrag(this.playerId, flick, current);
-    else this.handlers.onDrag(this.playerId, { playerId: this.playerId, dir: { x: 0, y: 0 }, strength: 0 }, current);
+    if (this.playerId === null) return;
+    if (e.pointerId === this.pointerId) this.current = this.worldOf(e);
+    else if (e.pointerId === this.aimPointerId) this.aim = this.worldOf(e);
+    else return;
+    this.drag();
   };
 
   private up = (e: PointerEvent): void => {
-    if (e.pointerId !== this.pointerId || this.playerId === null) return;
+    if (this.playerId === null) return;
+    if (e.pointerId === this.aimPointerId) {
+      // Back to one-finger aiming.
+      this.aimPointerId = null;
+      this.aim = null;
+      this.drag();
+      return;
+    }
+    if (e.pointerId !== this.pointerId) return;
     const id = this.playerId;
-    const flick = this.flickFrom(this.worldOf(e));
+    this.current = this.worldOf(e);
+    const flick = this.flick();
     this.reset();
     this.handlers.onRelease(id, flick);
   };
 
   private cancel = (e: PointerEvent): void => {
-    if (e.pointerId !== this.pointerId || this.playerId === null) return;
+    if (this.playerId === null) return;
+    if (e.pointerId === this.aimPointerId) {
+      this.aimPointerId = null;
+      this.aim = null;
+      this.drag();
+      return;
+    }
+    if (e.pointerId !== this.pointerId) return;
     const id = this.playerId;
     this.reset();
     this.handlers.onRelease(id, null);
@@ -108,5 +161,7 @@ export class FlickGesture {
   private reset(): void {
     this.pointerId = null;
     this.playerId = null;
+    this.aimPointerId = null;
+    this.aim = null;
   }
 }

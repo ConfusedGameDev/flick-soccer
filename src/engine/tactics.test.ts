@@ -6,7 +6,7 @@ import { CANNON_BONUS, CLASICOS_BONUS, TIKI_TAKA_CAP, TIKI_TAKA_STEP, maxFlicksF
 import type { Flick, MatchState, Tactic, TeamMeta, Vec2 } from './types';
 import { normalize, sub } from './vec';
 
-const meta = (...tactics: Tactic[]): TeamMeta => ({ blocked: 0, bonus: 0, boosters: [], tactics });
+const meta = (...tactics: Tactic[]): TeamMeta => ({ boosters: [], tactics });
 
 const flick = (playerId: number, from: Vec2, to: Vec2): Flick => {
   const d = sub(to, from);

@@ -36,7 +36,7 @@ export class Coach {
     this.setKit(this.kit);
   }
 
-  /** Attach the card to the overlay (once); it is inserted before later overlays so dice and covers paint above it. */
+  /** Attach the card to the overlay (once); it is inserted before later overlays so packs and covers paint above it. */
   private mount(): void {
     if (!this.root.isConnected) this.overlay.appendChild(this.root);
   }

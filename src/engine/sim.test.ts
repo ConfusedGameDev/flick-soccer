@@ -88,12 +88,13 @@ describe('resolveTurn: passing', () => {
     expect(r.state.status).toBe('duel');
     expect(r.state.ball.y).toBeCloseTo(34, 3);
 
-    const { state: after, roll } = resolveDuel(r.state, 'away', 5);
+    const { state: after, booster } = resolveDuel(r.state, 'away', 5);
     expect(after.status).toBe('playing');
     expect(after.possession.team).toBe('away');
     expect(after.players[after.possession.playerId].pos).toEqual(r.state.ball);
-    // The winner banks a free roll for their next turn.
-    expect(after.meta.away.bonus).toBe(roll.bonus);
+    // The winner banks a free booster pack.
+    expect(booster).not.toBeNull();
+    expect(after.meta.away.boosters).toEqual([booster]);
   });
 
   it('treats a flick on a teammate as a run and the carrier can still pass', () => {

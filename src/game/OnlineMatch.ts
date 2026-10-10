@@ -1,9 +1,9 @@
 import type { Sfx } from '../audio/Sfx';
-import { BOOSTER_INFO } from '../engine/dice';
+import { BOOSTER_INFO } from '../engine/boosters';
 import { other } from '../engine/pitch';
 import { keeperOf } from '../engine/setup';
 import { defaultSquad, type PoolPlayer, type Squad } from '../engine/pool';
-import type { DiceRoll, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
+import type { Booster, MatchState, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { ServerMessage } from '../net/protocol';
 import { Socket } from '../net/Socket';
 import type { Kit } from '../render/kits';
@@ -11,7 +11,8 @@ import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
-import { DiceView } from '../ui/DiceView';
+import type { CoinToss } from '../ui/CoinToss';
+import type { PackView } from '../ui/PackView';
 import type { Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
 import { teamName, type LocalController } from './controller';
@@ -23,7 +24,8 @@ export interface OnlineDeps {
   serverUrl: string;
   hud: Hud;
   duel: Duel;
-  dice: DiceView;
+  pack: PackView;
+  toss: CoinToss;
   cutscene: Cutscene;
   sfx: Sfx;
   builder: TeamBuilder;
@@ -41,7 +43,7 @@ const SESSION_KEY = 'flicksoccer.online';
 
 /**
  * One online match from this device's point of view. The server owns the
- * seed, resolves turns, rolls dice and runs the duel; this class drives the
+ * seed, flips the coin, resolves turns, draws the packs and runs the duel; this class drives the
  * same planning UI the local modes use and animates what the server sends.
  */
 export class OnlineMatch {
@@ -115,20 +117,35 @@ export class OnlineMatch {
       // ---- Teams ----
       const squad = await this.chooseSquad();
       socket.send({ t: 'squad', squad });
-      const kickoffOrLeft = await Promise.race([
-        socket.next(['kickoff', 'opponent-left', 'error']),
+      const tossOrLeft = await Promise.race([
+        socket.next(['toss', 'kickoff', 'opponent-left', 'error']),
         hud.showCover('Team sent', "Waiting for your opponent's team…", 'Leave match').then(() => null),
       ]);
       hud.hideCover();
-      if (!kickoffOrLeft) {
+      if (!tossOrLeft) {
         socket.send({ t: 'leave' });
         return;
       }
-      if (kickoffOrLeft.t !== 'kickoff') {
-        await this.ended(kickoffOrLeft);
+      let kickoff: ServerMessage | null = tossOrLeft;
+      if (tossOrLeft.t === 'toss') {
+        // The caller picks; the server calls heads for them if they dawdle. The other side just waits.
+        if (tossOrLeft.caller === this.side) {
+          const call = await Promise.race([
+            this.deps.toss.call({ title: 'You call the toss', text: 'Heads or tails? Call it right and you attack first.', kit: pieces.currentKits[this.side] }),
+            socket.next(['kickoff', 'opponent-left', 'error']).then(() => null),
+          ]);
+          if (call) socket.send({ t: 'call', call });
+          else this.deps.toss.cancel();
+        } else {
+          hud.setStatus('Coin toss', `${teamName(tossOrLeft.caller)} are calling…`);
+        }
+        kickoff = await socket.next(['kickoff', 'opponent-left', 'error']);
+      }
+      if (kickoff.t !== 'kickoff') {
+        await this.ended(kickoff);
         return;
       }
-      await this.onKickoff(kickoffOrLeft);
+      await this.onKickoff(kickoff);
 
       // ---- Turns ----
       for (;;) {
@@ -148,7 +165,7 @@ export class OnlineMatch {
           this.state = msg.state;
           this.snap();
           await this.card('duel', msg.state.possession.playerId, msg.winner);
-          await this.showFreeRoll(msg.winner, msg.roll, 'win the ball');
+          if (msg.booster) await this.showFreePack(msg.winner, msg.booster, 'win the ball');
         } else {
           await this.ended(msg);
           break;
@@ -190,31 +207,21 @@ export class OnlineMatch {
   }
 
   private async onKickoff(m: Extract<ServerMessage, { t: 'kickoff' }>): Promise<void> {
-    const { hud, pieces, dice, sfx } = this.deps;
+    const { hud, pieces, toss, sfx } = this.deps;
     this.state = m.state;
     pieces.rebuild(m.state.players);
     this.snap();
     hud.setScoreboard(m.state);
     hud.setStatus('Online match', `You are ${teamName(this.side)}`);
-    const again = m.rounds.length > 1 ? ' (ties rolled again)' : '';
-    for (const team of ['home', 'away'] as const) {
-      const i = team === 'home' ? 0 : 1;
-      const last = m.rounds[m.rounds.length - 1];
-      await dice.show({
-        title: `Kickoff: ${teamName(team)}${team === this.side ? ' (you)' : ''} roll`,
-        rounds: m.rounds.map((r) => [r[i]]),
-        caption: `${teamName(team)} rolled ${last[i]}${again}`,
-        flick: team === this.side,
-        hint: 'Shoot the ball at your die',
-        again: 'Tie! Roll again…',
-        kit: this.deps.pieces.currentKits[team],
-      });
-    }
-    await hud.showCover(
-      `${teamName(m.winner)} attack first`,
-      `You are ${teamName(this.side)}. Home ${m.rounds[m.rounds.length - 1][0]} – ${m.rounds[m.rounds.length - 1][1]} Away on the dice.`,
-      'Kick off',
-    );
+    const who = m.caller === this.side ? 'You' : teamName(m.caller);
+    await toss.flip({
+      title: 'The toss',
+      coin: m.coin,
+      caption: `${who} called ${m.call}: it is ${m.coin}. ${teamName(m.winner)} attack first.`,
+      kit: pieces.currentKits[m.caller],
+      button: 'Kick off',
+    });
+    hud.toast(`${teamName(m.winner)} attack first · you are ${teamName(this.side)}`, true);
     sfx.whistle(true);
     sfx.crowdStart();
   }
@@ -231,8 +238,8 @@ export class OnlineMatch {
     this.snap();
     hud.setScoreboard(this.state);
     await this.dramatic(result);
-    const free = result.events.find((e) => e.type === 'dice' && e.free);
-    if (free && free.type === 'dice') await this.showFreeRoll(free.team, free.roll, 'overtake');
+    const free = result.events.find((e) => e.type === 'pack' && e.free);
+    if (free && free.type === 'pack') await this.showFreePack(free.team, free.booster, 'overtake');
     if (this.state.status === 'half-time') {
       await hud.showCover(
         'Half time',
@@ -282,13 +289,12 @@ export class OnlineMatch {
     );
   }
 
-  private async showFreeRoll(team: Team, roll: DiceRoll, why: string): Promise<void> {
-    await this.deps.dice.show({
-      title: `${teamName(team)} ${why}: free roll!`,
-      rounds: roll.pairs,
-      caption: `${DiceView.caption(roll)} (banked for ${teamName(team)}'s next turn)`,
-      flick: team === this.side,
-      hint: 'Shoot the ball at the dice',
+  private async showFreePack(team: Team, booster: Booster, why: string): Promise<void> {
+    await this.deps.pack.show({
+      title: `${teamName(team)} ${why}: free pack!`,
+      booster,
+      pick: team === this.side,
+      caption: `${BOOSTER_INFO[booster].name} (${BOOSTER_INFO[booster].text}) goes into ${teamName(team)}'s hand`,
       kit: this.deps.pieces.currentKits[team],
     });
   }
@@ -366,8 +372,8 @@ export class OnlineMatch {
       case 'goal-kick':
         sfx.whistle();
         break;
-      case 'dice':
-        if (!e.free) hud.toast(`${teamName(e.team)} rolled ${e.roll.sum}: ${DiceView.caption(e.roll)}`);
+      case 'pack':
+        if (!e.free) hud.toast(`${teamName(e.team)} opened a pack: ${BOOSTER_INFO[e.booster].name}`);
         break;
       case 'booster':
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);

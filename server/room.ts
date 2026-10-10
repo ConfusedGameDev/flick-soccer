@@ -1,11 +1,11 @@
-import { DICE_BONUS_PER_PIP, kickoffRoll, rollDice } from '../src/engine/dice';
+import { drawBooster, flipCoin, tossWinner } from '../src/engine/boosters';
 import { PLAN_SECONDS, other } from '../src/engine/pitch';
 import { SQUAD_SIZE, defaultSquad, squadProblem, type Squad } from '../src/engine/pool';
 import { mulberry32 } from '../src/engine/rng';
-import { duelSeed, kickoffSeed, rollSeed, turnSeed } from '../src/engine/seeds';
+import { duelSeed, kickoffSeed, packSeed, turnSeed } from '../src/engine/seeds';
 import { initialMatch } from '../src/engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../src/engine/sim';
-import type { Flick, MatchState, Plan, Team } from '../src/engine/types';
+import type { Coin, Flick, MatchState, Plan, Team } from '../src/engine/types';
 import { clamp01 } from '../src/engine/vec';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
 import type { Kit } from '../src/render/kits';
@@ -13,7 +13,7 @@ import type { Kit } from '../src/render/kits';
 // A match room: pure state machine with injected timers and senders, so it
 // can be unit-tested without sockets. One instance per room code.
 
-export type Phase = 'lobby' | 'squads' | 'playing' | 'duel' | 'over';
+export type Phase = 'lobby' | 'squads' | 'toss' | 'playing' | 'duel' | 'over';
 
 export interface RoomDeps {
   send: (side: Team, msg: ServerMessage) => void;
@@ -33,6 +33,10 @@ export const DUEL = {
 };
 /** Grace added to the client's planning timer before the server auto-submits. */
 const PLAN_GRACE_MS = 5000;
+/** The visitors call the toss, as in football. */
+export const TOSS_CALLER: Team = 'away';
+/** How long the caller has before the server calls heads for them. */
+export const CALL_MS = 20000;
 
 export class Room {
   phase: Phase = 'lobby';
@@ -97,7 +101,11 @@ export class Room {
       case 'squad':
         if (this.phase !== 'squads') return;
         this.squads[side] = msg.squad;
-        if (this.squads.home && this.squads.away) this.kickoff();
+        if (this.squads.home && this.squads.away) this.toss();
+        return;
+      case 'call':
+        if (this.phase !== 'toss' || side !== TOSS_CALLER) return;
+        this.kickoff(msg.call === 'tails' ? 'tails' : 'heads');
         return;
       case 'plan':
         if (this.phase !== 'playing' || !this.state || this.plans[side]) return;
@@ -117,8 +125,8 @@ export class Room {
   }
 
   /**
-   * The server rolls the dice itself; a client's claimed roll is replaced by
-   * the real one. Flicks are rebuilt field by field: the timing game's
+   * The server draws the booster pack itself; a client's claimed card is
+   * replaced by the real one. Flicks are rebuilt field by field: the timing game's
    * accuracy and height are clamped to 0..1 (they are client-claimed, like
    * mash presses) and the shot marker must be a real `true`.
    */
@@ -133,7 +141,7 @@ export class Room {
       return out;
     });
     const out: Plan = { team: side, flicks };
-    if (plan.dice) out.dice = rollDice(mulberry32(rollSeed(this.seed, this.state!, side)));
+    if (plan.pack) out.pack = drawBooster(mulberry32(packSeed(this.seed, this.state!, side)));
     if (plan.booster) out.booster = plan.booster;
     return out;
   }
@@ -145,12 +153,23 @@ export class Room {
     return legal ? s : defaultSquad(side);
   }
 
-  private kickoff(): void {
-    const k = kickoffRoll(mulberry32(kickoffSeed(this.seed)));
+  /** Both squads are in: the caller gets CALL_MS to call the toss. */
+  private toss(): void {
+    this.phase = 'toss';
+    this.both({ t: 'toss', caller: TOSS_CALLER });
+    this.cancelTimer?.();
+    this.cancelTimer = this.deps.schedule(() => this.kickoff('heads'), CALL_MS);
+  }
+
+  private kickoff(call: Coin): void {
+    this.cancelTimer?.();
+    this.cancelTimer = null;
+    const coin = flipCoin(mulberry32(kickoffSeed(this.seed)));
+    const winner = tossWinner(coin, call, TOSS_CALLER);
     const squads = { home: this.squadFor('home'), away: this.squadFor('away') };
-    this.state = initialMatch(k.winner, squads);
+    this.state = initialMatch(winner, squads);
     this.phase = 'playing';
-    this.both({ t: 'kickoff', state: this.state, rounds: k.rounds, winner: k.winner });
+    this.both({ t: 'kickoff', state: this.state, coin, call, caller: TOSS_CALLER, winner });
     this.sendTurn();
   }
 
@@ -240,10 +259,10 @@ export class Room {
     if (!d) return;
     for (const stop of d.stop) stop();
     this.duel = null;
-    const { state, roll } = resolveDuel(this.state!, winner, duelSeed(this.seed, this.state!));
+    const { state, booster } = resolveDuel(this.state!, winner, duelSeed(this.seed, this.state!));
     this.state = state;
     this.phase = 'playing';
-    this.both({ t: 'duel-result', winner, state, roll });
+    this.both({ t: 'duel-result', winner, state, booster });
     this.sendTurn();
   }
 
@@ -256,5 +275,3 @@ export class Room {
     this.emit(other(side), { t: 'opponent-left' });
   }
 }
-
-export { DICE_BONUS_PER_PIP };
