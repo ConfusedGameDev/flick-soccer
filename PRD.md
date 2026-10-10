@@ -110,7 +110,7 @@ Unstoppable pass and super goalkeeper never conflict, because one affects passes
 
 ## 5. Teams
 
-- **Player pool:** 130 players, the 26 best of each of five leagues (Mexico, England, Italy, Spain, Germany), as of the start of the 2026–27 season. They ship under fake names that are close enough to be recognisable ("Erling Holland"); the real-to-fake map is `docs/player-names.csv` (also as `docs/player-names.xlsx`), from which the JSON is generated. The draft opens with a league menu and then shows that league's pool.
+- **Player pool:** 260 players: for each of five leagues (Mexico, England, Italy, Spain, Germany) the 26 best of today, as of the start of the 2026–27 season, and the 26 all-time greats before the modern era (Di Stéfano, Baggio, Charlton, Beckenbauer, Hugo Sánchez…), each with the club they are most associated with. They ship under fake names that are close enough to be recognisable ("Erling Holland"); the real-to-fake map is `docs/player-names.csv` (also as `docs/player-names.xlsx`), from which the JSON is generated. The draft opens with a league menu and then shows that league's pool, with era and position filters.
 - **Stats (proposed):** Pass, Shot, Speed, Tackle and Keeping, each rated 1–5. Cost is derived from the stats.
 - **Draft (proposed):** a budget of 100 points to buy exactly 11 players, at least one of whom is a goalkeeper. Both teams draft from the full pool on their own, so the two teams can share players.
 - **Formation:** picked and arranged on the same screen as the draft. Each pick lands on the next free slot of the chosen preset (4-4-2, 4-3-3, 5-3-2); drag players anywhere on the pitch or tap two to swap while you keep picking.

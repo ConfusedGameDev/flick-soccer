@@ -1,11 +1,13 @@
 import { clampToPitch } from '../engine/pitch';
 import {
   BUDGET,
+  ERAS,
+  ERA_INFO,
   FORMATIONS,
   FORMATION_NAMES,
   LEAGUES,
   LEAGUE_INFO,
-  POOL_PER_LEAGUE,
+  POOL_PER_ERA,
   POSITIONS,
   SQUAD_SIZE,
   cost,
@@ -14,6 +16,7 @@ import {
   squadCost,
   squadProblem,
   stats,
+  type Era,
   type FormationName,
   type League,
   type PoolPlayer,
@@ -28,6 +31,7 @@ import type { Hud } from '../ui/Hud';
 import { isDualScreen } from '../ui/segments';
 
 type PosFilter = Position | 'all';
+type EraFilter = Era | 'all';
 
 const STAT_LABELS: [keyof PoolPlayer, string][] = [
   ['pass', 'PAS'],
@@ -66,7 +70,7 @@ export class TeamBuilder {
   pickLeague(title: string): Promise<League> {
     return this.deps.hud.showMenu<League>(
       title,
-      `Each league brings its ${POOL_PER_LEAGUE} best players`,
+      `Each league brings its ${POOL_PER_ERA} best players of today and ${POOL_PER_ERA} all-time greats`,
       LEAGUES.map((l) => ({ key: l, label: `${LEAGUE_INFO[l].flag} ${LEAGUE_INFO[l].name}` })),
     );
   }
@@ -86,6 +90,7 @@ export class TeamBuilder {
       let selected: number | null = null;
       let drag: { slot: number; pointerId: number; start: Vec2; moved: boolean } | null = null;
       let league: League = start;
+      let era: EraFilter = 'all';
       let pos: PosFilter = 'all';
 
       // ---- Pool panel ----
@@ -101,6 +106,7 @@ export class TeamBuilder {
         </div>
         <div class="draft-filters">
           <div class="chips" data-league></div>
+          <div class="chips" data-era></div>
           <div class="chips" data-pos></div>
         </div>
         <div class="draft-list" data-list></div>
@@ -114,6 +120,7 @@ export class TeamBuilder {
       const budget = panel.querySelector<HTMLElement>('[data-budget]')!;
       const list = panel.querySelector<HTMLElement>('[data-list]')!;
       const leagueChips = panel.querySelector<HTMLElement>('[data-league]')!;
+      const eraChips = panel.querySelector<HTMLElement>('[data-era]')!;
       const posChips = panel.querySelector<HTMLElement>('[data-pos]')!;
 
       // Make room for the panel: beside the pitch in landscape, under it in portrait.
@@ -165,6 +172,7 @@ export class TeamBuilder {
 
       const refreshPanel = () => {
         chips<League>(leagueChips, LEAGUES, LEAGUES.map((l) => `${LEAGUE_INFO[l].flag} ${LEAGUE_INFO[l].short}`), () => league, (v) => (league = v));
+        chips<EraFilter>(eraChips, ['all', ...ERAS], ['All eras', ...ERAS.map((e) => ERA_INFO[e].name)], () => era, (v) => (era = v));
         chips<PosFilter>(posChips, ['all', ...POSITIONS], ['All', ...POSITIONS], () => pos, (v) => (pos = v));
         const chosen = picked();
         const spent = squadCost(chosen);
@@ -176,7 +184,7 @@ export class TeamBuilder {
 
         list.innerHTML = '';
         const rows = leaguePool(pool, league)
-          .filter((p) => pos === 'all' || p.position === pos)
+          .filter((p) => (era === 'all' || p.era === era) && (pos === 'all' || p.position === pos))
           .sort((a, b) => cost(b) - cost(a) || a.short.localeCompare(b.short));
         for (const p of rows) {
           const on = slots.includes(p);
@@ -184,7 +192,7 @@ export class TeamBuilder {
           row.className = 'draft-row' + (on ? ' picked' : '');
           row.innerHTML = `
             <span class="pos ${p.position}">${p.position}</span>
-            <span class="who"><b>${p.name}</b><small>${p.club}</small></span>
+            <span class="who"><b>${p.name}</b><small>${p.club} · ${ERA_INFO[p.era].name}</small></span>
             <span class="stats">${STAT_LABELS.map(([k, l]) => `<i title="${l}">${l}<b>${p[k]}</b></i>`).join('')}</span>
             <span class="cost">${cost(p)}</span>`;
           row.addEventListener('click', () => {
