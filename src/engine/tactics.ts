@@ -33,7 +33,7 @@ export const TACTIC_INFO: Record<Tactic, { name: string; text: string; price: nu
 
 export const hasTactic = (meta: TeamMeta | undefined, t: Tactic): boolean => !!meta?.tactics?.includes(t);
 
-/** Flicks a side gets this turn before dice and boosters. */
+/** Flicks a side gets this turn before packs and boosters. */
 export function maxFlicksFor(meta: TeamMeta | undefined, role: 'attack' | 'defense'): number {
   return MAX_FLICKS[role] + (role === 'defense' && hasTactic(meta, 'catenaccio') ? 1 : 0);
 }

@@ -18,7 +18,8 @@ import { PlanPreview } from './render/PlanPreview';
 import { TimelinePlayer } from './render/TimelinePlayer';
 import { Coach } from './ui/Coach';
 import { Cutscene } from './ui/Cutscene';
-import { DiceView } from './ui/DiceView';
+import { CoinToss } from './ui/CoinToss';
+import { PackView } from './ui/PackView';
 import { Duel } from './ui/Duel';
 import { Hud } from './ui/Hud';
 import { KitEditor } from './ui/KitEditor';
@@ -78,7 +79,8 @@ async function boot(): Promise<void> {
     if ((e.target as HTMLElement).closest('button')) sfx.click();
   });
   const duel = new Duel(overlay, { whistle: () => sfx.whistle(), countdown: (n) => sfx.countdown(n), mash: () => sfx.mash() });
-  const dice = new DiceView(overlay, () => sfx.dice(), () => sfx.kick(0.8));
+  const pack = new PackView(overlay, () => sfx.flip());
+  const toss = new CoinToss(overlay, () => sfx.flip());
   const setPiece = new SetPiece(overlay, { tick: () => sfx.click(), kick: () => sfx.kick(1) });
   const cutscene = new Cutscene(overlay);
   const coach = new Coach(overlay);
@@ -96,7 +98,7 @@ async function boot(): Promise<void> {
     (players, ball) => pieces.setPositions(players, ball),
     (e) => (match.phase === 'ONLINE' ? online.onEvent(e) : match.onEvent(e)),
   );
-  const local = new LocalController({ hud, preview, pieces, dice, setPiece });
+  const local = new LocalController({ hud, preview, pieces, pack, setPiece });
   const layout = () => {
     // Dual-screen (M9): the HUD overlay is pinned to the pane screen by CSS; the pitch takes the other.
     const screens = applyScreens(readScreens());
@@ -111,10 +113,10 @@ async function boot(): Promise<void> {
     }
   };
   const builder = new TeamBuilder({ hud, pitch, pieces, canvas: app.canvas, overlay, relayout: layout });
-  match = new Match({ hud, duel, dice, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor, coach, store });
+  match = new Match({ hud, duel, pack, toss, builder, pool, pieces, preview, player, local, sfx, cutscene, kitEditor, coach, store });
   // Match server: VITE_SERVER_URL overrides; dev talks to `npm run server:dev`, production to Fly.
   const serverUrl = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? (import.meta.env.DEV ? 'ws://localhost:8787' : 'wss://flick-soccer-match.fly.dev');
-  online = new OnlineMatch({ serverUrl, hud, duel, dice, cutscene, sfx, builder, pool, pieces, preview, player, local, pickKit: () => match.chooseKit('home', new Set(), 'Pick your kit') });
+  online = new OnlineMatch({ serverUrl, hud, duel, pack, toss, cutscene, sfx, builder, pool, pieces, preview, player, local, pickKit: () => match.chooseKit('home', new Set(), 'Pick your kit') });
   match.online = online;
   const gesture = new FlickGesture(app.canvas, pitch, local.handlers);
   local.attachGesture(gesture);
@@ -132,11 +134,11 @@ async function boot(): Promise<void> {
 
   if (import.meta.env.DEV) (window as unknown as { __match: Match }).__match = match;
 
-  // Art previews (`?demo=sheet|cutscenes|shot`), see ui/demo.ts; loaded on demand so they cost nothing otherwise.
+  // Art previews (`?demo=sheet|cutscenes|shot|pack|toss`), see ui/demo.ts; loaded on demand so they cost nothing otherwise.
   const demo = new URLSearchParams(location.search).get('demo');
   if (demo) {
     const { runDemo } = await import('./ui/demo');
-    await runDemo(demo, { overlay, cutscene, setPiece });
+    await runDemo(demo, { overlay, cutscene, setPiece, pack, toss });
     return;
   }
   await match.start();

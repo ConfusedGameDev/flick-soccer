@@ -1,6 +1,11 @@
 import { MAX_FLICKS } from '../engine/pitch';
 import type { Coach } from '../ui/Coach';
+
 import type { DraftInfo, LocalController } from './controller';
+
+/** The pack explanation, the first time a planning phase has room for it. */
+const PACK_TEXT =
+  'The <b>🃏 Open pack</b> button gives up one flick for a booster pack: <b>three cards</b>, pick one, and the booster inside is yours to arm right away or keep. You can hold <b>two</b>: a longer slide, double speed, an extra flick, an unstoppable pass or a super keeper.';
 
 /** Points in the match loop where the tutorial may speak. `Match` awaits each one. */
 export type Beat = 'kickoff' | 'attack' | 'defense' | 'resolve' | 'resolved' | 'duel' | 'review';
@@ -36,7 +41,7 @@ export class Tutor {
   private attacks = 0;
   private defenses = 0;
   private reviews = 0;
-  private diceExplained = false;
+  private packExplained = false;
   private boosterExplained = false;
   private shootExplained = false;
   private duelExplained = false;
@@ -58,8 +63,8 @@ export class Tutor {
       case 'kickoff':
         await coach.say(
           'Welcome, coach!',
-          'This is a game of <b>hidden plans</b>: both sides plan at once, then the turn plays out. First, the kickoff roll. <b>Pull back from the ball and release</b> to shoot it at the die. The higher roll attacks first.',
-          'Roll it',
+          'This is a game of <b>hidden plans</b>: both sides plan at once, then the turn plays out. First, the coin toss: <b>call heads or tails</b>. Call it right and you attack first.',
+          'Call it',
         );
         return 'continue';
       case 'attack':
@@ -70,13 +75,10 @@ export class Tutor {
             'Let me try',
           );
           coach.tip('Make a pass', 'Pull back from the carrier and let go.');
-        } else if (!this.diceExplained) {
-          this.diceExplained = true;
-          await coach.say(
-            'Trade a flick for luck',
-            'The <b>🎲 Roll</b> button gives up one flick to roll 2d6: <b>+2% odds per point</b> this turn, up to +30%. Doubles roll again. Double 3 or 6 adds a <b>booster pack</b>. A total under 4 blocks your dice for three turns.',
-          );
-          coach.tip('Your call', 'Roll when the extra odds beat the lost flick. Then plan and confirm.');
+        } else if (!this.packExplained) {
+          this.packExplained = true;
+          await coach.say('Trade a flick for a card', PACK_TEXT);
+          coach.tip('Your call', 'Open a pack when a booster beats the lost flick. Then plan and confirm.');
         } else {
           coach.hide();
         }
@@ -89,13 +91,10 @@ export class Tutor {
             'Set a trap',
           );
           coach.tip('Guess the pass', 'Slide a defender into the likely lane, then confirm.');
-        } else if (!this.diceExplained) {
-          this.diceExplained = true;
-          await coach.say(
-            'Trade a flick for luck',
-            'The <b>🎲 Roll</b> button gives up one flick to roll 2d6: <b>+2% odds per point</b> this turn, up to +30%. Doubles roll again. Double 3 or 6 adds a <b>booster pack</b>. A total under 4 blocks your dice for three turns.',
-          );
-          coach.tip('Your call', 'Roll when the extra odds beat the lost flick. Then plan and confirm.');
+        } else if (!this.packExplained) {
+          this.packExplained = true;
+          await coach.say('Trade a flick for a card', PACK_TEXT);
+          coach.tip('Your call', 'Open a pack when a booster beats the lost flick. Then plan and confirm.');
         } else {
           coach.hide();
         }
@@ -107,7 +106,7 @@ export class Tutor {
         if (this.reviews === 0) {
           await coach.say(
             'Both plans played out',
-            'Passes near a defender roll for an <b>interception</b>; a shot on target rolls Keeping against Shot. An interception <b>swaps the roles</b> for the next turn and gives the new attacker a free dice roll. The attacker keeps the ball otherwise.',
+            'Passes near a defender roll for an <b>interception</b>; a shot on target rolls Keeping against Shot. An interception <b>swaps the roles</b> for the next turn and gives the new attacker a free booster pack. The attacker keeps the ball otherwise.',
           );
         }
         return 'continue';
@@ -116,7 +115,7 @@ export class Tutor {
           this.duelExplained = true;
           await coach.say(
             'Dead ball!',
-            'The ball stopped with nobody there. After the whistle and the countdown, <b>mash your pad</b> (or the A key) to pull the tug-of-war meter your way. The winner takes the ball and a free roll.',
+            'The ball stopped with nobody there. After the whistle and the countdown, <b>mash your pad</b> (or the A key) to pull the tug-of-war meter your way. The winner takes the ball and a free booster pack.',
             'Ready',
           );
         }

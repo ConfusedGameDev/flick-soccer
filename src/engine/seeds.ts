@@ -8,8 +8,8 @@ export const clockKey = (s: Pick<MatchState, 'half' | 'turn'>): number => s.half
 /** Seed for resolving the turn at this clock. */
 export const turnSeed = (seed: number, s: Pick<MatchState, 'half' | 'turn'>): number => (seed + clockKey(s) * 7919) >>> 0;
 
-/** Seed for a side's trade roll in this turn. */
-export const rollSeed = (seed: number, s: Pick<MatchState, 'half' | 'turn'>, team: Team): number =>
+/** Seed for the booster a side draws when it opens a pack this turn. */
+export const packSeed = (seed: number, s: Pick<MatchState, 'half' | 'turn'>, team: Team): number =>
   (seed ^ (clockKey(s) * 40503 + (team === 'home' ? 7919 : 15838))) >>> 0;
 
 /** Seed for the CPU's thinking in this turn. */

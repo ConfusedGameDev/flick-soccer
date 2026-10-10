@@ -1,12 +1,12 @@
 import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
-import { BOOSTER_INFO, kickoffRoll } from '../engine/dice';
+import { BOOSTER_INFO, flipCoin, tossWinner } from '../engine/boosters';
 import { other } from '../engine/pitch';
 import { FORMATION_NAMES, LEAGUES, cpuSquad, defaultSquad, leaguePool, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
 import { keeperOf, initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
-import type { Booster, DiceRoll, MatchState, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
+import type { Booster, MatchState, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
@@ -15,7 +15,8 @@ import { KITS, kitPreview, loadCustomKits, saveCustomKits, type Kit } from '../r
 import type { KitEditor } from '../ui/KitEditor';
 import type { Store } from '../ui/Store';
 import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
-import { DiceView } from '../ui/DiceView';
+import type { CoinToss } from '../ui/CoinToss';
+import type { PackView } from '../ui/PackView';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
 import type { Coach } from '../ui/Coach';
@@ -44,7 +45,8 @@ export type Setup = 'quick' | 'draft';
 export interface MatchDeps {
   hud: Hud;
   duel: Duel;
-  dice: DiceView;
+  pack: PackView;
+  toss: CoinToss;
   builder: TeamBuilder;
   pool: readonly PoolPlayer[];
   pieces: PiecesView;
@@ -66,7 +68,7 @@ export interface OnlineRunner {
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
 
-/** Drives a match: menu → teams → kickoff dice → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
+/** Drives a match: menu → teams → coin toss → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
 export class Match {
   state: MatchState = initialMatch();
   phase: Phase = 'MENU';
@@ -123,7 +125,7 @@ export class Match {
     }
   }
 
-  /** Kickoff dice, the turns and the full-time card, for whatever squads and kits are set. */
+  /** The coin toss, the turns and the full-time card, for whatever squads and kits are set. */
   private async playMatch(button = 'Back to menu'): Promise<void> {
     await this.kickoff();
     this.deps.sfx.crowdStart();
@@ -233,7 +235,7 @@ export class Match {
     };
     if (tutorialState() === 'new') {
       setTutorialState('offered');
-      const pick = await hud.showMenu<'tutorial' | 'skip'>('Welcome!', 'First time here? A short guided match teaches flicks, defending and the dice.', [
+      const pick = await hud.showMenu<'tutorial' | 'skip'>('Welcome!', 'First time here? A short guided match teaches flicks, defending and the booster packs.', [
         { key: 'tutorial', label: 'Play the tutorial' },
         { key: 'skip', label: 'Skip, I know the game' },
       ]);
@@ -347,36 +349,35 @@ export class Match {
     }
   }
 
-  /** Each side flicks a die; the higher roll attacks first. */
+  /**
+   * The coin toss: the visitors call in hot-seat (as in football); against the
+   * CPU the human, who is always Home, calls. A right call attacks first.
+   */
   private async kickoff(): Promise<void> {
     this.setPhase('KICKOFF');
-    const { dice, hud, pieces } = this.deps;
+    const { toss, hud, pieces } = this.deps;
     this.state = initialMatch('home', this.squads);
     pieces.rebuild(this.state.players);
     this.snap();
-    const k = kickoffRoll(mulberry32(kickoffSeed(this.seed)));
-    const again = k.rounds.length > 1 ? ' (ties rolled again)' : '';
+    const coin = flipCoin(mulberry32(kickoffSeed(this.seed)));
+    const caller: Team = this.hotSeat ? 'away' : 'home';
     await this.tutor?.beat('kickoff');
-    for (const team of ['home', 'away'] as const) {
-      const i = team === 'home' ? 0 : 1;
-      const last = k.rounds[k.rounds.length - 1];
-      await dice.show({
-        title: `Kickoff: ${teamName(team)}${this.isCpu(team) ? ' (CPU)' : ''} roll`,
-        rounds: k.rounds.map((r) => [r[i]]),
-        caption: `${teamName(team)} rolled ${last[i]}${again}`,
-        flick: !this.isCpu(team),
-        hint: `${teamName(team)}, shoot the ball at your die`,
-        again: 'Tie! Roll again…',
-        kit: this.kits[team],
-      });
-    }
-    this.state = initialMatch(k.winner, this.squads, this.startBoosters, this.startTactics);
+    const call = await toss.call({
+      title: `${teamName(caller)} call the toss`,
+      text: this.hotSeat ? `${teamName(caller)} player: heads or tails? Call it right and you attack first.` : 'Heads or tails? Call it right and you attack first.',
+      kit: this.kits[caller],
+    });
+    const winner = tossWinner(coin, call, caller);
+    await toss.flip({
+      title: 'The toss',
+      coin,
+      caption: `${teamName(caller)} called ${call}: it is ${coin}. ${teamName(winner)} attack first.`,
+      kit: this.kits[caller],
+      button: 'Kick off',
+    });
+    this.state = initialMatch(winner, this.squads, this.startBoosters, this.startTactics);
     this.snap();
-    await hud.showCover(
-      `${teamName(k.winner)} attack first`,
-      `Home ${k.rounds[k.rounds.length - 1][0]} – ${k.rounds[k.rounds.length - 1][1]} Away on the dice.`,
-      'Kick off',
-    );
+    hud.toast(`${teamName(winner)} attack first`, true);
     this.deps.sfx.whistle(true);
   }
 
@@ -456,14 +457,14 @@ export class Match {
     return undefined;
   }
 
-  /** Show a free roll (overtake or duel win) landing on the engine's numbers. */
-  private async showFreeRoll(team: Team, roll: DiceRoll, why: string): Promise<void> {
-    await this.deps.dice.show({
-      title: `${teamName(team)} ${why}: free roll!`,
-      rounds: roll.pairs,
-      caption: `${DiceView.caption(roll)} (banked for ${teamName(team)}'s next turn)`,
-      flick: !this.isCpu(team),
-      hint: `${teamName(team)}, shoot the ball at the dice`,
+  /** Show a free pack (overtake or duel win) turning up the engine's card. */
+  private async showFreePack(team: Team, booster: Booster, why: string): Promise<void> {
+    await this.deps.pack.show({
+      title: `${teamName(team)} ${why}: free pack!`,
+      booster,
+      pick: !this.isCpu(team),
+      hint: `${teamName(team)}, tap a card`,
+      caption: `${BOOSTER_INFO[booster].name} (${BOOSTER_INFO[booster].text}) goes into ${teamName(team)}'s hand`,
       kit: this.kits[team],
     });
   }
@@ -518,8 +519,8 @@ export class Match {
     hud.setScoreboard(this.state);
     await this.dramatic(result);
 
-    const free = result.events.find((e) => e.type === 'dice' && e.free);
-    if (free && free.type === 'dice') await this.showFreeRoll(free.team, free.roll, 'overtake');
+    const free = result.events.find((e) => e.type === 'pack' && e.free);
+    if (free && free.type === 'pack') await this.showFreePack(free.team, free.booster, 'overtake');
     await this.tutor?.beat('resolved');
 
     if (this.state.status === 'duel') {
@@ -527,11 +528,11 @@ export class Match {
       await this.tutor?.beat('duel');
       hud.setStatus('Dead ball!', 'Mash to win it');
       const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher());
-      const { state, roll } = resolveDuel(this.state, winner, duelSeed(this.seed, this.state));
+      const { state, booster } = resolveDuel(this.state, winner, duelSeed(this.seed, this.state));
       this.state = state;
       this.snap();
       await this.card('duel', this.state.possession.playerId, winner);
-      await this.showFreeRoll(winner, roll, 'win the ball');
+      if (booster) await this.showFreePack(winner, booster, 'win the ball');
     }
 
     if (this.state.status === 'half-time') {
@@ -613,8 +614,8 @@ export class Match {
         sfx.whistle();
         hud.toast(`Goal kick for ${teamName(e.team)}`);
         break;
-      case 'dice':
-        if (!e.free) hud.toast(`${teamName(e.team)} rolled ${e.roll.sum}: ${DiceView.caption(e.roll)}`);
+      case 'pack':
+        if (!e.free) hud.toast(`${teamName(e.team)} opened a pack: ${BOOSTER_INFO[e.booster].name}`);
         break;
       case 'booster':
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);

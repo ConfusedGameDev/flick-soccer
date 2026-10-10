@@ -135,3 +135,21 @@ describe('cpu moves', () => {
     }
   });
 });
+
+describe('cpu extras', () => {
+  it('never opens a pack with a full hand, and arms a booster that fits the role', async () => {
+    const { cpuExtras } = await import('./cpu');
+    const full: MatchState = structuredClone(base);
+    full.meta.home.boosters = ['super-keeper', 'longer-slide'];
+    for (let seed = 1; seed < 40; seed++) {
+      const e = cpuExtras(full, 'home', 'defense', seed);
+      expect(e.pack).toBeUndefined();
+      expect(e.booster).toBe('super-keeper');
+      expect(cpuExtras(full, 'home', 'attack', seed).booster).toBeUndefined();
+    }
+    let opened = 0;
+    for (let seed = 1; seed < 60; seed++) if (cpuExtras(base, 'home', 'attack', seed).pack) opened++;
+    expect(opened).toBeGreaterThan(5);
+    expect(opened).toBeLessThan(40);
+  });
+});
