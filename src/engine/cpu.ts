@@ -13,14 +13,15 @@ import {
   inAttackingThird,
   other,
   targetGoalY,
+  OVER_BAR,
 } from './pitch';
 import { BOOSTER_INFO, MAX_BOOSTERS, drawBooster } from './boosters';
 import { mulberry32 } from './rng';
 import { maxFlicksFor } from './tactics';
-import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, resolveTurn, setPieceStrength, spotTaken } from './sim';
+import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, resolveTurn, setPieceStrength, shotAcross, spotTaken } from './sim';
 import { keeperOf } from './setup';
-import type { Aim, Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
-import { add, clamp, dist, normalize, rotate, scale, sub } from './vec';
+import type { Aim, Flick, KeeperDive, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
+import { add, clamp, clamp01, dist, normalize, rotate, scale, sub } from './vec';
 
 // The CPU plans by sampling candidate plans and scoring them with the real
 // engine over a few seeds. Attack: pick the chain with the best expected
@@ -43,13 +44,13 @@ interface Params {
   aim: { mean: number; spread: number };
   /** Range of shot heights it picks (above OVER_BAR risks going over). */
   height: { min: number; max: number };
-  /** Its result in the keeper game: mean ± spread, clamped to 0..1. */
-  keeper: { mean: number; spread: number };
+  /** Its keeper game: the dive aims at the predicted shot, missed by up to this (goal units) either way. */
+  keeper: { error: number };
 }
 
 export const CPU_PARAMS: Record<Difficulty, Params> = {
-  easy: { attackSamples: 18, defenseSamples: 12, predictions: 2, seeds: 2, noise: 0.22, mashRate: 5.5, aim: { mean: 0.55, spread: 0.3 }, height: { min: 0.25, max: 0.85 }, keeper: { mean: 0.5, spread: 0.3 } },
-  normal: { attackSamples: 60, defenseSamples: 36, predictions: 3, seeds: 3, noise: 0, mashRate: 8.5, aim: { mean: 0.82, spread: 0.18 }, height: { min: 0.4, max: 0.75 }, keeper: { mean: 0.8, spread: 0.2 } },
+  easy: { attackSamples: 18, defenseSamples: 12, predictions: 2, seeds: 2, noise: 0.22, mashRate: 5.5, aim: { mean: 0.55, spread: 0.3 }, height: { min: 0.25, max: 0.85 }, keeper: { error: 0.5 } },
+  normal: { attackSamples: 60, defenseSamples: 36, predictions: 3, seeds: 3, noise: 0, mashRate: 8.5, aim: { mean: 0.82, spread: 0.18 }, height: { min: 0.4, max: 0.75 }, keeper: { error: 0.2 } },
 };
 
 type Rng = () => number;
@@ -312,9 +313,9 @@ function closestOnSegment(p: Vec2, a: Vec2, b: Vec2): Vec2 {
 }
 
 /** The pass/shot segments a predicted attack would produce, projected like the engine does. */
-function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: boolean }[] {
+function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: boolean; height: number }[] {
   const team = plan.team;
-  const segs: { a: Vec2; b: Vec2; shot: boolean }[] = [];
+  const segs: { a: Vec2; b: Vec2; shot: boolean; height: number }[] = [];
   let ball = state.ball;
   let carrier = state.possession.playerId;
   let restart = state.setPiece;
@@ -325,7 +326,8 @@ function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: bo
     const f = restart ? { ...raw, strength: setPieceStrength(restart, state.players[carrier]) } : raw;
     restart = undefined;
     const { to, out } = passTarget(ball, f, shot ? 'shot' : 'pass', kickRange(state.players[carrier], shot ? 'shot' : 'pass'));
-    segs.push({ a: ball, b: to, shot });
+    // A shot's height as the engine will see it: the aimed one, or along the ground when unaimed.
+    segs.push({ a: ball, b: to, shot, height: shot ? clamp01(raw.aim?.height ?? 0) : 0 });
     if (shot) break;
     const receiver = out ? null : findReceiver(state.players, team, to, carrier);
     if (!receiver) break;
@@ -333,6 +335,25 @@ function segmentsOf(state: MatchState, plan: Plan): { a: Vec2; b: Vec2; shot: bo
     ball = receiver.pos;
   }
   return segs;
+}
+
+/**
+ * The CPU's dive: the predicted shot points (across in half goal widths, height in bar
+ * heights) averaged, missed by up to `error` either way, then snapped to one of the eight
+ * directions with the power that lands the keeper's cover point on it. Null without a shot.
+ */
+export function cpuDive(points: { x: number; y: number }[], error: number, rng: Rng): KeeperDive | null {
+  if (points.length === 0) return null;
+  let mx = points.reduce((s, p) => s + p.x, 0) / points.length + (rng() * 2 - 1) * error;
+  let my = points.reduce((s, p) => s + p.y, 0) / points.length + (rng() * 2 - 1) * error;
+  mx = clamp(mx, -1, 1);
+  my = clamp(my, 0, 1);
+  // The cover point is (x·power, 0.5 + y·power/2): pick the sector, then the power that reaches it.
+  const ux = (my - 0.5) * 2;
+  const x = mx > 0.25 ? 1 : mx < -0.25 ? -1 : 0;
+  const y = ux > 0.5 ? 1 : ux < -0.5 ? -1 : 0;
+  const power = x === 0 && y === 0 ? 0 : clamp01(Math.max(x ? Math.abs(mx) : 0, y ? Math.abs(ux) : 0));
+  return { x, y, power };
 }
 
 function sampleDefense(state: MatchState, team: Team, predicted: Plan[], rng: Rng, maxFlicks: number = MAX_FLICKS.defense): Plan {
@@ -394,11 +415,16 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
     best,
     ...Array.from({ length: params.defenseSamples }, () => ({ ...sampleDefense(state, team, predicted, rng, maxFlicks), ...extras })),
   ];
-  // The keeper game, evaluated at the CPU's mean skill: it competes with the slides and dives on
-  // the same footing, so it wins when the predicted attacks end in shots. Any flicks left over
-  // (catenaccio) still go to a couple of sampled moves.
-  if (!state.meta[team].keeperCooldown && maxFlicks >= KEEPER_GAME_COST) {
-    const keeperGame = { accuracy: params.keeper.mean };
+  // The keeper game: a dive at the predicted shots, judged with a perfect read so it competes
+  // with the slides and dives on the same footing and wins when the predicted attacks end in
+  // shots. Any flicks left over (catenaccio) still go to a couple of sampled moves.
+  const shotPoints = predicted
+    .flatMap((p) => segmentsOf(state, p))
+    .filter((s) => s.shot)
+    .map((s) => ({ x: shotAcross(s.b, attacker), y: s.height / OVER_BAR }));
+  const ideal = cpuDive(shotPoints, 0, rng);
+  if (ideal && !state.meta[team].keeperCooldown && maxFlicks >= KEEPER_GAME_COST) {
+    const keeperGame = ideal;
     candidates.push({ team, flicks: [], ...extras, keeperGame });
     const spare = maxFlicks - KEEPER_GAME_COST;
     if (spare > 0) for (let i = 0; i < 2; i++) candidates.push({ ...sampleDefense(state, team, predicted, rng, spare), ...extras, keeperGame });
@@ -413,10 +439,10 @@ export function planDefense(state: MatchState, team: Team, difficulty: Difficult
       best = candidate;
     }
   });
-  // Like the aim: the plan was judged at the mean skill, the actual result is drawn afterwards.
+  // Like the aim: the plan was judged on a perfect read, the actual dive is drawn afterwards.
   if (best.keeperGame) {
-    const r = mulberry32(seed ^ 0x85ebca6b);
-    best = { ...best, keeperGame: { accuracy: clamp(params.keeper.mean + (r() * 2 - 1) * params.keeper.spread, 0, 1) } };
+    const dive = cpuDive(shotPoints, params.keeper.error, mulberry32(seed ^ 0x85ebca6b));
+    if (dive) best = { ...best, keeperGame: dive };
   }
   return settleMoves(addNoise(best, params.noise, mulberry32(seed ^ 0x27d4eb2f)), state, 'defense');
 }

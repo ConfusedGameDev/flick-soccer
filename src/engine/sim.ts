@@ -2,6 +2,7 @@ import type {
   Booster,
   Flick,
   FlickKind,
+  KeeperDive,
   Keyframe,
   MatchState,
   Plan,
@@ -20,6 +21,7 @@ import {
   DIVE_RANGE,
   DIVE_SPEED,
   DT,
+  GOAL_W,
   HEIGHT_SAVE_SHIFT,
   HEIGHT_SCATTER,
   PLACEMENT_SAVE_SHIFT,
@@ -27,6 +29,7 @@ import {
   INTERCEPT_CHANCE,
   KEEPER_GAME_COOLDOWN,
   KEEPER_GAME_COST,
+  KEEPER_GAME_RANGE,
   KEEPER_GAME_REACH,
   KEEPER_GAME_SAVE,
   KEEPER_REACH,
@@ -47,6 +50,7 @@ import {
   SLIDE_SPEED,
   TACKLE_REACH,
   TURNS_PER_HALF,
+  attackDir,
   clampToPitch,
   inAttackingThird,
   inGoalMouth,
@@ -124,6 +128,24 @@ export function spotTaken(at: Vec2, players: readonly PlayerState[], selfId: num
 
 /** Range factor for a player's pass or shot. */
 export const kickRange = (p: PlayerState, kind: 'pass' | 'shot'): number => statFactor(kind === 'shot' ? p.stats.shot : p.stats.pass);
+
+/** Where a shot crosses the goal line, in half goal widths, screen-right positive as seen from behind the attacker. */
+export const shotAcross = (to: Vec2, attackTeam: Team): number => (((to.x - PITCH_W / 2) / (GOAL_W / 2)) * attackDir(attackTeam));
+
+/**
+ * How well a keeper's dive reads a shot, -1..1: the keeper covers the point
+ * `(x·power, 0.5 + y·power/2)` on the goal plane (half goal widths across, bar
+ * heights up, 0.5 being his standing reach); the shot lands at `(across, height/OVER_BAR)`.
+ * 1 when he is on it, 0 at KEEPER_GAME_RANGE away, -1 at twice that (committed the wrong way).
+ */
+export function keeperRead(dive: KeeperDive, across: number, height: number): number {
+  const cx = clamp(dive.x, -1, 1) * clamp01(dive.power);
+  const cy = clamp01(0.5 + (clamp(dive.y, -1, 1) * clamp01(dive.power)) / 2);
+  const sx = clamp(across, -1.2, 1.2);
+  const sy = clamp01(height / OVER_BAR);
+  const d = Math.hypot(sx - cx, sy - cy);
+  return clamp(1 - d / KEEPER_GAME_RANGE, -1, 1);
+}
 
 /** Range factor for a player's slide, run or dive (before boosters). */
 export const moveRange = (p: PlayerState, kind: 'slide' | 'run' | 'dive'): number =>
@@ -303,7 +325,7 @@ export function resolveTurn(
   const superKeeper = mods[defenseTeam].booster === 'super-keeper';
   // The keeper game: after packs and boosters, so an extra flick counts toward its cost, as in
   // the planning UI. Legal only for the defence, when rested and with the flicks to spend.
-  let keeperGame = 0;
+  let dive: KeeperDive | null = null;
   if (attackPlan.team === attackTeam && attackPlan.keeperGame) {
     events.push({ t, type: 'invalid-flick', playerId: -1, reason: 'keeper game on attack' });
   }
@@ -314,9 +336,10 @@ export function resolveTurn(
       events.push({ t, type: 'invalid-flick', playerId: -1, reason: `keeper needs ${KEEPER_GAME_COST} flicks` });
     } else {
       maxFlicks.defense -= KEEPER_GAME_COST;
-      keeperGame = clamp01(defensePlan.keeperGame.accuracy);
+      const d = defensePlan.keeperGame;
+      dive = { x: clamp(d.x, -1, 1), y: clamp(d.y, -1, 1), power: clamp01(d.power) };
       meta[defenseTeam].keeperCooldown = KEEPER_GAME_COOLDOWN;
-      events.push({ t, type: 'keeper-game', team: defenseTeam, accuracy: keeperGame });
+      events.push({ t, type: 'keeper-game', team: defenseTeam, dive });
     }
   }
   let unstoppableLeft = mods[attackTeam].booster === 'unstoppable-pass';
@@ -459,8 +482,10 @@ export function resolveTurn(
         if (seg.unstoppable || p.team !== defenseTeam || seg.rolled.has(p.id)) continue;
         // A shot sailing over the bar is out of the keeper's hands (blockers still get their roll).
         if (p.keeper && seg.over) continue;
-        // The keeper game (shots only) stretches his reach; boosters, stats and tactics as before.
-        const set = p.keeper && seg.shot ? 1 + KEEPER_GAME_REACH * keeperGame : 1;
+        // The keeper game (shots only): a dive toward the shot stretches his reach, one the
+        // wrong way shrinks it; boosters, stats and tactics as before.
+        const read = p.keeper && seg.shot && dive ? keeperRead(dive, shotAcross(seg.to, attackTeam), seg.height) : 0;
+        const set = 1 + KEEPER_GAME_REACH * read;
         const reach = p.keeper ? KEEPER_REACH * (superKeeper ? 2 : 1) * set * statFactor(p.stats.keeping) * keeperReachMul(state.meta[defenseTeam]) : TACKLE_REACH;
         if (dist(p.pos, ball) > reach) continue;
         seg.rolled.add(p.id);
@@ -475,7 +500,7 @@ export function resolveTurn(
         // Placement: a shot past the keeper is harder to stop than one straight at him.
         if (p.keeper && seg.shot) chance -= PLACEMENT_SAVE_SHIFT * clamp01(pointToSegment(p.pos, ball, seg.to) / reach);
         if (p.keeper && superKeeper) chance += 0.25;
-        if (p.keeper && seg.shot) chance += KEEPER_GAME_SAVE * keeperGame;
+        if (p.keeper && seg.shot) chance += KEEPER_GAME_SAVE * read;
         if (rng() >= chance) continue;
         if (p.keeper && seg.shot) {
           events.push({ t, type: 'save', playerId: p.id });

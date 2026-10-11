@@ -6,7 +6,7 @@ import { mulberry32 } from '../engine/rng';
 import { packSeed } from '../engine/seeds';
 import { keeperOf } from '../engine/setup';
 import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength, spotTaken } from '../engine/sim';
-import type { Booster, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
+import type { Booster, Flick, KeeperDive, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
 import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
 import { FlickFeel, haptics } from '../input/haptics';
@@ -44,7 +44,7 @@ const HINTS: Record<SetPieceSpec['kind'], string> = {
   shot: 'Tap to lock the arrow across the goal, then the height, then tap on the block.',
   corner: 'Tap to lock the arrow, then tap when the cursor is on the block.',
   'throw-in': 'Tap to lock the arrow, then tap when the cursor is on the block.',
-  keeper: 'Tap to set the keeper in the middle of his goal, then tap when the cursor is on the block.',
+  keeper: 'Tap to stop the arrow on the way you want him to dive, then tap to set how far he flies.',
 };
 
 export type Role = 'attack' | 'defense';
@@ -97,8 +97,8 @@ interface Session {
   booster: Booster | null;
   /** Flicks a mini-game produced (a shot, a corner, a throw-in): Undo never takes them back. */
   final: Set<Flick>;
-  /** Defense: the keeper game's accuracy once played this turn (it costs KEEPER_GAME_COST flicks, and is final too). */
-  keeperGame: number | null;
+  /** Defense: the keeper's dive once the game is played this turn (it costs KEEPER_GAME_COST flicks, and is final too). */
+  keeperGame: KeeperDive | null;
   /** The set-piece scene is up and its flick is not in the draft yet. */
   pendingRestart: boolean;
   deadline: number;
@@ -259,15 +259,16 @@ export class LocalController implements PlanController {
       keeper: true,
       name: keeper.name,
       stat: keeper.stats.keeping,
-      goal: 'none',
+      goal: 'ahead',
       hint: this.hint('keeper'),
       number: keeper.number,
+      goalie: { kit: this.deps.pieces.currentKits[s.team], name: keeper.name, x: 0, depth: 0 },
     });
     this.busy = false;
     if (this.session !== s) return; // timed out while the scene was up: the game is simply not played
     if (this.gesture) this.gesture.enabled = true;
     // Played once: like a shot, it cannot be undone and retaken.
-    if (res) s.keeperGame = res.accuracy;
+    if (res?.dive) s.keeperGame = res.dive;
     this.rebuild();
     this.refresh();
   }
@@ -476,7 +477,7 @@ export class LocalController implements PlanController {
     const plan: Plan = { team: s.team, flicks: s.draft };
     if (s.pack) plan.pack = s.pack;
     if (s.booster) plan.booster = s.booster;
-    if (s.keeperGame !== null) plan.keeperGame = { accuracy: s.keeperGame };
+    if (s.keeperGame !== null) plan.keeperGame = s.keeperGame;
     s.resolve(plan);
     this.onDraft?.(null);
   }

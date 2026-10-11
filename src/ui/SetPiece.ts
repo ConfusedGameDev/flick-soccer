@@ -1,6 +1,6 @@
 import { statFactor } from '../engine/pool';
 import { GOAL_W, OVER_BAR, PITCH_L, PITCH_W } from '../engine/pitch';
-import type { MatchState, Team } from '../engine/types';
+import type { KeeperDive, MatchState, Team } from '../engine/types';
 import { hex, type Kit } from '../render/kits';
 import { lookFor, paintNumber, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
 
@@ -10,9 +10,10 @@ import { lookFor, paintNumber, paintSprite, spriteCanvas, spriteSize } from '../
 // (shots only) and finally the cursor of a timing bar on a small block. The
 // scene is theater: the only thing that reaches the engine is the result.
 //
-// The keeper game (`kind: 'keeper'`) is the same scene from behind the keeper:
-// the arrow is where he sets himself (centred is best), then the timing bar
-// is his reflex; the two average into the accuracy the engine reads.
+// The keeper game (`kind: 'keeper'`) is the shot scene seen from the shooter's
+// side with the keeper facing the camera in front of his net, ISS penalty
+// style: an arrow spins around him, a tap stops it on one of eight ways to
+// dive, then the gauge sets how far he flies. The dive is what the engine reads.
 
 export type SetPieceKind = 'shot' | 'corner' | 'throw-in' | 'keeper';
 
@@ -46,8 +47,10 @@ export interface SetPieceResult {
   x: number;
   /** Shots only, 0..1 (0 on the ground, 1 at the bar). */
   height?: number;
-  /** 0..1 from the timing bar. */
+  /** 0..1 from the timing bar (the keeper game: the power). */
   accuracy: number;
+  /** The keeper game: the chosen dive. */
+  dive?: KeeperDive;
 }
 
 export interface SetPieceSounds {
@@ -59,10 +62,26 @@ export interface SetPieceSounds {
 
 /** Where the posts sit on the ±1 aim sweep; aiming beyond them is wide. */
 export const GOAL_FRACTION = 0.77;
-/** The keeper game: how far off centre (on the ±1 sweep) his positioning score falls to 0. */
-export const KEEPER_POS_RANGE = 0.5;
-/** The keeper game's positioning score for a locked sweep value: 1 dead centre, 0 at KEEPER_POS_RANGE. */
-export const keeperPosition = (x: number): number => Math.max(0, 1 - Math.abs(x) / KEEPER_POS_RANGE);
+/** One turn of the keeper game's arrow at keeping 3; a better keeper's arrow turns slower. */
+const KEEPER_SPIN_MS = 1500;
+/** The eight ways to dive, as the arrow's angle snaps to them (screen-right 0, up positive). */
+export const DIVE_SECTORS = 8;
+
+/** Snap an arrow angle (radians, screen-right 0, up positive) to one of the eight dives. */
+export function snapDive(angle: number): { x: number; y: number } {
+  const sector = Math.round(angle / ((2 * Math.PI) / DIVE_SECTORS));
+  const a = (sector * 2 * Math.PI) / DIVE_SECTORS;
+  return { x: Math.round(Math.cos(a)), y: Math.round(Math.sin(a)) };
+}
+
+/** The dive's name as the viewer sees it, for the result line and the match toast. */
+export function diveName(d: { x: number; y: number }): string {
+  if (d.x === 0 && d.y === 0) return 'centre';
+  const v = d.y > 0 ? 'top' : d.y < 0 ? 'low' : '';
+  const h = d.x > 0 ? 'right' : d.x < 0 ? 'left' : '';
+  if (!h) return d.y > 0 ? 'high' : 'low';
+  return v ? `${v} ${h}` : h;
+}
 
 const AIM_PERIOD_MS = 1600;
 const HEIGHT_PERIOD_MS = 1200;
@@ -99,7 +118,7 @@ type Stage = 'aim' | 'height' | 'timing' | 'done';
 
 const TITLES: Record<SetPieceKind, string> = { shot: 'SHOT', corner: 'CORNER', 'throw-in': 'THROW-IN', keeper: 'KEEPER' };
 const STAGE_LABELS: Record<Exclude<Stage, 'done'>, string> = { aim: 'AIM', height: 'HEIGHT', timing: 'TIMING' };
-const KEEPER_STAGE_LABELS: Record<Exclude<Stage, 'done'>, string> = { aim: 'POSITION', height: 'HEIGHT', timing: 'REFLEX' };
+const KEEPER_STAGE_LABELS: Record<Exclude<Stage, 'done'>, string> = { aim: 'DIVE', height: 'POWER', timing: '' };
 
 export class SetPiece {
   private abort: (() => void) | null = null;
@@ -171,7 +190,15 @@ export class SetPiece {
       const canvas = q<HTMLCanvasElement>('[data-canvas]');
       // Shots get the full ISS-style scene on the canvas (goal, keeper, kicker, aim);
       // corners and throw-ins keep the backdrop with the DOM figure and arrow.
-      const scene = spec.kind === 'shot' ? new ShotScene(canvas, spec, q('.sp-top'), q('.sp-bottom')) : null;
+      const scene = spec.kind === 'shot' || keeper ? new ShotScene(canvas, spec, q('.sp-top'), q('.sp-bottom')) : null;
+      // The keeper game: the gauge is plain power, nothing is "over".
+      if (keeper) {
+        q('.sp-gauge-label').textContent = 'MAX';
+        q('.sp-tap').textContent = 'tap to stop';
+      }
+      const spinMs = KEEPER_SPIN_MS * (1 + 0.15 * (spec.stat - 3));
+      let spin = 0;
+      let dive: { x: number; y: number } = { x: 0, y: 0 };
       let frame: ArrowFrame = { base: 0, sweep: AIM_SWEEP_DEG, sign: 1 };
       const corner = spec.kind === 'corner';
       if (corner) {
@@ -205,7 +232,7 @@ export class SetPiece {
       const angle = () => frame.base + frame.sign * x * frame.sweep;
       // The posts mark the goal on the sweep so "inside" is visible while aiming.
       root.style.setProperty('--post-deg', `${GOAL_FRACTION * frame.sweep}deg`);
-      root.style.setProperty('--over', `${OVER_BAR * 100}%`);
+      root.style.setProperty('--over', keeper ? '100%' : `${OVER_BAR * 100}%`);
 
       // The timing block never sits in the middle, so each attempt feels different.
       const width = BLOCK_BASE * statFactor(spec.stat);
@@ -238,6 +265,13 @@ export class SetPiece {
 
       const paint = (now: number) => {
         const t = now - stageStart;
+        if (keeper) {
+          if (stage === 'aim' && !locked) spin = ((2 * Math.PI * t) / spinMs) % (2 * Math.PI);
+          if (stage === 'height' && !locked) h = (1 - Math.cos((2 * Math.PI * t) / HEIGHT_PERIOD_MS)) / 2;
+          varrow.style.bottom = `${h * 100}%`;
+          scene!.drawKeeper(now, stage, spin, h, stage === 'aim' ? !locked : stage === 'height' && !locked, dive);
+          return;
+        }
         if (stage === 'aim' && !locked) x = Math.sin((2 * Math.PI * t) / AIM_PERIOD_MS);
         if (stage === 'height' && !locked) h = (1 - Math.cos((2 * Math.PI * t) / HEIGHT_PERIOD_MS)) / 2;
         if (stage === 'timing' && !locked) {
@@ -269,16 +303,36 @@ export class SetPiece {
 
       const finish = () => {
         setStage('done');
+        hintEl.textContent = '';
+        if (keeper) {
+          // The dive: where the arrow stopped, as far as the gauge says.
+          result.accuracy = h;
+          result.dive = { x: dive.x, y: dive.y, power: h };
+          const pct = Math.round(h * 100);
+          resultEl.textContent = `${diveName(dive).toUpperCase()} · ${pct}%`;
+          resultEl.className = `sp-result ${h >= 0.8 ? 'perfect' : h >= 0.4 ? 'good' : 'poor'}`;
+          (this.sounds?.catch ?? this.sounds?.kick)?.();
+          scene!.dive(performance.now(), dive, h);
+          const fly = (now: number) => {
+            if (!root.isConnected) return;
+            scene!.drawKeeper(now, 'done', spin, h, false, dive);
+            requestAnimationFrame(fly);
+          };
+          requestAnimationFrame(fly);
+          cleanup();
+          setTimeout(() => {
+            root.remove();
+            resolve(result);
+          }, CLOSE_MS);
+          return;
+        }
         const d = Math.abs(c - centre) - width / 2;
         const timing = d <= 0 ? 1 : Math.max(0, 1 - d / MISS_RANGE);
-        // The keeper game averages his positioning with the reflex.
-        result.accuracy = keeper ? (keeperPosition(result.x) + timing) / 2 : timing;
+        result.accuracy = timing;
         const pct = Math.round(result.accuracy * 100);
         resultEl.textContent = result.accuracy >= 0.95 ? `PERFECT! ${pct}%` : result.accuracy >= 0.6 ? `GOOD ${pct}%` : `POOR ${pct}%`;
         resultEl.className = `sp-result ${result.accuracy >= 0.95 ? 'perfect' : result.accuracy >= 0.6 ? 'good' : 'poor'}`;
-        hintEl.textContent = '';
-        if (keeper) (this.sounds?.catch ?? this.sounds?.kick)?.();
-        else this.sounds?.kick();
+        this.sounds?.kick();
         // The kicker follows through and the ball flies off toward the horizon.
         figure.classList.add('kick');
         root.classList.add('flying');
@@ -307,13 +361,18 @@ export class SetPiece {
         locked = true;
         if (stage === 'aim') {
           result.x = x;
+          if (keeper) dive = snapDive(spin);
           arrow.classList.add('locked');
           this.sounds?.tick();
-          setTimeout(() => setStage(spec.kind === 'shot' ? 'height' : 'timing'), STAGE_PAUSE_MS);
+          setTimeout(() => setStage(spec.kind === 'shot' || keeper ? 'height' : 'timing'), STAGE_PAUSE_MS);
         } else if (stage === 'height') {
           result.height = h;
           varrow.classList.add('locked');
           this.sounds?.tick();
+          if (keeper) {
+            finish();
+            return;
+          }
           setTimeout(() => setStage('timing'), STAGE_PAUSE_MS);
         } else if (stage === 'timing') {
           cursor.classList.add('locked');
@@ -390,6 +449,11 @@ export function pickFigures(W: number, avail: number, topY: number, botY: number
 }
 
 class ShotScene {
+  /** The keeper game: no kicker, the keeper drawn per frame in front of his goal. */
+  private readonly keeperMode: boolean;
+  private gk = { x: 0, y: 0, big: false };
+  private diveAt = -1;
+  private diveTo = { x: 0, y: 0 };
   private readonly k: number;
   private readonly W: number;
   private readonly H: number;
@@ -413,6 +477,7 @@ class ShotScene {
     top: HTMLElement,
     bottom: HTMLElement,
   ) {
+    this.keeperMode = spec.kind === 'keeper';
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     this.k = Math.max(2, Math.floor(Math.min(vw / 180, vh / 180)));
@@ -523,6 +588,11 @@ class ShotScene {
     const ky = feet - kicker.h;
     this.ballX = Math.round(W / 2 + 3 * ks);
     this.ballY = feet - 3 * ks;
+    if (this.keeperMode) {
+      // The keeper himself, big when the goal allows, drawn by drawKeeper so he can dive.
+      this.gk = { x: gcx, y: gl + 1, big: gh >= 44 };
+      return;
+    }
     const gk = this.spec.goalie;
     if (gk) {
       const depth = Math.max(0, Math.min(0.8, gk.depth));
@@ -599,6 +669,60 @@ class ShotScene {
   kick(now: number, x: number, h: number): void {
     this.kickAt = now;
     this.kickTarget = this.target(x, h);
+  }
+
+  /** The keeper game: start the dive toward a direction, `power` of the way to the post or the bar. */
+  dive(now: number, d: { x: number; y: number }, power: number): void {
+    this.diveAt = now;
+    this.diveTo = { x: d.x * power * (this.gw / 2) * 0.8, y: -d.y * power * this.gh * 0.7 };
+  }
+
+  /**
+   * One frame of the keeper game: the backdrop, the keeper in front of his goal (diving once
+   * the dive is on), and the arrow spinning around him while aiming, held once locked, growing
+   * with the power while the gauge runs.
+   */
+  drawKeeper(now: number, stage: Stage, angle: number, power: number, live: boolean, d: { x: number; y: number }): void {
+    const c = this.ctx;
+    c.clearRect(0, 0, this.W, this.H);
+    c.drawImage(this.bg, 0, 0);
+    const pose = this.gk.big ? 'hero-ready' : 'ready';
+    const [pw, ph] = spriteSize(pose);
+    const chest = { x: this.gk.x, y: this.gk.y - Math.round(ph * 0.55) };
+    // The keeper: standing, then flying along the dive.
+    let dx = 0;
+    let dy = 0;
+    let flip = false;
+    let flying = false;
+    if (this.diveAt >= 0) {
+      const t = Math.min(1, (now - this.diveAt) / FLY_MS);
+      const e = 1 - (1 - t) * (1 - t);
+      dx = this.diveTo.x * e;
+      dy = this.diveTo.y * e;
+      flip = d.x < 0;
+      flying = d.x !== 0;
+    }
+    const kit = this.spec.kit;
+    c.fillStyle = C.shadow;
+    c.fillRect(Math.round(this.gk.x + dx - pw * 0.3), this.gk.y - 1, Math.round(pw * 0.6), 2);
+    if (flying && this.gk.big) {
+      const [dw, dh] = spriteSize('hero-dive');
+      paintSprite(c, 'hero-dive', kit, true, Math.round(this.gk.x + dx - dw / 2), Math.round(this.gk.y + dy - dh), 1, lookFor(this.spec.name), flip);
+    } else {
+      paintSprite(c, pose, kit, true, Math.round(this.gk.x + dx - pw / 2), Math.round(this.gk.y + dy - ph), 1, lookFor(this.spec.name), flip);
+    }
+    // The arrow over him, from his chest: a fixed length while it spins, then the power
+    // stretches it out toward the dive, as far as the post or the bar at full power.
+    if (stage !== 'done') {
+      const base = Math.max(ph * 0.95, this.gh * 0.6);
+      const reach = stage === 'aim' ? base : base * 0.5 + power * (this.gw / 2) * 0.85;
+      const a = stage === 'aim' ? angle : Math.atan2(d.y, d.x);
+      const col = live ? C.accent : C.cream;
+      const tx = chest.x + Math.cos(a) * reach;
+      const ty = chest.y - Math.sin(a) * reach;
+      this.arrow(chest.x, chest.y, tx, ty, col);
+      if (stage !== 'aim' || !live) this.reticle(tx, ty, col);
+    }
   }
 
   /** One frame: the painted backdrop, then the aim (while aiming or setting the height) and the ball. */

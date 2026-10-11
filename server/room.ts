@@ -6,7 +6,7 @@ import { duelSeed, kickoffSeed, packSeed, turnSeed } from '../src/engine/seeds';
 import { initialMatch } from '../src/engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../src/engine/sim';
 import type { Coin, Flick, MatchState, Plan, Team } from '../src/engine/types';
-import { clamp01 } from '../src/engine/vec';
+import { clamp, clamp01 } from '../src/engine/vec';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
 import type { Kit } from '../src/render/kits';
 
@@ -144,7 +144,10 @@ export class Room {
     if (plan.pack) out.pack = drawBooster(mulberry32(packSeed(this.seed, this.state!, side)));
     if (plan.booster) out.booster = plan.booster;
     // The keeper game's result is client-claimed like a shot's accuracy; the engine checks its legality.
-    if (plan.keeperGame && typeof plan.keeperGame === 'object') out.keeperGame = { accuracy: clamp01(plan.keeperGame.accuracy) };
+    if (plan.keeperGame && typeof plan.keeperGame === 'object') {
+      const d = plan.keeperGame;
+      out.keeperGame = { x: clamp(Number(d.x) || 0, -1, 1), y: clamp(Number(d.y) || 0, -1, 1), power: clamp01(Number(d.power) || 0) };
+    }
     return out;
   }
 

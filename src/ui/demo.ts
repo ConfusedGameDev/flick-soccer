@@ -181,7 +181,7 @@ async function shot(setPiece: SetPiece, kit: Kit, other: Kit, q: URLSearchParams
 /** The keeper game, over and over. */
 async function keeperGame(setPiece: SetPiece, kit: Kit): Promise<void> {
   for (;;) {
-    await setPiece.run({ kind: 'keeper', kit, keeper: true, name: 'Cortois', stat: 4, goal: 'none', number: 1, hint: 'Tap to set the keeper in the middle of his goal, then tap when the cursor is on the block.' });
+    await setPiece.run({ kind: 'keeper', kit, keeper: true, name: 'Cortois', stat: 4, goal: 'ahead', number: 1, hint: 'Tap to stop the arrow on the way you want him to dive, then tap to set how far he flies.', goalie: { kit, name: 'Cortois', x: 0, depth: 0 } });
   }
 }
 

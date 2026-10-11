@@ -65,6 +65,18 @@ export interface TeamMeta {
 /** Passive rules a team carries through a season run; effects live in engine/tactics.ts. */
 export type Tactic = 'catenaccio' | 'tiki-taka' | 'clasicos' | 'cannon' | 'iron-wall' | 'engine-room';
 
+/**
+ * The keeper's committed dive, guessed before the shot is known. `x` is across the goal,
+ * screen-right positive as seen from behind the attacker (the frame of `Flick.aim`); `y` is
+ * +1 high, -1 low; the UI picks one of eight directions (each of -1, 0, 1) and the engine
+ * clamps any value to ±1. `power` (0..1) is how far he flies: 1 reaches the post or the bar.
+ */
+export interface KeeperDive {
+  x: number;
+  y: number;
+  power: number;
+}
+
 /** A restart the attacker takes with the set-piece scene before planning the rest of the turn. */
 export type SetPiece = 'corner' | 'throw-in';
 
@@ -122,10 +134,11 @@ export interface Plan {
   booster?: Booster;
   /**
    * Defense only: the keeper game was played this turn. It costs KEEPER_GAME_COST flicks
-   * and rests for KEEPER_GAME_COOLDOWN turns; `accuracy` (0..1) is the mini-game's result,
-   * client-claimed like `Aim.accuracy`, and grows the keeper's reach and save chance on shots.
+   * and rests for KEEPER_GAME_COOLDOWN turns; the dive is the mini-game's result,
+   * client-claimed like `Aim.accuracy`; `keeperRead` scores it against each shot and swings
+   * his reach and save chance either way.
    */
-  keeperGame?: { accuracy: number };
+  keeperGame?: KeeperDive;
 }
 
 /** What a flick means, decided by who was flicked and from where. */
@@ -148,7 +161,7 @@ export type TimelineEvent = { t: number } & (
   | { type: 'pack'; team: Team; booster: Booster; free: boolean }
   | { type: 'booster'; team: Team; booster: Booster }
   /** The defence spent its flicks on the keeper game. */
-  | { type: 'keeper-game'; team: Team; accuracy: number }
+  | { type: 'keeper-game'; team: Team; dive: KeeperDive }
   | { type: 'invalid-flick'; playerId: number; reason: string }
   | { type: 'half-time' }
   | { type: 'full-time' }
