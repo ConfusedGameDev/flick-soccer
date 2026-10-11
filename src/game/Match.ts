@@ -1,6 +1,6 @@
 import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, flipCoin, tossWinner } from '../engine/boosters';
-import { other } from '../engine/pitch';
+import { TURNS_PER_HALF, other } from '../engine/pitch';
 import { FORMATION_NAMES, LEAGUES, cpuSquad, defaultSquad, leaguePool, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
@@ -69,6 +69,8 @@ export interface OnlineRunner {
 }
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
+/** Pause after a turn's result before the next turn starts (no button to press). */
+const REVIEW_MS = 900;
 
 /** Drives a match: menu → teams → coin toss → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
 export class Match {
@@ -459,8 +461,9 @@ export class Match {
     return undefined;
   }
 
-  /** Show a free pack (overtake or duel win) turning up the engine's card. */
+  /** Show a free pack (overtake or duel win) turning up the engine's card; the CPU's cards just go to its hand (the event toast says which). */
   private async showFreePack(team: Team, booster: Booster, why: string): Promise<void> {
+    if (this.isCpu(team)) return;
     await this.deps.pack.show({
       title: `${teamName(team)} ${why}: free pack!`,
       booster,
@@ -487,6 +490,7 @@ export class Match {
       );
     }
     this.setPhase('PLAN_ATTACK');
+    hud.toast(`Turn ${this.state.turn}/${TURNS_PER_HALF}`, true);
     if (this.tutor && !this.isCpu(attackTeam)) {
       hud.setStatus(`${teamName(attackTeam)} attack`, 'The coach has a word…');
       await this.tutor.beat('attack');
@@ -559,7 +563,8 @@ export class Match {
       this.quit = true;
       return;
     }
-    await hud.waitNext();
+    // No button between turns: a beat to read who has the ball, then straight on.
+    await new Promise((r) => setTimeout(r, REVIEW_MS));
   }
 
   private async fullTime(button = 'Back to menu'): Promise<void> {
