@@ -20,6 +20,9 @@ export interface CutsceneSpec {
   holdMs?: number;
 }
 
+/** Pause between the end of playback and a card, so the pitch sprites' own moment (the swing, the celebration) shows first. */
+export const CARD_DELAY_MS = 1200;
+
 const GRASS_DARK = '#1f7a33';
 const GRASS_LIGHT = '#2a9a44';
 const GRASS_STREAK = '#4ec25e';

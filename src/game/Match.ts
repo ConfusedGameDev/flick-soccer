@@ -15,7 +15,7 @@ import { haptics } from '../input/haptics';
 import { KITS, kitPreview, loadCustomKits, saveCustomKits, type Kit } from '../render/kits';
 import type { KitEditor } from '../ui/KitEditor';
 import type { Store } from '../ui/Store';
-import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
+import { CARD_DELAY_MS, type Cutscene, type CutsceneKind } from '../ui/Cutscene';
 import type { CoinToss } from '../ui/CoinToss';
 import { diveName } from '../ui/SetPiece';
 import type { PackView } from '../ui/PackView';
@@ -422,6 +422,8 @@ export class Match {
       team = throwIn.team;
     }
     if (!kind) return;
+    // Let the pitch finish its say first: the shooter's follow-through, the celebration, the slide.
+    await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
     await this.card(kind, playerId, team, foilId);
   }
 
