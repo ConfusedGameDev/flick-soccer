@@ -527,7 +527,7 @@ export class Match {
       this.setPhase('DUEL');
       await this.tutor?.beat('duel');
       hud.setStatus('Dead ball!', 'Mash to win it');
-      const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher());
+      const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher(), undefined, this.kits);
       const { state, booster } = resolveDuel(this.state, winner, duelSeed(this.seed, this.state));
       this.state = state;
       this.snap();

@@ -253,16 +253,22 @@ export class OnlineMatch {
     const { hud, duel } = this.deps;
     const socket = this.socket!;
     hud.setStatus('Dead ball!', 'Mash to win it');
-    await duel.run({ left: 'home', right: 'away' }, NAMES, undefined, {
-      side: this.side === 'home' ? 'left' : 'right',
-      openInMs: m.openInMs,
-      send: () => socket.send({ t: 'mash' }),
-      subscribe: (cb) =>
-        socket.on((msg) => {
-          if (msg.t === 'meter') cb({ t: 'meter', value: msg.value });
-          else if (msg.t === 'duel-result') cb({ t: 'end', winner: msg.winner });
-        }),
-    });
+    await duel.run(
+      { left: 'home', right: 'away' },
+      NAMES,
+      undefined,
+      {
+        side: this.side === 'home' ? 'left' : 'right',
+        openInMs: m.openInMs,
+        send: () => socket.send({ t: 'mash' }),
+        subscribe: (cb) =>
+          socket.on((msg) => {
+            if (msg.t === 'meter') cb({ t: 'meter', value: msg.value });
+            else if (msg.t === 'duel-result') cb({ t: 'end', winner: msg.winner });
+          }),
+      },
+      this.deps.pieces.currentKits,
+    );
   }
 
   private async ended(msg: ServerMessage): Promise<void> {

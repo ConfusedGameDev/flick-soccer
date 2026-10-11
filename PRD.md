@@ -75,7 +75,7 @@ There are no offside or fouls in the PoC.
 
 | Mode | How it works |
 |---|---|
-| Same-device | Two big buttons, one on each side of the screen, with multi-touch so both players can press at once. Keyboard fallback for desktop (`A` for the left player, `L` for the right) **(proposed)**. |
+| Same-device | Two round arcade buttons in the teams' colours, one on each side of the screen, with multi-touch so both players can press at once; every press buzzes the phone. The rope between them shows a ball knot that each press pulls toward the presser. Keyboard fallback for desktop (`A` for the left player, `L` for the right). |
 | vs CPU | The CPU presses at a rate set by difficulty, with some random variation. |
 | Online | Each client sends its press counts to the server, which decides the winner. Presses are capped at about 15 per second to block auto-clickers **(proposed)**. |
 
@@ -121,7 +121,7 @@ Unstoppable pass and super goalkeeper never conflict, because one affects passes
 An SNES look in the style of *ISS Deluxe*: pixel-art sprites on an angled pitch. The simulation runs in flat top-down 2D, and only the rendering adds the pseudo-3D angle. Pitch players are the typed 16×24 templates. Generated 48×48 frames in eight directions (`art/frames`, imported into material templates so kits and looks recolour them) exist behind `?sprites=generated` for testing until the set is complete and approved.
 
 ### 6.2 Input
-Touch-first. The pull-back-and-release gesture must feel right on a phone browser from M0, and the same gesture works with a mouse. With two fingers, the first finger's pull sets only the power and the second finger points where the flick goes; lifting the second finger returns to one-finger aiming, lifting the first releases the flick.
+Touch-first. The pull-back-and-release gesture must feel right on a phone browser from M0, and the same gesture works with a mouse. With two fingers, the first finger's pull sets only the power and the second finger points where the flick goes; lifting the second finger returns to one-finger aiming, lifting the first releases the flick. The pull is felt as well as seen: a haptic tick at every tenth of the power, harder the further the pull, a lighter tick when the aim swings, and a kick on release sized by the power (native haptics in the app, the vibration API on the web).
 
 ### 6.3 Cutscenes
 - **Triggers:** overtake, dispute-ball win, goal, goalkeeper save, corner, throw-in.

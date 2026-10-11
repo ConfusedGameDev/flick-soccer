@@ -1,4 +1,6 @@
 import type { Team } from '../engine/types';
+import { haptics } from '../input/haptics';
+import { hex, type Kit } from '../render/kits';
 
 /** How far one press moves the tug meter (range -1..1). */
 const PRESS_STEP = 0.07;
@@ -27,47 +29,61 @@ export interface RemoteDuel {
   subscribe: (cb: (msg: { t: 'meter'; value: number } | { t: 'end'; winner: Team }) => void) => () => void;
 }
 
-/**
- * Dead-ball dispute: whistle, 3-2-1-GO, then both players mash. The first to
- * pull the meter fully to their side wins; at the time limit whoever leads
- * wins, and a dead heat goes to sudden death (next press wins).
- */
 export interface DuelSounds {
   whistle: () => void;
   countdown: (step: number) => void;
   mash: () => void;
 }
 
+/**
+ * Dead-ball dispute: whistle, 3-2-1-GO, then both players mash their arcade
+ * button. Every press pulls the rope's knot toward the presser; the first to
+ * drag it all the way to their end wins. At the time limit whoever leads
+ * wins, and a dead heat goes to sudden death (next press wins). Each press
+ * also kicks the haptics.
+ */
 export class Duel {
   constructor(
     private readonly overlay: HTMLElement,
     private readonly sounds?: DuelSounds,
   ) {}
 
-  run(sides: DuelSides, names: Record<Team, string>, auto?: AutoMasher, remote?: RemoteDuel): Promise<Team> {
+  run(sides: DuelSides, names: Record<Team, string>, auto?: AutoMasher, remote?: RemoteDuel, kits?: Record<Team, Kit>): Promise<Team> {
     const padLabel = (side: 'left' | 'right'): string => {
       if (auto?.side === side) return 'CPU';
       if (remote && remote.side !== side) return 'Opponent';
-      return `mash! (${side === 'left' ? 'A' : 'L'})`;
+      return `Mash! (${side === 'left' ? 'A' : 'L'})`;
+    };
+    const colour = (side: 'left' | 'right'): string => {
+      const kit = kits?.[sides[side]];
+      return kit ? hex(kit.jersey) : side === 'left' ? 'var(--home)' : 'var(--away)';
     };
     return new Promise((resolve) => {
       const root = document.createElement('div');
       root.className = 'duel';
+      root.style.setProperty('--left', colour('left'));
+      root.style.setProperty('--right', colour('right'));
       root.innerHTML = `
         <div class="duel-top">
           <div class="duel-title">Dispute ball</div>
           <div class="duel-count" data-count>🔔</div>
-          <div class="duel-meter"><div class="duel-fill" data-fill></div></div>
+          <div class="duel-rope" data-rope>
+            <span class="duel-end left">${names[sides.left]}</span>
+            <span class="duel-track"><i class="duel-pull left" data-pull-left></i><i class="duel-pull right" data-pull-right></i><b class="duel-knot" data-knot></b></span>
+            <span class="duel-end right">${names[sides.right]}</span>
+          </div>
           <div class="duel-timer" data-timer></div>
         </div>
         <div class="duel-pads">
-          <button class="duel-pad left" data-pad="left">${names[sides.left]}<small>${padLabel('left')}</small></button>
-          <button class="duel-pad right" data-pad="right">${names[sides.right]}<small>${padLabel('right')}</small></button>
+          <div class="duel-slot"><button class="duel-pad left" data-pad="left"><span class="duel-cap"><b>${names[sides.left]}</b><small>${padLabel('left')}</small></span></button></div>
+          <div class="duel-slot"><button class="duel-pad right" data-pad="right"><span class="duel-cap"><b>${names[sides.right]}</b><small>${padLabel('right')}</small></span></button></div>
         </div>`;
       this.overlay.appendChild(root);
 
       const count = root.querySelector<HTMLElement>('[data-count]')!;
-      const fill = root.querySelector<HTMLElement>('[data-fill]')!;
+      const knot = root.querySelector<HTMLElement>('[data-knot]')!;
+      const pullLeft = root.querySelector<HTMLElement>('[data-pull-left]')!;
+      const pullRight = root.querySelector<HTMLElement>('[data-pull-right]')!;
       const timerEl = root.querySelector<HTMLElement>('[data-timer]')!;
       const pads = {
         left: root.querySelector<HTMLButtonElement>('[data-pad="left"]')!,
@@ -82,8 +98,15 @@ export class Duel {
       let raf = 0;
       let autoTimer: ReturnType<typeof setTimeout> | null = null;
 
+      // The knot sits at the meter; each side's colour reaches from its end to the knot, so
+      // the side that is winning holds more rope. A press moves the knot toward the presser.
       const paint = () => {
-        fill.style.width = `${((meter + 1) / 2) * 100}%`;
+        const k = ((meter + 1) / 2) * 100;
+        knot.style.left = `${k}%`;
+        pullLeft.style.width = `${k}%`;
+        pullRight.style.width = `${100 - k}%`;
+        root.classList.toggle('left-ahead', meter < -0.02);
+        root.classList.toggle('right-ahead', meter > 0.02);
       };
       paint();
 
@@ -97,6 +120,7 @@ export class Duel {
         window.removeEventListener('keydown', onKey);
         count.textContent = `${names[winner]} win the ball!`;
         root.classList.add('done');
+        haptics.success();
         setTimeout(() => {
           root.remove();
           resolve(winner);
@@ -108,6 +132,7 @@ export class Duel {
         pads[side].classList.add('hit');
         setTimeout(() => pads[side].classList.remove('hit'), 80);
         this.sounds?.mash();
+        if (human(side)) haptics.impact('medium');
         if (remote) {
           // The server keeps the score; we only report presses.
           remote.send();
@@ -119,6 +144,7 @@ export class Duel {
         if (sudden || meter <= -1 || meter >= 1) finish(meter < 0 ? sides.left : sides.right);
       };
 
+      const human = (side: 'left' | 'right') => auto?.side !== side && (!remote || remote.side === side);
       let unsubscribe: (() => void) | null = null;
       if (remote) {
         unsubscribe = remote.subscribe((msg) => {
@@ -131,7 +157,6 @@ export class Duel {
         });
       }
 
-      const human = (side: 'left' | 'right') => auto?.side !== side && (!remote || remote.side === side);
       const onKey = (e: KeyboardEvent) => {
         if (e.repeat) return;
         if (e.code === 'KeyA' && human('left')) press('left');
@@ -184,6 +209,7 @@ export class Duel {
           void count.offsetWidth; // restart the pop animation
           count.classList.add('pop');
           if (step === COUNTDOWN.length) {
+            haptics.impact('heavy');
             open = true;
             root.classList.add('open');
             endAt = performance.now() + MASH_SECONDS * 1000;
