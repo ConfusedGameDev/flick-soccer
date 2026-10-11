@@ -4,7 +4,7 @@ vi.mock('pixi.js', () => ({ Texture: class {} }));
 
 import { KITS, hex } from './kits';
 import { LETTERS } from './rig';
-import { ONE_SHOT, SHEET_ANIMS, SHEET_BALL, SHEET_HERO, hairLayerFor, sheetFrame, sheetFrameAt, sheetFrames, sheetJersey, sheetPivot, sheetRows } from './sheet';
+import { BACK_NUMBER_ANCHOR, KICK_CONTACT, ONE_SHOT, SHEET_ANIMS, SHEET_BALL, SHEET_HERO, hairLayerFor, sheetFrame, sheetFrameAt, sheetFrames, sheetJersey, sheetPivot, sheetRows } from './sheet';
 import { paintSheet } from './sprites';
 
 const ALPHABET = new RegExp(`^[.${Object.keys(LETTERS).join('')}]+$`);
@@ -23,7 +23,7 @@ function recorder(): { ctx: CanvasRenderingContext2D; fills: string[] } {
 
 describe('sheet frames', () => {
   it('cover every animation with rectangular grids in the alphabet, crops inside the canvas and the kit parts present', () => {
-    expect(SHEET_ANIMS.length).toBe(15);
+    expect(SHEET_ANIMS.length).toBe(16);
     for (const anim of SHEET_ANIMS) {
       expect(sheetFrames(anim), anim).toBeGreaterThan(0);
       for (let i = 0; i < sheetFrames(anim); i++) {
@@ -112,11 +112,32 @@ describe('sheet frames', () => {
     expect(gk.fills).toContain('#f0f0f0');
   });
 
-  it('has a 7x7 ball and a sheet frame for every hero pose but the back view', () => {
+  it('draws the hand-made back view at the idle figure\'s size, with a kick that holds its last frame', () => {
+    expect(sheetFrames('back_kick')).toBe(4);
+    const idle = sheetFrame('idle', 0);
+    const back = sheetFrame('back_kick', 0);
+    expect(back.rows.length).toBe(idle.rows.length);
+    expect(back.rows[0].length).toBe(idle.rows[0].length);
+    expect(sheetPivot(back)).toEqual(sheetPivot(idle));
+    // Seen from behind: hair covers the head, no face highlights above the shoulders.
+    const withHair = sheetRows('back_kick', 0, { skin: 0, hair: 0, style: 0 });
+    expect(withHair.slice(0, 11).join('')).toMatch(/H/);
+    expect(withHair.slice(0, 11).join('')).not.toMatch(/L/);
+    const [ax, ay] = BACK_NUMBER_ANCHOR;
+    const [top, rows, left, cols] = back.jersey;
+    expect(ay).toBeGreaterThan(top);
+    expect(ay).toBeLessThan(top + rows);
+    expect(ax).toBeGreaterThan(left);
+    expect(ax).toBeLessThan(left + cols);
+    expect(KICK_CONTACT.back_kick).toBeLessThan(sheetFrames('back_kick'));
+    expect(sheetFrameAt('back_kick', 10000)).toBe(3);
+    expect(SHEET_HERO['hero-back']).toEqual(['back_kick', 0]);
+  });
+
+  it('has a 7x7 ball and a sheet frame for every hero pose', () => {
     expect(SHEET_BALL.rows.length).toBe(7);
     for (const r of SHEET_BALL.rows) expect(r.length).toBe(7);
     for (const ch of SHEET_BALL.rows.join('').replace(/\./g, '')) expect(SHEET_BALL.colors[ch]).toMatch(/^#[0-9a-f]{6}$/);
-    expect(SHEET_HERO['hero-back']).toBeUndefined();
     for (const [pose, [anim, i]] of Object.entries(SHEET_HERO)) {
       expect(SHEET_ANIMS, pose).toContain(anim);
       expect(i).toBeLessThan(sheetFrames(anim));

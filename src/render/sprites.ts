@@ -2,7 +2,7 @@ import { Texture } from 'pixi.js';
 import { hex, shirtColorAt, type Kit } from './kits';
 import { HERO_POSES, HERO_RIGS, LETTERS, isHeroPose, rasterise, type HeroPose, type JerseyFrame, type Material } from './rig';
 import { frame, frameRows, type Dir8, type FrameState } from './frames';
-import { SHEET_BALL, sheetFrame, sheetJersey, sheetRows, type SheetAnim } from './sheet';
+import { BACK_NUMBER_ANCHOR, SHEET_BALL, sheetFrame, sheetJersey, sheetRows, type SheetAnim } from './sheet';
 
 // Pixel-art player sprites painted from ASCII templates, in the spirit of
 // 16-bit football games: a 16x24 figure seen from the front, slightly above,
@@ -529,7 +529,7 @@ const DIGITS: Record<string, string[]> = {
  * white with a dark edge on dark shirts, dark on light ones, centred between the
  * shoulders. The hero back view draws it twice the size.
  */
-export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boolean, x: number, y: number, k: number, n: number, pose: 'back' | 'hero-back' = 'back'): void {
+export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boolean, x: number, y: number, k: number, n: number, pose: 'back' | 'hero-back' | 'sheet-back' = 'back'): void {
   const text = String(Math.max(0, Math.round(n)) % 100);
   const base = keeper ? kit.keeper.jersey : kit.jersey;
   const lum = 0.299 * ((base >> 16) & 255) + 0.587 * ((base >> 8) & 255) + 0.114 * (base & 255);
@@ -538,7 +538,7 @@ export function paintNumber(ctx: CanvasRenderingContext2D, kit: Kit, keeper: boo
   // Digit cell size and the centre of the number on the shirt.
   const scale = pose === 'hero-back' ? 2 : 1;
   const cell = pose === 'hero-back' ? (heroTemplate('hero-back', DEFAULT_LOOK).number ?? [24, 30]) : null;
-  const anchor: [number, number] = cell ? [cell[0] + 0.5, cell[1] + 0.5] : [15.5, 19.5];
+  const anchor: [number, number] = cell ? [cell[0] + 0.5, cell[1] + 0.5] : pose === 'sheet-back' ? BACK_NUMBER_ANCHOR : [15.5, 19.5];
   const w = (text.length * 4 - 1) * scale;
   const left = Math.round(anchor[0] - w / 2);
   const top = Math.round(anchor[1] - 2.5 * scale);

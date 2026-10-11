@@ -50,6 +50,7 @@ Player: `idle` 0-4, `run` 15-20, `sprint` 29-34, `jump` 41-52, `defensive_stance
 Keeper (`gk-` keys): `idle` 0-4, `defensive_stance` 15-18 (front-facing crouch), `slide` 19-24,
 `clearance` 25-34 (low dive), `clearance_2` 35-45 (high dive), `hold_ball` 46-50.
 
-Not in the files yet: a back view (the set-piece kicker keeps the rigged
-figure), a throw-in, a keeper run (he runs with the outfield frames), and the
-other seven directions (the pitch mirrors left/right only).
+Not in the files yet: a back view (`render/sheet.ts` hand-draws `back_kick` in
+the same style for the set-piece kicker; a drawn one would replace it), a
+throw-in, a keeper run (he runs with the outfield frames), and the other seven
+directions (the pitch mirrors left/right only).

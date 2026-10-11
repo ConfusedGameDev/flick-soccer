@@ -3,7 +3,7 @@ import { GOAL_W, OVER_BAR, PITCH_L, PITCH_W } from '../engine/pitch';
 import type { KeeperDive, MatchState, Team } from '../engine/types';
 import { hex, type Kit } from '../render/kits';
 import { haptics } from '../input/haptics';
-import { SHEET_FIGURE_H, SHEET_FRAME_MS, SHOOT_CONTACT_FRAME, sheetFrame, sheetFrames, sheetPivot, type SheetAnim } from '../render/sheet';
+import { KICK_CONTACT, SHEET_FIGURE_H, SHEET_FRAME_MS, sheetFrame, sheetFrames, sheetPivot, type SheetAnim } from '../render/sheet';
 import { spriteSet } from '../render/spriteSet';
 import { lookFor, paintNumber, paintSheet, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
 
@@ -632,10 +632,10 @@ class ShotScene {
     }
     g.fillStyle = C.shadow;
     if (spriteSet() === 'sheet') {
-      // The drawn kicker has no back view: he stands in profile beside the ball, as tall as the
-      // rigged figure would be, and is painted per frame (paintKicker) so he can swing.
+      // The drawn kicker from behind (the sheet's hand-made back view), the ball at his right
+      // boot, as tall as the rigged figure would be; painted per frame (paintKicker) so he can swing.
       const s = Math.max(1, Math.floor(fig.h / SHEET_FIGURE_H));
-      this.kicker = { x: this.ballX - 7 * s, y: feet, s };
+      this.kicker = { x: this.ballX - 3 * s, y: feet, s };
       g.fillRect(this.kicker.x - 5 * s, feet - 1, 10 * s, 2 * ks);
       return;
     }
@@ -646,14 +646,22 @@ class ShotScene {
     if (this.spec.number != null) paintNumber(f, this.spec.kit, this.spec.keeper, kx, ky, ks, this.spec.number, fig.pose);
   }
 
-  /** The drawn kicker: at the ball until the kick, then the shoot animation from its first frame. */
+  /** The kicking animation of the drawn kicker and when its boot meets the ball. */
+  private static readonly KICK: SheetAnim = 'back_kick';
+  private static readonly WIND_UP_MS = (KICK_CONTACT[ShotScene.KICK] ?? 0) * SHEET_FRAME_MS;
+
+  /** The drawn kicker: standing at the ball until the kick, then the swing from its first frame, with his number. */
   private paintKicker(now: number): void {
     const k = this.kicker;
     if (!k) return;
-    const start = this.kickAt - SHOOT_CONTACT_FRAME * SHEET_FRAME_MS;
-    const i = this.kickAt < 0 ? 0 : Math.min(sheetFrames('shoot_ball') - 1, Math.max(0, Math.floor((now - start) / SHEET_FRAME_MS)));
-    const [px, py] = sheetPivot(sheetFrame('shoot_ball', i));
-    paintSheet(this.ctx, 'shoot_ball', i, this.spec.kit, this.spec.keeper, Math.round(k.x - px * k.s), Math.round(k.y - py * k.s), k.s, lookFor(this.spec.name));
+    const anim = ShotScene.KICK;
+    const start = this.kickAt - ShotScene.WIND_UP_MS;
+    const i = this.kickAt < 0 ? 0 : Math.min(sheetFrames(anim) - 1, Math.max(0, Math.floor((now - start) / SHEET_FRAME_MS)));
+    const [px, py] = sheetPivot(sheetFrame(anim, i));
+    const x = Math.round(k.x - px * k.s);
+    const y = Math.round(k.y - py * k.s);
+    paintSheet(this.ctx, anim, i, this.spec.kit, this.spec.keeper, x, y, k.s, lookFor(this.spec.name));
+    if (this.spec.number != null) paintNumber(this.ctx, this.spec.kit, this.spec.keeper, x, y, k.s, this.spec.number, 'sheet-back');
   }
 
   private paintGoal(g: CanvasRenderingContext2D, goalTop: number): void {
@@ -706,7 +714,7 @@ class ShotScene {
 
   /** Start the kick; returns how long the drawn kicker winds up before the ball leaves (0 for the rigged figure). */
   kick(now: number, x: number, h: number): number {
-    const windUp = this.kicker ? SHOOT_CONTACT_FRAME * SHEET_FRAME_MS : 0;
+    const windUp = this.kicker ? ShotScene.WIND_UP_MS : 0;
     this.kickAt = now + windUp;
     this.kickTarget = this.target(x, h);
     return windUp;
