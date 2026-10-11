@@ -674,7 +674,10 @@ class ShotScene {
   /** The keeper game: start the dive toward a direction, `power` of the way to the post or the bar. */
   dive(now: number, d: { x: number; y: number }, power: number): void {
     this.diveAt = now;
-    this.diveTo = { x: d.x * power * (this.gw / 2) * 0.8, y: -d.y * power * this.gh * 0.7 };
+    // Full power lands his hands on the post (the figure is wide) or under the bar.
+    const [dw] = spriteSize(this.gk.big ? 'hero-dive' : 'ready');
+    const across = Math.max(this.gw * 0.25, this.gw / 2 - dw * 0.35);
+    this.diveTo = { x: d.x * power * across, y: -d.y * power * this.gh * 0.65 };
   }
 
   /**
