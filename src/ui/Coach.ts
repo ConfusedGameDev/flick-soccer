@@ -1,5 +1,6 @@
 import { KITS, type Kit } from '../render/kits';
-import { spriteCanvas } from '../render/sprites';
+import { sheetCanvas, spriteCanvas } from '../render/sprites';
+import { spriteSet } from '../render/spriteSet';
 
 export interface CoachButton<K extends string> {
   key: K;
@@ -44,7 +45,7 @@ export class Coach {
   setKit(kit: Kit): void {
     this.kit = kit;
     this.avatar.innerHTML = '';
-    this.avatar.appendChild(spriteCanvas('stand', kit, true, 3));
+    this.avatar.appendChild(spriteSet() === 'sheet' ? sheetCanvas('gk-idle', 0, kit, true, 3) : spriteCanvas('stand', kit, true, 3));
   }
 
   /** Show a card with buttons; resolves with the tapped key. `text` may contain simple HTML. */

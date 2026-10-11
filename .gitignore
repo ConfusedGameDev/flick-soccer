@@ -10,3 +10,6 @@ ios/App/build
 AuthKey_*.p8
 .vercel
 .env*
+
+# Raw art drops (large, includes a Windows exe); the importable sources live under art/
+ArtContent/

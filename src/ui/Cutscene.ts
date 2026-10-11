@@ -1,6 +1,8 @@
 import { hex, type Kit } from '../render/kits';
 import { LETTERS, ballParts, rasterise } from '../render/rig';
-import { DEFAULT_LOOK, lookFor, spriteCanvas, spriteSize, type Look } from '../render/sprites';
+import { SHEET_HERO, sheetFrame, sheetPivot } from '../render/sheet';
+import { spriteSet } from '../render/spriteSet';
+import { DEFAULT_LOOK, lookFor, sheetCanvas, spriteCanvas, spriteSize, type Look } from '../render/sprites';
 import { BALL_RADIUS, GRASS, GROUND, SCENES, STAGE_H, stageScale, visibleFigures, type CutsceneKind, type Figure, type Prop } from './cutsceneScenes';
 
 export type { CutsceneKind };
@@ -57,17 +59,32 @@ export class Cutscene {
       root.style.setProperty('--pan', `${4 * k}px`);
 
       stage.appendChild(grassCanvas(scene.width, k, figures));
+      const sheet = spriteSet() === 'sheet';
       for (const f of [...figures].sort((a, b) => a.z - b.z)) {
         const hero = f.who === 'hero';
         const kit = hero ? spec.kit : (spec.foil?.kit ?? spec.kit);
         const look: Look = hero ? lookFor(spec.name) : spec.foil?.name ? lookFor(spec.foil.name) : DEFAULT_LOOK;
-        const canvas = spriteCanvas(f.pose, kit, f.keeper, k, look, f.flip);
-        const [, h] = spriteSize(f.pose);
-        canvas.style.left = `${f.x * k}px`;
-        canvas.style.top = `${(GROUND - h + f.baseline) * k}px`;
+        const [w, h] = spriteSize(f.pose);
+        const sheetPose = sheet ? SHEET_HERO[f.pose] : undefined;
+        let canvas: HTMLCanvasElement;
+        if (sheetPose) {
+          // The drawn figure at twice the stage scale stands as tall as the 64-row rigs; its feet go where the rig's would.
+          const [anim, i] = sheetPose;
+          const [px, py] = sheetPivot(sheetFrame(anim, i), f.flip);
+          const s = 2 * k;
+          canvas = sheetCanvas(anim, i, kit, f.keeper, s, look, f.flip);
+          canvas.style.left = `${Math.round((f.x + w / 2) * k - px * s)}px`;
+          canvas.style.top = `${(GROUND + f.baseline) * k - py * s}px`;
+        } else {
+          canvas = spriteCanvas(f.pose, kit, f.keeper, k, look, f.flip);
+          canvas.style.left = `${f.x * k}px`;
+          canvas.style.top = `${(GROUND - h + f.baseline) * k}px`;
+        }
         stage.appendChild(canvas);
       }
-      for (const p of scene.props) {
+      // The rigs carry the ball in the overtake scene; the drawn runner does not, so it rolls ahead of him.
+      const props: Prop[] = sheet && spec.kind === 'overtake' && figures.length === scene.figures.length ? [...scene.props, { kind: 'ball', x: 100, y: 66 }] : scene.props;
+      for (const p of props) {
         if (figures.length < scene.figures.length && p.kind === 'ball' && spec.kind !== 'duel' && spec.kind !== 'corner') continue;
         stage.appendChild(propCanvas(p, k));
       }

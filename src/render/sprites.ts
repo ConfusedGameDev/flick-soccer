@@ -2,6 +2,7 @@ import { Texture } from 'pixi.js';
 import { hex, shirtColorAt, type Kit } from './kits';
 import { HERO_POSES, HERO_RIGS, LETTERS, isHeroPose, rasterise, type HeroPose, type JerseyFrame, type Material } from './rig';
 import { frame, frameRows, type Dir8, type FrameState } from './frames';
+import { SHEET_BALL, sheetFrame, sheetJersey, sheetRows, type SheetAnim } from './sheet';
 
 // Pixel-art player sprites painted from ASCII templates, in the spirit of
 // 16-bit football games: a 16x24 figure seen from the front, slightly above,
@@ -476,6 +477,11 @@ export function paintFrame(ctx: CanvasRenderingContext2D, state: FrameState, dir
   paintRows(ctx, frameRows(state, dir, look), { box: frame(state, dir).jersey }, 'stand', kit, keeper, x, y, k, look);
 }
 
+/** Paint frame `i` of a sheet animation (art/sheet) at integer scale `k`; same letters, same kit and look rules. `flip` mirrors it. */
+export function paintSheet(ctx: CanvasRenderingContext2D, anim: SheetAnim, i: number, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look = DEFAULT_LOOK, flip = false): void {
+  paintRows(ctx, sheetRows(anim, i, look, flip), { box: sheetJersey(sheetFrame(anim, i), flip) }, 'stand', kit, keeper, x, y, k, look);
+}
+
 function paintRows(ctx: CanvasRenderingContext2D, rows: string[], frame: JerseyMap | undefined, pose: Pose, kit: Kit, keeper: boolean, x: number, y: number, k: number, look: Look): void {
   for (let j = 0; j < rows.length; j++) {
     for (let i = 0; i < rows[j].length; i++) {
@@ -568,9 +574,31 @@ export function frameCanvas(state: FrameState, dir: Dir8, kit: Kit, keeper: bool
   return c;
 }
 
+/** A standalone canvas holding one sheet frame at scale `k`. */
+export function sheetCanvas(anim: SheetAnim, i: number, kit: Kit, keeper: boolean, k: number, look: Look = DEFAULT_LOOK, flip = false): HTMLCanvasElement {
+  const rows = sheetRows(anim, i, look, flip);
+  const c = document.createElement('canvas');
+  c.width = rows[0].length * k;
+  c.height = rows.length * k;
+  paintSheet(c.getContext('2d')!, anim, i, kit, keeper, 0, 0, k, look, flip);
+  return c;
+}
+
 const cache = new Map<string, Texture>();
 
 const kitKey = (kit: Kit, keeper: boolean) => `${kit.id}:${keeper ? 'gk' : 'out'}:${kit.design ? kit.design.pixels.join('') : ''}:${kit.shorts}:${kit.socks}`;
+
+/** Pixi texture for a sheet frame at 1:1 pixels, facing right; the pitch mirrors it with a negative scale. */
+export function sheetTexture(anim: SheetAnim, i: number, kit: Kit, keeper: boolean, look: Look = DEFAULT_LOOK): Texture {
+  const key = `sheet:${anim}:${i}:${look.skin}${look.hair}${look.style}:${kitKey(kit, keeper)}`;
+  let t = cache.get(key);
+  if (!t) {
+    t = Texture.from(sheetCanvas(anim, i, kit, keeper, 1, look));
+    t.source.scaleMode = 'nearest';
+    cache.set(key, t);
+  }
+  return t;
+}
 
 /** Pixi texture for an imported frame at 1:1 pixels. */
 export function frameTexture(state: FrameState, dir: Dir8, kit: Kit, keeper: boolean, look: Look = DEFAULT_LOOK): Texture {
@@ -597,17 +625,17 @@ export function spriteTexture(pose: Pose, kit: Kit, keeper: boolean, look: Look 
   return t;
 }
 
-/** The ball: a 7x7 pixel ball with an outline and a highlight. */
-export function ballTexture(): Texture {
-  const key = 'ball';
+/** The ball: a 7x7 pixel ball with an outline and a highlight, or the drawn one from art/sheet. */
+export function ballTexture(sheet = false): Texture {
+  const key = sheet ? 'ball:sheet' : 'ball';
   let t = cache.get(key);
   if (!t) {
+    const rows = sheet ? SHEET_BALL.rows : ['..OOO..', '.OWWWO.', 'OWhWKWO', 'OWKWWWO', 'OWWWKWO', '.OWKWO.', '..OOO..'];
+    const colors: Record<string, string> = sheet ? SHEET_BALL.colors : { O: OUTLINE, W: '#f8f8f8', h: '#ffffff', K: '#222' };
     const c = document.createElement('canvas');
-    c.width = 7;
-    c.height = 7;
+    c.width = rows[0].length;
+    c.height = rows.length;
     const ctx = c.getContext('2d')!;
-    const rows = ['..OOO..', '.OWWWO.', 'OWhWKWO', 'OWKWWWO', 'OWWWKWO', '.OWKWO.', '..OOO..'];
-    const colors: Record<string, string> = { O: OUTLINE, W: '#f8f8f8', h: '#ffffff', K: '#222' };
     rows.forEach((r, j) =>
       [...r].forEach((ch, i) => {
         if (ch === '.') return;

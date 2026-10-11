@@ -2,7 +2,9 @@ import { statFactor } from '../engine/pool';
 import { GOAL_W, OVER_BAR, PITCH_L, PITCH_W } from '../engine/pitch';
 import type { KeeperDive, MatchState, Team } from '../engine/types';
 import { hex, type Kit } from '../render/kits';
-import { lookFor, paintNumber, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
+import { SHEET_FRAME_MS, sheetFrame, sheetFrames, sheetPivot, type SheetAnim } from '../render/sheet';
+import { spriteSet } from '../render/spriteSet';
+import { lookFor, paintNumber, paintSheet, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
 
 // The set-piece scene, ISS Deluxe style: the camera sits behind the kicker,
 // who is drawn big from behind with the goal (or the pitch) ahead. The player
@@ -600,7 +602,15 @@ class ShotScene {
       const fx = Math.round(gx + (this.ballX - gx) * depth);
       const fy = Math.round(gl + (this.ballY - gl) * depth) + 1;
       g.fillStyle = C.shadow;
-      if (gh >= 44 || depth > 0.45) {
+      if (spriteSet() === 'sheet') {
+        // The drawn keeper in his crouch, facing the camera, doubled when the goal is big enough.
+        const s = gh >= 44 || depth > 0.45 ? 2 : 1;
+        const fr = sheetFrame('gk-defensive_stance', 0);
+        const [px, py] = sheetPivot(fr);
+        const fw = fr.rows[0].length * s;
+        g.fillRect(fx - Math.round(fw * 0.3), fy - 1, Math.round(fw * 0.6), 2);
+        paintSheet(g, 'gk-defensive_stance', 0, gk.kit, true, fx - Math.round(px * s), fy - py * s, s, lookFor(gk.name));
+      } else if (gh >= 44 || depth > 0.45) {
         // The big crouched keeper fills a goal this size, as in ISS's penalty view.
         const [hw, hh] = spriteSize('hero-ready');
         g.fillRect(fx - Math.round(hw * 0.3), fy - 1, Math.round(hw * 0.6), 2);
@@ -675,7 +685,7 @@ class ShotScene {
   dive(now: number, d: { x: number; y: number }, power: number): void {
     this.diveAt = now;
     // Full power lands his hands on the post (the figure is wide) or under the bar.
-    const [dw] = spriteSize(this.gk.big ? 'hero-dive' : 'ready');
+    const [dw] = spriteSet() === 'sheet' ? [sheetFrame('gk-clearance', 9).rows[0].length * (this.gk.big ? 2 : 1)] : spriteSize(this.gk.big ? 'hero-dive' : 'ready');
     const across = Math.max(this.gw * 0.25, this.gw / 2 - dw * 0.35);
     this.diveTo = { x: d.x * power * across, y: -d.y * power * this.gh * 0.65 };
   }
@@ -708,7 +718,19 @@ class ShotScene {
     const kit = this.spec.kit;
     c.fillStyle = C.shadow;
     c.fillRect(Math.round(this.gk.x + dx - pw * 0.3), this.gk.y - 1, Math.round(pw * 0.6), 2);
-    if (flying && this.gk.big) {
+    if (spriteSet() === 'sheet') {
+      // The drawn keeper: his crouch breathing while he waits, then the dive frames along the flight.
+      const s = this.gk.big ? 2 : 1;
+      let anim: SheetAnim = 'gk-defensive_stance';
+      let i = Math.floor(now / SHEET_FRAME_MS) % sheetFrames(anim);
+      if (flying) {
+        anim = d.y > 0 ? 'gk-clearance_2' : 'gk-clearance';
+        const t = Math.min(1, (now - this.diveAt) / FLY_MS);
+        i = Math.min(sheetFrames(anim) - 1, 3 + Math.floor(t * 7));
+      }
+      const [px, py] = sheetPivot(sheetFrame(anim, i), flip);
+      paintSheet(c, anim, i, kit, true, Math.round(this.gk.x + dx - px * s), Math.round(this.gk.y + dy - py * s), s, lookFor(this.spec.name), flip);
+    } else if (flying && this.gk.big) {
       const [dw, dh] = spriteSize('hero-dive');
       paintSprite(c, 'hero-dive', kit, true, Math.round(this.gk.x + dx - dw / 2), Math.round(this.gk.y + dy - dh), 1, lookFor(this.spec.name), flip);
     } else {

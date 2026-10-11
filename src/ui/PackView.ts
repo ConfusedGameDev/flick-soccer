@@ -1,7 +1,8 @@
 import { BOOSTER_INFO, PACK_CARDS, decoysFor } from '../engine/boosters';
 import type { Booster } from '../engine/types';
 import { KITS, type Kit } from '../render/kits';
-import { spriteCanvas } from '../render/sprites';
+import { sheetCanvas, spriteCanvas } from '../render/sprites';
+import { spriteSet } from '../render/spriteSet';
 
 /** Flip time of a card (matches the CSS transition). */
 const FLIP_MS = 520;
@@ -75,7 +76,7 @@ export class PackView {
       const caption = root.querySelector<HTMLElement>('[data-caption]')!;
       const ok = root.querySelector<HTMLButtonElement>('[data-ok]')!;
       const playerHost = root.querySelector<HTMLElement>('[data-player]')!;
-      playerHost.appendChild(spriteCanvas('cheer', spec.kit ?? KITS[0], false, 3));
+      playerHost.appendChild(spriteSet() === 'sheet' ? sheetCanvas('celebration_1', 4, spec.kit ?? KITS[0], false, 3) : spriteCanvas('cheer', spec.kit ?? KITS[0], false, 3));
 
       const face = (card: HTMLElement, b: Booster) => {
         card.querySelector('[data-name]')!.textContent = BOOSTER_INFO[b].name;

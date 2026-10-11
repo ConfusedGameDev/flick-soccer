@@ -1,6 +1,10 @@
 import type { Coin } from '../engine/types';
 import { KITS, type Kit } from '../render/kits';
-import { spriteCanvas } from '../render/sprites';
+import { sheetCanvas, spriteCanvas } from '../render/sprites';
+import { spriteSet } from '../render/spriteSet';
+
+/** The standing player beside the coin, in the art set in use. */
+const standing = (kit: Kit): HTMLCanvasElement => (spriteSet() === 'sheet' ? sheetCanvas('idle', 0, kit, false, 3) : spriteCanvas('stand', kit, false, 3));
 
 /** Length of the toss animation (matches the CSS keyframes). */
 const FLIP_MS = 1500;
@@ -53,7 +57,7 @@ export class CoinToss {
           <button class="primary" data-call="tails">Tails</button>
         </div>`;
       this.overlay.appendChild(root);
-      root.querySelector<HTMLElement>('[data-player]')!.appendChild(spriteCanvas('stand', spec.kit ?? KITS[0], false, 3));
+      root.querySelector<HTMLElement>('[data-player]')!.appendChild(standing(spec.kit ?? KITS[0]));
       this.closeCall = () => {
         root.remove();
         this.closeCall = null;
@@ -86,7 +90,7 @@ export class CoinToss {
         <div class="toss-caption" data-caption></div>
         <button class="primary hidden" data-ok>${spec.button ?? 'OK'}</button>`;
       this.overlay.appendChild(root);
-      root.querySelector<HTMLElement>('[data-player]')!.appendChild(spriteCanvas('stand', spec.kit ?? KITS[0], false, 3));
+      root.querySelector<HTMLElement>('[data-player]')!.appendChild(standing(spec.kit ?? KITS[0]));
       const coin = root.querySelector<HTMLElement>('[data-coin]')!;
       const caption = root.querySelector<HTMLElement>('[data-caption]')!;
       const ok = root.querySelector<HTMLButtonElement>('[data-ok]')!;

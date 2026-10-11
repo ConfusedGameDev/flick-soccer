@@ -1,6 +1,6 @@
 import { DESIGN_SIZE, PALETTE, contrastingKeeper, hex, kitPreview, newCustomKit, type Kit } from '../render/kits';
 import { spriteSet } from '../render/spriteSet';
-import { frameCanvas, spriteCanvas } from '../render/sprites';
+import { frameCanvas, sheetCanvas, spriteCanvas } from '../render/sprites';
 
 type Tool = 'pencil' | 'fill';
 
@@ -129,7 +129,10 @@ export class KitEditor {
         syncColors();
         preview.innerHTML = '';
         preview.appendChild(kitPreview(kit, 8));
-        if (spriteSet() === 'generated') {
+        if (spriteSet() === 'sheet') {
+          preview.appendChild(sheetCanvas('idle', 0, kit, false, 3));
+          preview.appendChild(sheetCanvas('run', 1, kit, false, 3));
+        } else if (spriteSet() === 'generated') {
           preview.appendChild(frameCanvas('idle', 's', kit, false, 3));
           preview.appendChild(frameCanvas('run', 'e', kit, false, 3));
         } else {
@@ -142,7 +145,8 @@ export class KitEditor {
         title.textContent = nameInput.value.trim() || kit.name;
         const row = document.createElement('div');
         row.className = 'ke-stage-row';
-        if (spriteSet() === 'generated') row.append(kitPreview(kit, 8), frameCanvas('idle', 's', kit, false, 3), frameCanvas('run', 'e', kit, false, 3), frameCanvas('slide', 'e', kit, false, 3), frameCanvas('idle', 's', kit, true, 3));
+        if (spriteSet() === 'sheet') row.append(kitPreview(kit, 8), sheetCanvas('idle', 0, kit, false, 4), sheetCanvas('run', 1, kit, false, 4), sheetCanvas('shoot_ball', 4, kit, false, 4), sheetCanvas('gk-idle', 0, kit, true, 4));
+        else if (spriteSet() === 'generated') row.append(kitPreview(kit, 8), frameCanvas('idle', 's', kit, false, 3), frameCanvas('run', 'e', kit, false, 3), frameCanvas('slide', 'e', kit, false, 3), frameCanvas('idle', 's', kit, true, 3));
         else row.append(kitPreview(kit, 8), spriteCanvas('stand', kit, false, 5), spriteCanvas('run1', kit, false, 5), spriteCanvas('kick', kit, false, 5), spriteCanvas('stand', kit, true, 5));
         big.append(title, row);
       };
