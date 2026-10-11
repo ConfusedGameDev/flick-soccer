@@ -98,13 +98,13 @@ export class Duel {
       let raf = 0;
       let autoTimer: ReturnType<typeof setTimeout> | null = null;
 
-      // The knot sits at the meter; each side's colour reaches from its end to the knot, so
-      // the side that is winning holds more rope. A press moves the knot toward the presser.
+      // The knot sits at the meter and the leader's colour grows from the centre out to it,
+      // so the bar fills in the colour of whoever is winning. A press moves the knot toward the presser.
       const paint = () => {
         const k = ((meter + 1) / 2) * 100;
         knot.style.left = `${k}%`;
-        pullLeft.style.width = `${k}%`;
-        pullRight.style.width = `${100 - k}%`;
+        pullLeft.style.width = `${Math.max(0, 50 - k)}%`;
+        pullRight.style.width = `${Math.max(0, k - 50)}%`;
         root.classList.toggle('left-ahead', meter < -0.02);
         root.classList.toggle('right-ahead', meter > 0.02);
       };
