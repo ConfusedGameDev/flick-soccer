@@ -1454,20 +1454,92 @@ button:disabled {
   }
 }
 
-.duel-meter {
-  width: min(90vw, 480px);
-  height: 22px;
-  border-radius: 11px;
-  background: var(--away);
-  overflow: hidden;
-  border: 2px solid var(--cream);
+.duel {
+  --left: var(--home);
+  --right: var(--away);
 }
 
-.duel-fill {
-  height: 100%;
-  width: 50%;
-  background: var(--home);
+/* The rope: each side's colour reaches from its end to the knot; a press pulls the knot your way. */
+.duel-rope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(92vw, 520px);
+}
+
+.duel-end {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.duel-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 22px;
+  border-radius: 11px;
+  border: 2px solid var(--cream);
+  background: repeating-linear-gradient(90deg, #7a5a2e 0 6px, #5a3f1e 6px 12px);
+  overflow: visible;
+}
+
+.duel-pull {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0.85;
   transition: width 60ms linear;
+}
+
+.duel-pull.left {
+  left: 0;
+  border-radius: 9px 0 0 9px;
+  background: var(--left);
+}
+
+.duel-pull.right {
+  right: 0;
+  border-radius: 0 9px 9px 0;
+  background: var(--right);
+}
+
+/* Centre mark. */
+.duel-track::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.duel-knot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background:
+    radial-gradient(circle at 35% 35%, #fff 0 22%, transparent 24%),
+    radial-gradient(circle at 70% 60%, var(--ink) 0 14%, transparent 16%),
+    radial-gradient(circle at 30% 75%, var(--ink) 0 12%, transparent 14%),
+    #f4f1e6;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  transition: left 60ms linear;
+  z-index: 1;
+}
+
+.duel.left-ahead .duel-end.left,
+.duel.right-ahead .duel-end.right {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .duel-timer {
@@ -1484,46 +1556,89 @@ button:disabled {
     max(12px, env(safe-area-inset-left));
 }
 
-.duel-pad {
+/* Each pad is a round arcade button sitting in a dark bezel: a domed cap on a
+   plunger, pressed a few pixels down on a hit. The cap wears the team's colour. */
+.duel-slot {
   flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.duel-pad {
+  --cap: var(--home);
+  position: relative;
+  width: min(42vw, 220px);
+  height: min(42vw, 220px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #2a2a2a 0 68%, #111 70%, #3a3a3a 76%, #151515 80%);
+  box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.6), 0 10px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0.45;
+  transition: opacity 0.2s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.duel-pad.left {
+  --cap: var(--left);
+}
+
+.duel-pad.right {
+  --cap: var(--right);
+}
+
+.duel-cap {
+  position: absolute;
+  inset: 14%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 28px;
-  border-radius: 24px;
-  opacity: 0.35;
-  transition: opacity 0.2s;
-  touch-action: manipulation;
-}
-
-.duel-pad small {
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.7;
-}
-
-.duel-pad.left {
-  background: var(--home);
-  color: var(--ink);
-}
-
-.duel-pad.right {
-  background: var(--away);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 30%, rgba(255, 255, 255, 0.55) 0 10%, rgba(255, 255, 255, 0.12) 30%, transparent 55%),
+    var(--cap);
   color: var(--cream);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6), 0 0 6px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 -10px 0 rgba(0, 0, 0, 0.28),
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    0 12px 0 rgba(0, 0, 0, 0.45),
+    0 14px 10px rgba(0, 0, 0, 0.35);
+  transform: translateY(-6px);
+  transition: transform 50ms ease-out, box-shadow 50ms ease-out;
+}
+
+.duel-cap b {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.duel-cap small {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
 }
 
 .duel.open .duel-pad {
   opacity: 1;
 }
 
-.duel-pad.hit {
-  transform: scale(0.96);
+.duel-pad.hit .duel-cap {
+  transform: translateY(4px);
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.28),
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    0 3px 4px rgba(0, 0, 0, 0.35);
 }
 
 .duel.done .duel-pad {
-  opacity: 0.35;
+  opacity: 0.45;
 }
 
 @keyframes toast {
@@ -1870,16 +1985,27 @@ button:disabled {
 
 .duel-pad,
 .duel-pad:active:not(:disabled) {
-  font-family: var(--font-display);
-  font-size: 14px;
   transform: none;
-  box-shadow: none;
-  border: 3px solid rgba(0, 0, 0, 0.5);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.6), 0 10px 24px rgba(0, 0, 0, 0.5);
 }
 
-.duel-pad small {
+.duel-cap b {
+  font-family: var(--font-display);
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.duel-cap small {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   text-transform: none;
+}
+
+.duel-end {
+  font-family: var(--font-display);
+  font-size: 8px;
 }
 
 /* ---- Panels: dithered dark surfaces with a crisp edge ---- */

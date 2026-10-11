@@ -9,6 +9,7 @@ import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, 
 import type { Booster, Flick, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
 import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
+import { FlickFeel, haptics } from '../input/haptics';
 import type { Kit } from '../render/kits';
 import type { PiecesView } from '../render/PiecesView';
 import type { DragPreview, GhostFlick, PlanPreview } from '../render/PlanPreview';
@@ -138,6 +139,8 @@ export class LocalController implements PlanController {
   onDraft: ((info: DraftInfo | null) => void) | null = null;
   /** False disables the planning clock (tutorial). */
   timed = true;
+  /** Haptic ticks while a flick is pulled: power notches and aim swings. */
+  private readonly feel = new FlickFeel();
 
   constructor(private readonly deps: LocalDeps) {}
 
@@ -377,13 +380,17 @@ export class LocalController implements PlanController {
 
   private drag(id: number, flick: Flick, pull: Vec2, aim: Vec2 | null): void {
     if (!this.session) return;
+    const tick = this.feel.update(flick.strength, flick.dir);
+    if (tick) haptics.impact(tick);
     const drag: DragPreview = { ...this.ghostFor(id, flick), pull, aim };
     this.deps.preview.draw(this.session.ghosts, drag);
   }
 
   private release(id: number, flick: Flick | null): void {
     const s = this.session;
+    const kick = this.feel.release(flick?.strength ?? 0);
     if (!s) return;
+    if (kick && flick && this.kindFor(id) !== null) haptics.impact(kick);
     if (flick && this.kindFor(id) !== null) {
       const g = this.ghostFor(id, flick);
       // A run, slide or dive onto another player is refused outright; a bad pass is the player's to waste.

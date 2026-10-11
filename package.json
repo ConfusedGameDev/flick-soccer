@@ -19,10 +19,11 @@
   "dependencies": {
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.2",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "pixi.js": "^8.22.0",
-    "ws": "^8.22.0",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.2",

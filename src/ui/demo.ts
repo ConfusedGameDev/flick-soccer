@@ -12,6 +12,7 @@ import { HERO_POSES, frameCanvas, spriteCanvas, type HeroPose } from '../render/
 import type { Cutscene, CutsceneKind } from './Cutscene';
 import type { SetPiece } from './SetPiece';
 import type { CoinToss } from './CoinToss';
+import type { Duel } from './Duel';
 import type { PackView } from './PackView';
 
 // Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot|keeper|pack|toss`),
@@ -26,6 +27,7 @@ export interface DemoDeps {
   player: TimelinePlayer;
   pack: PackView;
   toss: CoinToss;
+  duel: Duel;
 }
 
 const KINDS: CutsceneKind[] = ['goal', 'save', 'overtake', 'duel', 'corner', 'throw-in'];
@@ -42,6 +44,7 @@ export async function runDemo(route: string, deps: DemoDeps): Promise<void> {
   if (route === 'keeper') return keeperGame(deps.setPiece, other);
   if (route === 'pack') return pack(deps.pack, kit, q);
   if (route === 'toss') return toss(deps.toss, kit, q);
+  if (route === 'duel') return duel(deps.duel, kit, other, q);
 }
 
 /** A pack opening, over and over; `&auto=1` lets the middle card turn by itself, `&seed=` picks the card. */
@@ -180,4 +183,10 @@ async function keeperGame(setPiece: SetPiece, kit: Kit): Promise<void> {
   for (;;) {
     await setPiece.run({ kind: 'keeper', kit, keeper: true, name: 'Cortois', stat: 4, goal: 'none', number: 1, hint: 'Tap to set the keeper in the middle of his goal, then tap when the cursor is on the block.' });
   }
+}
+
+/** The dispute-ball duel against a CPU masher, over and over; `&rate=` sets its presses per second. */
+async function duel(view: Duel, kit: Kit, other: Kit, q: URLSearchParams): Promise<void> {
+  const rate = Number(q.get('rate') ?? 4);
+  for (;;) await view.run({ left: 'home', right: 'away' }, { home: 'Home', away: 'Away' }, { side: 'right', rate }, undefined, { home: kit, away: other });
 }
