@@ -56,9 +56,14 @@ export const HOLD_CHANCE = 0.5;
 export const KEEPER_GAME_COST = 2;
 /** Turns the side must wait after using the keeper game before it is offered again. */
 export const KEEPER_GAME_COOLDOWN = 1;
-/** The keeper's reach against shots grows by this share times the game's accuracy. */
+/**
+ * How far (in goal units: half a goal width across, the bar's height up) the shot may land
+ * from where the keeper dives before his read scores 0; at twice this it scores -1.
+ */
+export const KEEPER_GAME_RANGE = 0.6;
+/** The keeper's reach against shots swings by this share times his read (±1). */
 export const KEEPER_GAME_REACH = 0.75;
-/** The keeper's save chance rises by this much times the game's accuracy. */
+/** The keeper's save chance swings by this much times his read (±1). */
 export const KEEPER_GAME_SAVE = 0.25;
 
 // ---- Set pieces: the timing game's accuracy scatters the ball ----

@@ -8,6 +8,9 @@ import type { Flick, MatchState, Plan } from '../engine/types';
 import { KITS } from '../render/kits';
 import { LocalController } from './controller';
 
+/** What the stubbed keeper scene hands back: a full dive to the top right. */
+const DIVE = { x: 1, y: 1, power: 1 };
+
 // The planning controller with its DOM and Pixi collaborators stubbed out:
 // what matters here is the draft and what Undo may take back.
 
@@ -36,13 +39,13 @@ function harness() {
     preview: { draw() {}, clear() {} },
     pieces: { setHighlights() {}, currentKits: { home: KITS[0], away: KITS[1] } },
     pack: { show: async () => {}, cancel() {} },
-    setPiece: { run: async () => ({ x: 0, accuracy: 1, height: 0.5 }), cancel() {} },
+    setPiece: { run: async () => ({ x: 0, accuracy: 1, height: 0.5, dive: DIVE }), cancel() {} },
   };
   const local = new LocalController(deps as never);
   local.timed = false;
   // Private access for the test: the draft, the actions and the buttons.
   const priv = local as unknown as {
-    session: { draft: Flick[]; pack: string | null; keeperGame: number | null } | null;
+    session: { draft: Flick[]; pack: string | null; keeperGame: { x: number; y: number; power: number } | null } | null;
     shoot: () => Promise<void>;
     keeperGame: () => Promise<void>;
     toggleBooster: (b: string) => void;
@@ -137,15 +140,15 @@ describe('LocalController keeper game', () => {
     const planned = local.plan(state, 'away', 'defense');
     expect(defenders(state).some((id) => priv.kindFor(id) !== null)).toBe(true);
     await priv.keeperGame();
-    expect(priv.session!.keeperGame).toBe(1);
+    expect(priv.session!.keeperGame).toEqual(DIVE);
     expect(defenders(state).every((id) => priv.kindFor(id) === null)).toBe(true);
     expect(hud.planning!.canUndo).toBe(false);
     priv.undo();
-    expect(priv.session!.keeperGame).toBe(1);
+    expect(priv.session!.keeperGame).toEqual(DIVE);
     priv.confirm();
     const plan: Plan = await planned;
     expect(plan.flicks).toHaveLength(0);
-    expect(plan.keeperGame).toEqual({ accuracy: 1 });
+    expect(plan.keeperGame).toEqual(DIVE);
   });
 
   it('is not offered while resting, after a flick is used, or on the attack', async () => {
@@ -174,13 +177,13 @@ describe('LocalController keeper game', () => {
 
   it('is simply not played when the clock runs out with the scene up', async () => {
     const { local, priv, deps } = harness();
-    let finish: (r: { x: number; accuracy: number; height: number }) => void = () => {};
+    let finish: (r: { x: number; accuracy: number; height: number; dive: typeof DIVE }) => void = () => {};
     deps.setPiece.run = () => new Promise((r) => (finish = r));
     const planned = local.plan(shootingState(), 'away', 'defense');
     const game = priv.keeperGame();
     await tick();
     priv.confirm();
-    finish({ x: 0, accuracy: 1, height: 0.5 });
+    finish({ x: 0, accuracy: 1, height: 0.5, dive: DIVE });
     await game;
     const plan = await planned;
     expect(plan.keeperGame).toBeUndefined();
@@ -195,7 +198,7 @@ describe('LocalController keeper game', () => {
     priv.session!.pack = 'double-speed';
     priv.toggleBooster('extra-flick');
     await priv.keeperGame();
-    expect(priv.session!.keeperGame).toBe(1);
+    expect(priv.session!.keeperGame).toEqual(DIVE);
     priv.toggleBooster('extra-flick');
     expect(calls).toContain('toast:The keeper is set');
     priv.confirm();

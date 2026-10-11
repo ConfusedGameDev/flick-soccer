@@ -2494,8 +2494,9 @@ button:disabled {
   display: none;
 }
 
-/* The keeper game: no ball at his feet; the posts on the sweep are his own goal. */
-.setpiece.keeper .sp-ball {
+/* The keeper game: the arrow spins on the canvas around him; no DOM ball, arrow or posts. */
+.setpiece.keeper .sp-ball,
+.setpiece.keeper .sp-pivot {
   display: none;
 }
 

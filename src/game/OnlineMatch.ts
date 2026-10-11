@@ -12,6 +12,7 @@ import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
 import type { CoinToss } from '../ui/CoinToss';
+import { diveName } from '../ui/SetPiece';
 import type { PackView } from '../ui/PackView';
 import type { Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
@@ -385,7 +386,7 @@ export class OnlineMatch {
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);
         break;
       case 'keeper-game':
-        hud.toast(`${teamName(e.team)}: the keeper is set!`);
+        hud.toast(`${teamName(e.team)}: the keeper dives ${diveName(e.dive)}!`);
         break;
       default:
         break;

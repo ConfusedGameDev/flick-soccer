@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planAttack, planDefense, scoreTurn } from './cpu';
+import { cpuDive, planAttack, planDefense, scoreTurn } from './cpu';
 import { MAX_FLICKS, PITCH_L, PITCH_W, SAVE_CHANCE } from './pitch';
 import { mulberry32 } from './rng';
 import { initialMatch } from './setup';
@@ -96,12 +96,37 @@ describe('cpu keeper game', () => {
     expect(played.length).toBeGreaterThan(0);
     for (const d of played) {
       expect(d.flicks).toHaveLength(0);
-      expect(d.keeperGame!.accuracy).toBeGreaterThanOrEqual(0.6);
-      expect(d.keeperGame!.accuracy).toBeLessThanOrEqual(1);
+      expect([-1, 0, 1]).toContain(d.keeperGame!.x);
+      expect([-1, 0, 1]).toContain(d.keeperGame!.y);
+      expect(d.keeperGame!.power).toBeGreaterThanOrEqual(0);
+      expect(d.keeperGame!.power).toBeLessThanOrEqual(1);
     }
     const resting: MatchState = structuredClone(s);
     resting.meta.away.keeperCooldown = 1;
     for (let seed = 1; seed <= 8; seed++) expect(planDefense(resting, 'away', 'normal', seed).keeperGame).toBeUndefined();
+  });
+
+  it('dives at the predicted shot: the sector and the power that reach it, never without a shot', () => {
+    const rng = mulberry32(1);
+    expect(cpuDive([], 0, rng)).toBeNull();
+    const near = (d: ReturnType<typeof cpuDive>, x: number, y: number, power: number) => {
+      expect(d).toMatchObject({ x, y });
+      expect(d!.power).toBeCloseTo(power, 5);
+    };
+    near(cpuDive([{ x: 0.9, y: 0.5 }], 0, rng), 1, 0, 0.9);
+    near(cpuDive([{ x: -0.2, y: 0.95 }], 0, rng), 0, 1, 0.9);
+    near(cpuDive([{ x: -0.6, y: 0.05 }], 0, rng), -1, -1, 0.9);
+    near(cpuDive([{ x: 0.1, y: 0.5 }], 0, rng), 0, 0, 0);
+    // Two shots to opposite posts cancel out into a central stance.
+    near(cpuDive([{ x: 1, y: 0.5 }, { x: -1, y: 0.5 }], 0, rng), 0, 0, 0);
+    // An error of 0.5 can send him anywhere near; the result is always a legal dive.
+    for (let i = 0; i < 50; i++) {
+      const d = cpuDive([{ x: 0.9, y: 0.5 }], 0.5, rng)!;
+      expect([-1, 0, 1]).toContain(d.x);
+      expect([-1, 0, 1]).toContain(d.y);
+      expect(d.power).toBeGreaterThanOrEqual(0);
+      expect(d.power).toBeLessThanOrEqual(1);
+    }
   });
 });
 

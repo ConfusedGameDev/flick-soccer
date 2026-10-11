@@ -192,16 +192,16 @@ describe('timing game fields', () => {
     const attack = h.room.state!.possession.team;
     const defend = attack === 'home' ? 'away' : 'home';
     h.room.handle(attack, { t: 'plan', plan: { team: attack, flicks: [] } });
-    h.room.handle(defend, { t: 'plan', plan: { team: defend, flicks: [], keeperGame: { accuracy: 7 } } });
+    h.room.handle(defend, { t: 'plan', plan: { team: defend, flicks: [], keeperGame: { x: 7, y: -3, power: 2 } } });
     const r = h.last('home', 'result') as Extract<ServerMessage, { t: 'result' }>;
-    expect(r.result.events).toContainEqual(expect.objectContaining({ type: 'keeper-game', team: defend, accuracy: 1 }));
+    expect(r.result.events).toContainEqual(expect.objectContaining({ type: 'keeper-game', team: defend, dive: { x: 1, y: -1, power: 1 } }));
     expect(r.result.state.meta[defend].keeperCooldown).toBe(1);
     // Next turn: a bogus field is dropped (and the keeper is resting anyway).
     const next = h.room.state!;
     const atk = next.possession.team;
     const def = atk === 'home' ? 'away' : 'home';
     h.room.handle(atk, { t: 'plan', plan: { team: atk, flicks: [] } });
-    h.room.handle(def, { t: 'plan', plan: { team: def, flicks: [], keeperGame: 1 as unknown as { accuracy: number } } });
+    h.room.handle(def, { t: 'plan', plan: { team: def, flicks: [], keeperGame: 1 as unknown as { x: number; y: number; power: number } } });
     const r2 = h.last('home', 'result') as Extract<ServerMessage, { t: 'result' }>;
     expect(r2.result.events.some((e) => e.type === 'keeper-game')).toBe(false);
   });

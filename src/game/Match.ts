@@ -16,6 +16,7 @@ import type { KitEditor } from '../ui/KitEditor';
 import type { Store } from '../ui/Store';
 import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
 import type { CoinToss } from '../ui/CoinToss';
+import { diveName } from '../ui/SetPiece';
 import type { PackView } from '../ui/PackView';
 import type { AutoMasher, Duel } from '../ui/Duel';
 import type { Hud } from '../ui/Hud';
@@ -621,7 +622,7 @@ export class Match {
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);
         break;
       case 'keeper-game':
-        hud.toast(`${teamName(e.team)}: the keeper is set!`);
+        hud.toast(`${teamName(e.team)}: the keeper dives ${diveName(e.dive)}!`);
         break;
       case 'invalid-flick':
         hud.toast(`Ignored: ${e.reason}`);

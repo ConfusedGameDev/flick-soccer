@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BLOCK_CHANCE, BODY_RADIUS, GOAL_W, HEIGHT_SAVE_SHIFT, HOLD_CHANCE, INTERCEPT_CHANCE, KEEPER_GAME_COOLDOWN, KEEPER_GAME_COST, KEEPER_REACH, PASS_RANGE, PITCH_L, PITCH_W, RUN_RANGE, SAVE_CHANCE, SET_PIECE_METERS, SLIDE_RANGE, TACKLE_REACH, TURNS_PER_HALF } from './pitch';
 import { mulberry32 } from './rng';
 import { initialMatch, keeperOf, kickoffPosition } from './setup';
-import { continueMatch, findReceiver, flickKind, passTarget, resolveDuel, resolveTurn, spotTaken } from './sim';
-import type { Flick, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
+import { continueMatch, findReceiver, flickKind, keeperRead, passTarget, resolveDuel, resolveTurn, shotAcross, spotTaken } from './sim';
+import type { Flick, KeeperDive, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
 import { dist, normalize, sub } from './vec';
 
 const flick = (playerId: number, from: Vec2, to: Vec2, meters?: number): Flick => {
@@ -485,17 +485,18 @@ describe('the keeper game', () => {
   const slides = (): Flick[] => [4, 5].map((n) => ({ playerId: away(n).id, dir: { x: 0, y: -1 }, strength: 0.5 }));
   const slideEvents = (r: TurnResult) => r.events.filter((e) => e.type === 'slide').length;
   const refused = (r: TurnResult, reason: string) => r.events.some((e) => e.type === 'invalid-flick' && e.reason === reason);
-  const game = (accuracy: number): Pick<Plan, 'keeperGame'> => ({ keeperGame: { accuracy } });
+  const game = (dive: Partial<KeeperDive> = {}): Pick<Plan, 'keeperGame'> => ({ keeperGame: { x: 0, y: 0, power: 0, ...dive } });
+  const RIGHT: KeeperDive = { x: 1, y: 0, power: 1 };
 
   it('costs both defense flicks and rests the keeper for a turn', () => {
     expect(slideEvents(resolveTurn(base, attack(), defense(...slides()), 1))).toBe(2);
-    const r = resolveTurn(base, attack(), { ...defense(...slides()), ...game(0.8) }, 1);
+    const r = resolveTurn(base, attack(), { ...defense(...slides()), ...game(RIGHT) }, 1);
     expect(slideEvents(r)).toBe(2 - KEEPER_GAME_COST);
-    expect(r.events).toContainEqual(expect.objectContaining({ type: 'keeper-game', team: 'away', accuracy: 0.8 }));
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'keeper-game', team: 'away', dive: RIGHT }));
     expect(r.state.meta.away.keeperCooldown).toBe(KEEPER_GAME_COOLDOWN);
     expect(r.state.meta.home.keeperCooldown).toBeUndefined();
     // Resting: the next turn refuses it and the slides run; the turn after, it is ready again.
-    const rest = resolveTurn(r.state, { team: r.state.possession.team, flicks: [] }, { ...defense(...slides()), ...game(1) }, 2);
+    const rest = resolveTurn(r.state, { team: r.state.possession.team, flicks: [] }, { ...defense(...slides()), ...game(RIGHT) }, 2);
     expect(refused(rest, 'keeper resting')).toBe(true);
     expect(rest.events.some((e) => e.type === 'keeper-game')).toBe(false);
     expect(slideEvents(rest)).toBe(2);
@@ -504,13 +505,13 @@ describe('the keeper game', () => {
   });
 
   it('is refused on the attack, after a pack with only two flicks, and allowed with an extra flick', () => {
-    expect(refused(resolveTurn(base, { ...attack(), ...game(1) }, defense(), 1), 'keeper game on attack')).toBe(true);
-    const packed = resolveTurn(base, attack(), { ...defense(...slides()), pack: 'double-speed', ...game(1) }, 1);
+    expect(refused(resolveTurn(base, { ...attack(), ...game(RIGHT) }, defense(), 1), 'keeper game on attack')).toBe(true);
+    const packed = resolveTurn(base, attack(), { ...defense(...slides()), pack: 'double-speed', ...game(RIGHT) }, 1);
     expect(refused(packed, `keeper needs ${KEEPER_GAME_COST} flicks`)).toBe(true);
     expect(slideEvents(packed)).toBe(1);
     const s: MatchState = structuredClone(base);
     s.meta.away.boosters = ['extra-flick'];
-    const extra = resolveTurn(s, attack(), { ...defense(...slides()), pack: 'double-speed', booster: 'extra-flick', ...game(1) }, 1);
+    const extra = resolveTurn(s, attack(), { ...defense(...slides()), pack: 'double-speed', booster: 'extra-flick', ...game(RIGHT) }, 1);
     expect(extra.events.some((e) => e.type === 'keeper-game')).toBe(true);
     expect(slideEvents(extra)).toBe(0);
   });
@@ -518,42 +519,63 @@ describe('the keeper game', () => {
   it('leaves catenaccio its third flick', () => {
     const s: MatchState = structuredClone(base);
     s.meta.away.tactics = ['catenaccio'];
-    const r = resolveTurn(s, attack(), { ...defense(...slides()), ...game(1) }, 1);
+    const r = resolveTurn(s, attack(), { ...defense(...slides()), ...game(RIGHT) }, 1);
     expect(r.events.some((e) => e.type === 'keeper-game')).toBe(true);
     expect(slideEvents(r)).toBe(1);
   });
 
-  it('stretches the keeper to a shot he could not otherwise reach', () => {
+  it('reads a shot: on it scores 1, the wrong way -1, in the frame of the attacker', () => {
+    // Standing still covers the middle at chest height; a shot there is read perfectly.
+    expect(keeperRead({ x: 0, y: 0, power: 0 }, 0, 0.5 * 0.85)).toBeCloseTo(1, 5);
+    // Full dive to the right post against a shot into that corner, and against the other one.
+    expect(keeperRead(RIGHT, 1, 0.5 * 0.85)).toBeCloseTo(1, 5);
+    expect(keeperRead(RIGHT, -1, 0.5 * 0.85)).toBe(-1);
+    // A top-corner dive against a high shot there, and against one along the ground.
+    expect(keeperRead({ x: 1, y: 1, power: 1 }, 1, 0.85)).toBeCloseTo(1, 5);
+    expect(keeperRead({ x: 1, y: 1, power: 1 }, 1, 0)).toBeLessThan(-0.5);
+    // Half power covers half way: a shot half way across is read, one at the post is not fully.
+    expect(keeperRead({ x: -1, y: 0, power: 0.5 }, -0.5, 0.5 * 0.85)).toBeCloseTo(1, 5);
+    expect(keeperRead({ x: -1, y: 0, power: 0.5 }, -1, 0.5 * 0.85)).toBeLessThan(0.5);
+    // The frame: screen-right as seen from behind the attacker is +x for home, -x for away.
+    expect(shotAcross({ x: PITCH_W / 2 + GOAL_W / 2, y: PITCH_L }, 'home')).toBeCloseTo(1, 5);
+    expect(shotAcross({ x: PITCH_W / 2 + GOAL_W / 2, y: 0 }, 'away')).toBeCloseTo(-1, 5);
+  });
+
+  it('stretches the keeper to a shot he could not otherwise reach when he dives that way', () => {
     const s = shootingState();
     const gk = s.players[keeperOf(s.players, 'away').id];
     gk.pos = { x: PITCH_W / 2 - 1.5, y: gk.pos.y };
-    // Into the far corner: past his reach, so without the game there is no save roll at all.
+    // Into the far corner along the ground: past his reach, so without the game there is no save roll at all.
     const shot: Flick = { ...straightShot(s), dir: normalize(sub({ x: PITCH_W / 2 + GOAL_W / 2 - 0.4, y: PITCH_L }, s.ball)) };
+    const LOW_RIGHT: KeeperDive = { x: 1, y: -1, power: 1 };
+    const LOW_LEFT: KeeperDive = { x: -1, y: -1, power: 1 };
     expect(dist(gk.pos, { x: PITCH_W / 2 + GOAL_W / 2 - 0.4, y: PITCH_L })).toBeGreaterThan(KEEPER_REACH);
     const seed = seedFor({ chance: 0.3, succeeds: true });
     expect(resolveTurn(s, attack(shot), defense(), seed).events.some((e) => e.type === 'goal')).toBe(true);
-    const r = resolveTurn(s, attack(shot), { ...defense(), ...game(1) }, seed);
+    const r = resolveTurn(s, attack(shot), { ...defense(), ...game(LOW_RIGHT) }, seed);
     expect(r.events.some((e) => e.type === 'save')).toBe(true);
     expect(r.events.some((e) => e.type === 'goal')).toBe(false);
+    // Diving the other way, he is nowhere near it.
+    expect(resolveTurn(s, attack(shot), { ...defense(), ...game(LOW_LEFT) }, seed).events.some((e) => e.type === 'goal')).toBe(true);
   });
 
-  it('saves more shots the better it is played, and never on passes', () => {
+  it('saves more shots when the dive reads them, fewer when it goes the wrong way, and never on passes', () => {
     const s = shootingState();
-    const saves = (accuracy: number | null) => {
+    const saves = (dive: KeeperDive | null) => {
       let n = 0;
       for (let seed = 1; seed <= 300; seed++) {
-        const d = accuracy === null ? defense() : { ...defense(), ...game(accuracy) };
+        const d = dive === null ? defense() : { ...defense(), ...game(dive) };
         if (resolveTurn(s, attack({ ...straightShot(s), aim: { accuracy: 1, height: 0.5 } }), d, seed).events.some((e) => e.type === 'save')) n++;
       }
       return n;
     };
     const plain = saves(null);
-    expect(saves(0)).toBe(plain);
-    expect(saves(0.5)).toBeGreaterThan(plain);
-    expect(saves(1)).toBeGreaterThan(saves(0.5));
+    // A straight shot at chest height: standing still reads it; a full dive to a post misses it.
+    expect(saves({ x: 0, y: 0, power: 0 })).toBeGreaterThan(plain);
+    expect(saves(RIGHT)).toBeLessThan(plain);
     // A pass through the keeper's hands is unaffected: his intercept odds are the plain ones.
     const a = attack(flick(home(1).id, home(1).pos, home(2).pos));
-    expect(resolveTurn(base, a, { ...defense(), ...game(1) }, 7).events.filter((e) => e.type !== 'keeper-game')).toEqual(
+    expect(resolveTurn(base, a, { ...defense(), ...game(RIGHT) }, 7).events.filter((e) => e.type !== 'keeper-game')).toEqual(
       resolveTurn(base, a, defense(), 7).events,
     );
   });
