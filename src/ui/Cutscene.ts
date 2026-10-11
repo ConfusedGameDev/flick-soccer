@@ -65,7 +65,8 @@ export class Cutscene {
         const kit = hero ? spec.kit : (spec.foil?.kit ?? spec.kit);
         const look: Look = hero ? lookFor(spec.name) : spec.foil?.name ? lookFor(spec.foil.name) : DEFAULT_LOOK;
         const [w, h] = spriteSize(f.pose);
-        const sheetPose = sheet ? SHEET_HERO[f.pose] : undefined;
+        // The scorer celebrates on the goal card; every other figure takes its pose's stand-in frame.
+        const sheetPose = !sheet ? undefined : spec.kind === 'goal' && hero ? SHEET_HERO['hero-cheer'] : SHEET_HERO[f.pose];
         let canvas: HTMLCanvasElement;
         if (sheetPose) {
           // The drawn figure at twice the stage scale stands as tall as the 64-row rigs; its feet go where the rig's would.

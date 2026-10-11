@@ -1,4 +1,5 @@
 import type { Sfx } from '../audio/Sfx';
+import { haptics } from '../input/haptics';
 import { BOOSTER_INFO } from '../engine/boosters';
 import { other } from '../engine/pitch';
 import { keeperOf } from '../engine/setup';
@@ -353,9 +354,13 @@ export class OnlineMatch {
     switch (e.type) {
       case 'pass':
         sfx.kick(0.4);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('medium');
         break;
       case 'shot':
         sfx.kick(1);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('heavy');
         break;
       case 'slide':
       case 'dive':
@@ -363,6 +368,8 @@ export class OnlineMatch {
         break;
       case 'goal':
         sfx.goal();
+        pieces.celebrate(e.team);
+        haptics.success();
         hud.toast(`GOAL! ${teamName(e.team)}`, true);
         break;
       case 'save':

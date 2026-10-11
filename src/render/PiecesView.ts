@@ -3,7 +3,7 @@ import type { PlayerState, Team, Vec2 } from '../engine/types';
 import { KITS, type Kit } from './kits';
 import type { PitchView } from './PitchView';
 import { FRAME_FIGURE_H, dirFromDelta, frame, type Dir8, type FrameState } from './frames';
-import { SHEET_FIGURE_H, sheetFrame, sheetFrameAt, sheetPivot, type SheetAnim } from './sheet';
+import { SHEET_FIGURE_H, SHEET_FRAME_MS, SHOOT_CONTACT_FRAME, sheetFrame, sheetFrameAt, sheetFrames, sheetPivot, type SheetAnim } from './sheet';
 import { spriteSet } from './spriteSet';
 import { SPRITE_H, ballTexture, frameTexture, lookFor, sheetTexture, spriteTexture, type Pose } from './sprites';
 
@@ -27,6 +27,10 @@ interface Piece {
   /** Eight-way facing for the imported frames (screen space). */
   dir: Dir8;
   sliding: boolean;
+  /** Following through a kick (sheet art), until the animation ends or the player moves. */
+  kicking: boolean;
+  /** Celebrating a goal (sheet art), until the restart moves the player. */
+  celebrating: boolean;
   /** The sheet animation playing, its current frame and its own clock (ms), so one-shots start at frame 0. */
   anim: SheetAnim;
   frame: number;
@@ -89,6 +93,8 @@ export class PiecesView {
   private static animFor(piece: Piece, p: PlayerState): SheetAnim {
     if (piece.sliding) return p.keeper ? 'gk-clearance' : 'slide_tackle';
     if (piece.moving) return 'run';
+    if (piece.kicking) return 'shoot_ball';
+    if (piece.celebrating) return 'celebration_1';
     return p.keeper ? 'gk-idle' : 'idle';
   }
 
@@ -96,6 +102,7 @@ export class PiecesView {
   private textureFor(piece: Piece, p: PlayerState, runFrame: 0 | 1): Texture {
     const look = lookFor(p.name);
     if (this.sheet) {
+      if (piece.kicking && piece.clock >= sheetFrames('shoot_ball') * SHEET_FRAME_MS) piece.kicking = false;
       const anim = PiecesView.animFor(piece, p);
       if (anim !== piece.anim) {
         piece.anim = anim;
@@ -140,7 +147,7 @@ export class PiecesView {
       const dir: Dir8 = p.team === 'home' ? 'n' : 's';
       const anim: SheetAnim = p.keeper ? 'gk-idle' : 'idle';
       // Idles start out of phase so a line of players does not breathe in unison.
-      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false, anim, frame: 0, clock: id * 37 };
+      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false, kicking: false, celebrating: false, anim, frame: 0, clock: id * 37 };
       const look = lookFor(p.name);
       const kit = this.kits[p.team];
       const sprite = new Sprite(this.sheet ? sheetTexture(anim, 0, kit, p.keeper, look) : this.frames ? frameTexture('idle', dir, kit, p.keeper, look) : spriteTexture('stand', kit, p.keeper, look));
@@ -193,6 +200,29 @@ export class PiecesView {
       p.sliding = true;
       p.clock = 0;
     }
+  }
+
+  /**
+   * The ball just left a player's boot toward `to`: he faces that way and follows the kick
+   * through (the sheet's shoot animation from its contact frame on).
+   */
+  setKicking(id: number, to: Vec2): void {
+    const p = this.pieces[id];
+    if (!p) return;
+    const dx = to.x - (p.last?.x ?? to.x);
+    if (Math.abs(dx) > 0.5) p.facing = dx < 0 ? -1 : 1;
+    p.kicking = true;
+    p.anim = 'shoot_ball';
+    p.clock = SHOOT_CONTACT_FRAME * SHEET_FRAME_MS;
+  }
+
+  /** A goal for `team`: its players celebrate until the restart moves them. */
+  celebrate(team: Team): void {
+    this.pieces.forEach((p, i) => {
+      if (this.players[i]?.team !== team) return;
+      p.celebrating = true;
+      p.clock = i * 53;
+    });
   }
 
   /** Re-render shapes at the current pitch scale (call after layout). */
@@ -278,6 +308,11 @@ export class PiecesView {
           piece.dir = dirFromDelta(s.x - from.x, s.y - from.y);
         }
         if (!moved && piece.moving) piece.sliding = false;
+        if (moved) {
+          piece.kicking = false;
+          // A jog keeps the celebration for when he stops; the restart's teleport ends it.
+          if (Math.hypot(dx, dy) > 3) piece.celebrating = false;
+        }
         piece.moving = moved;
       }
       piece.last = { x: p.x, y: p.y };

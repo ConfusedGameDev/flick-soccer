@@ -11,6 +11,7 @@ import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Sfx } from '../audio/Sfx';
+import { haptics } from '../input/haptics';
 import { KITS, kitPreview, loadCustomKits, saveCustomKits, type Kit } from '../render/kits';
 import type { KitEditor } from '../ui/KitEditor';
 import type { Store } from '../ui/Store';
@@ -579,9 +580,13 @@ export class Match {
     switch (e.type) {
       case 'pass':
         sfx.kick(0.4);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('medium');
         break;
       case 'shot':
         sfx.kick(1);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('heavy');
         break;
       case 'slide':
       case 'dive':
@@ -589,6 +594,8 @@ export class Match {
         break;
       case 'goal':
         sfx.goal();
+        pieces.celebrate(e.team);
+        haptics.success();
         hud.toast(`GOAL! ${teamName(e.team)}`, true);
         break;
       case 'save':

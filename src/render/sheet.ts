@@ -58,7 +58,9 @@ export const SHEET_FRAME_MS = SHEET.frameMs;
 /** Height of the standing figure (hair to boots), for sizing on the pitch. */
 export const SHEET_FIGURE_H = 29;
 /** Animations that play once and hold their last frame (tackles, dives). */
-export const ONE_SHOT = new Set<SheetAnim>(['slide_tackle', 'gk-clearance', 'gk-clearance_2']);
+export const ONE_SHOT = new Set<SheetAnim>(['slide_tackle', 'shoot_ball', 'gk-clearance', 'gk-clearance_2']);
+/** The `shoot_ball` frame where the boot meets the ball: the frames before are the wind-up. */
+export const SHOOT_CONTACT_FRAME = 3;
 /** The ball as drawn, with its own colours (letters -> CSS colour). */
 export const SHEET_BALL = SHEET.ball;
 
