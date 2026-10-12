@@ -1,6 +1,6 @@
 import { CPU_PARAMS, type Difficulty } from '../engine/cpu';
 import { BOOSTER_INFO, flipCoin, tossWinner } from '../engine/boosters';
-import { other } from '../engine/pitch';
+import { TURNS_PER_HALF, other } from '../engine/pitch';
 import { FORMATION_NAMES, LEAGUES, cpuSquad, defaultSquad, leaguePool, type PoolPlayer, type Squad } from '../engine/pool';
 import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
@@ -11,10 +11,11 @@ import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Sfx } from '../audio/Sfx';
+import { haptics } from '../input/haptics';
 import { KITS, kitPreview, loadCustomKits, saveCustomKits, type Kit } from '../render/kits';
 import type { KitEditor } from '../ui/KitEditor';
 import type { Store } from '../ui/Store';
-import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
+import { CARD_DELAY_MS, type Cutscene, type CutsceneKind } from '../ui/Cutscene';
 import type { CoinToss } from '../ui/CoinToss';
 import { diveName } from '../ui/SetPiece';
 import type { PackView } from '../ui/PackView';
@@ -68,6 +69,8 @@ export interface OnlineRunner {
 }
 
 const NAMES: Record<Team, string> = { home: 'Home', away: 'Away' };
+/** Pause after a turn's result before the next turn starts (no button to press). */
+const REVIEW_MS = 900;
 
 /** Drives a match: menu → teams → coin toss → turns (plan attack → hand off → plan defense → resolve → duel? → review) → full time. */
 export class Match {
@@ -419,6 +422,8 @@ export class Match {
       team = throwIn.team;
     }
     if (!kind) return;
+    // Let the pitch finish its say first: the shooter's follow-through, the celebration, the slide.
+    await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
     await this.card(kind, playerId, team, foilId);
   }
 
@@ -458,8 +463,9 @@ export class Match {
     return undefined;
   }
 
-  /** Show a free pack (overtake or duel win) turning up the engine's card. */
+  /** Show a free pack (overtake or duel win) turning up the engine's card; the CPU's cards just go to its hand (the event toast says which). */
   private async showFreePack(team: Team, booster: Booster, why: string): Promise<void> {
+    if (this.isCpu(team)) return;
     await this.deps.pack.show({
       title: `${teamName(team)} ${why}: free pack!`,
       booster,
@@ -486,6 +492,7 @@ export class Match {
       );
     }
     this.setPhase('PLAN_ATTACK');
+    hud.toast(`Turn ${this.state.turn}/${TURNS_PER_HALF}`, true);
     if (this.tutor && !this.isCpu(attackTeam)) {
       hud.setStatus(`${teamName(attackTeam)} attack`, 'The coach has a word…');
       await this.tutor.beat('attack');
@@ -558,7 +565,8 @@ export class Match {
       this.quit = true;
       return;
     }
-    await hud.waitNext();
+    // No button between turns: a beat to read who has the ball, then straight on.
+    await new Promise((r) => setTimeout(r, REVIEW_MS));
   }
 
   private async fullTime(button = 'Back to menu'): Promise<void> {
@@ -579,9 +587,13 @@ export class Match {
     switch (e.type) {
       case 'pass':
         sfx.kick(0.4);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('medium');
         break;
       case 'shot':
         sfx.kick(1);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('heavy');
         break;
       case 'slide':
       case 'dive':
@@ -589,6 +601,8 @@ export class Match {
         break;
       case 'goal':
         sfx.goal();
+        pieces.celebrate(e.team);
+        haptics.success();
         hud.toast(`GOAL! ${teamName(e.team)}`, true);
         break;
       case 'save':

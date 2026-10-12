@@ -1,4 +1,5 @@
 import type { Sfx } from '../audio/Sfx';
+import { haptics } from '../input/haptics';
 import { BOOSTER_INFO } from '../engine/boosters';
 import { other } from '../engine/pitch';
 import { keeperOf } from '../engine/setup';
@@ -10,7 +11,7 @@ import type { Kit } from '../render/kits';
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
-import type { Cutscene, CutsceneKind } from '../ui/Cutscene';
+import { CARD_DELAY_MS, type Cutscene, type CutsceneKind } from '../ui/Cutscene';
 import type { CoinToss } from '../ui/CoinToss';
 import { diveName } from '../ui/SetPiece';
 import type { PackView } from '../ui/PackView';
@@ -319,11 +320,16 @@ export class OnlineMatch {
       const passes = ev.filter((e): e is Extract<TimelineEvent, { type: 'pass' }> => e.type === 'pass' && e.t <= t);
       return passes.length ? passes[passes.length - 1].from : null;
     };
-    if (goal) await this.card('goal', shot?.from ?? null, goal.team, keeperOf(this.state!.players, other(goal.team)).id);
-    else if (save) await this.card('save', save.playerId, null, shot?.from ?? null);
-    else if (intercept) await this.card('overtake', intercept.playerId, null, passBefore(intercept.t));
-    else if (corner) await this.card('corner', null, corner.team);
-    else if (throwIn) await this.card('throw-in', null, throwIn.team);
+    let pick: [CutsceneKind, number | null, Team | null, number | null] | null = null;
+    if (goal) pick = ['goal', shot?.from ?? null, goal.team, keeperOf(this.state!.players, other(goal.team)).id];
+    else if (save) pick = ['save', save.playerId, null, shot?.from ?? null];
+    else if (intercept) pick = ['overtake', intercept.playerId, null, passBefore(intercept.t)];
+    else if (corner) pick = ['corner', null, corner.team, null];
+    else if (throwIn) pick = ['throw-in', null, throwIn.team, null];
+    if (!pick) return;
+    // Let the pitch finish its say first: the shooter's follow-through, the celebration, the slide.
+    await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
+    await this.card(...pick);
   }
 
   private async card(kind: CutsceneKind, playerId: number | null, team: Team | null, foilId: number | null = null): Promise<void> {
@@ -353,9 +359,13 @@ export class OnlineMatch {
     switch (e.type) {
       case 'pass':
         sfx.kick(0.4);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('medium');
         break;
       case 'shot':
         sfx.kick(1);
+        pieces.setKicking(e.from, e.to);
+        haptics.impact('heavy');
         break;
       case 'slide':
       case 'dive':
@@ -363,6 +373,8 @@ export class OnlineMatch {
         break;
       case 'goal':
         sfx.goal();
+        pieces.celebrate(e.team);
+        haptics.success();
         hud.toast(`GOAL! ${teamName(e.team)}`, true);
         break;
       case 'save':

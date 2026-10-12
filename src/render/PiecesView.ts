@@ -3,8 +3,9 @@ import type { PlayerState, Team, Vec2 } from '../engine/types';
 import { KITS, type Kit } from './kits';
 import type { PitchView } from './PitchView';
 import { FRAME_FIGURE_H, dirFromDelta, frame, type Dir8, type FrameState } from './frames';
+import { SHEET_FIGURE_H, SHEET_FRAME_MS, SHOOT_CONTACT_FRAME, sheetFrame, sheetFrameAt, sheetFrames, sheetPivot, type SheetAnim } from './sheet';
 import { spriteSet } from './spriteSet';
-import { SPRITE_H, ballTexture, frameTexture, lookFor, spriteTexture, type Pose } from './sprites';
+import { SPRITE_H, ballTexture, frameTexture, lookFor, sheetTexture, spriteTexture, type Pose } from './sprites';
 
 export const PLAYER_RADIUS_M = 1.3;
 /** How tall a player sprite is in world meters; larger than life, as in 16-bit football games. */
@@ -26,6 +27,14 @@ interface Piece {
   /** Eight-way facing for the imported frames (screen space). */
   dir: Dir8;
   sliding: boolean;
+  /** Following through a kick (sheet art), until the animation ends or the player moves. */
+  kicking: boolean;
+  /** Celebrating a goal (sheet art), until the restart moves the player. */
+  celebrating: boolean;
+  /** The sheet animation playing, its current frame and its own clock (ms), so one-shots start at frame 0. */
+  anim: SheetAnim;
+  frame: number;
+  clock: number;
 }
 
 export type Kits = Record<Team, Kit>;
@@ -36,7 +45,9 @@ export class PiecesView {
   private pieces: Piece[] = [];
   private players: readonly PlayerState[] = [];
   private kits: Kits = { home: KITS[0], away: KITS[1] };
-  private readonly ball = new Sprite(ballTexture());
+  /** The hand-drawn sheet (art/sheet), the imported frames (art/frames) or the typed templates. */
+  private readonly set = spriteSet();
+  private readonly ball = new Sprite(ballTexture(this.set === 'sheet'));
   private readonly ballShadow = new Graphics();
   /** Dashed rings for unfilled formation slots (team builder). */
   private readonly slotsG = new Graphics();
@@ -64,17 +75,42 @@ export class PiecesView {
     return this.kits;
   }
 
-  /** The imported frames (art/frames) or the typed templates. */
-  private readonly frames = spriteSet() === 'generated';
+  private get frames(): boolean {
+    return this.set === 'generated';
+  }
+
+  private get sheet(): boolean {
+    return this.set === 'sheet';
+  }
 
   /** Integer pixel scale that makes a sprite about SPRITE_HEIGHT_M tall. */
   private get k(): number {
-    return Math.max(1, Math.round((SPRITE_HEIGHT_M * this.pitch.scale) / (this.frames ? FRAME_FIGURE_H : SPRITE_H)));
+    const figure = this.sheet ? SHEET_FIGURE_H : this.frames ? FRAME_FIGURE_H : SPRITE_H;
+    return Math.max(1, Math.round((SPRITE_HEIGHT_M * this.pitch.scale) / figure));
+  }
+
+  /** The sheet animation a piece should play: the keeper has his own idle and dive, but runs like everyone. */
+  private static animFor(piece: Piece, p: PlayerState): SheetAnim {
+    if (piece.sliding) return p.keeper ? 'gk-clearance' : 'slide_tackle';
+    if (piece.moving) return 'run';
+    if (piece.kicking) return 'shoot_ball';
+    if (piece.celebrating) return 'celebration_1';
+    return p.keeper ? 'gk-idle' : 'idle';
   }
 
   /** The texture for a piece's current pose and facing. */
   private textureFor(piece: Piece, p: PlayerState, runFrame: 0 | 1): Texture {
     const look = lookFor(p.name);
+    if (this.sheet) {
+      if (piece.kicking && piece.clock >= sheetFrames('shoot_ball') * SHEET_FRAME_MS) piece.kicking = false;
+      const anim = PiecesView.animFor(piece, p);
+      if (anim !== piece.anim) {
+        piece.anim = anim;
+        piece.clock = 0;
+      }
+      piece.frame = sheetFrameAt(anim, piece.clock);
+      return sheetTexture(anim, piece.frame, this.kits[p.team], p.keeper, look);
+    }
     if (this.frames) {
       // One run frame so far: the cycle alternates the stride with the idle stance.
       const state: FrameState = piece.sliding ? 'slide' : piece.moving && runFrame === 0 ? 'run' : 'idle';
@@ -84,8 +120,14 @@ export class PiecesView {
     return spriteTexture(pose, this.kits[p.team], p.keeper, look);
   }
 
-  /** Feet on the piece position: the frame's baseline row, or the bottom of a typed template. */
+  /** Feet on the piece position: the sheet frame's pivot, the frame's baseline row, or the bottom of a typed template. */
   private anchorFor(piece: Piece): void {
+    if (this.sheet) {
+      const f = sheetFrame(piece.anim, piece.frame);
+      const [px, py] = sheetPivot(f);
+      piece.sprite.anchor.set(px / f.rows[0].length, py / f.rows.length);
+      return;
+    }
     if (!this.frames) return;
     const state: FrameState = piece.sliding ? 'slide' : piece.moving ? 'run' : 'idle';
     const f = frame(state, piece.dir);
@@ -97,14 +139,18 @@ export class PiecesView {
     for (const p of this.pieces) p.root.destroy({ children: true });
     this.pieces = [];
     this.players = players;
-    for (const p of players) {
+    players.forEach((p, id) => {
       const root = new Container();
       const shadow = new Graphics();
       const ring = new Graphics();
       // Kickoff facing: toward the goal each side attacks (home up the screen).
       const dir: Dir8 = p.team === 'home' ? 'n' : 's';
-      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false };
-      const sprite = new Sprite(this.frames ? frameTexture('idle', dir, this.kits[p.team], p.keeper, lookFor(p.name)) : spriteTexture('stand', this.kits[p.team], p.keeper, lookFor(p.name)));
+      const anim: SheetAnim = p.keeper ? 'gk-idle' : 'idle';
+      // Idles start out of phase so a line of players does not breathe in unison.
+      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false, kicking: false, celebrating: false, anim, frame: 0, clock: id * 37 };
+      const look = lookFor(p.name);
+      const kit = this.kits[p.team];
+      const sprite = new Sprite(this.sheet ? sheetTexture(anim, 0, kit, p.keeper, look) : this.frames ? frameTexture('idle', dir, kit, p.keeper, look) : spriteTexture('stand', kit, p.keeper, look));
       sprite.anchor.set(0.5, 1);
       const name = new Text({
         text: p.name,
@@ -123,7 +169,7 @@ export class PiecesView {
       const piece: Piece = { root, shadow, ring, sprite, name, ...piece0 };
       this.anchorFor(piece);
       this.pieces.push(piece);
-    }
+    });
     this.carrierId = null;
     this.flickable = new Set();
     this.redraw(players);
@@ -150,7 +196,33 @@ export class PiecesView {
   /** Mark a player as sliding (tackle/dive) until they stop moving. */
   setSliding(id: number): void {
     const p = this.pieces[id];
-    if (p) p.sliding = true;
+    if (p) {
+      p.sliding = true;
+      p.clock = 0;
+    }
+  }
+
+  /**
+   * The ball just left a player's boot toward `to`: he faces that way and follows the kick
+   * through (the sheet's shoot animation from its contact frame on).
+   */
+  setKicking(id: number, to: Vec2): void {
+    const p = this.pieces[id];
+    if (!p) return;
+    const dx = to.x - (p.last?.x ?? to.x);
+    if (Math.abs(dx) > 0.5) p.facing = dx < 0 ? -1 : 1;
+    p.kicking = true;
+    p.anim = 'shoot_ball';
+    p.clock = SHOOT_CONTACT_FRAME * SHEET_FRAME_MS;
+  }
+
+  /** A goal for `team`: its players celebrate until the restart moves them. */
+  celebrate(team: Team): void {
+    this.pieces.forEach((p, i) => {
+      if (this.players[i]?.team !== team) return;
+      p.celebrating = true;
+      p.clock = i * 53;
+    });
   }
 
   /** Re-render shapes at the current pitch scale (call after layout). */
@@ -208,6 +280,7 @@ export class PiecesView {
     this.pieces.forEach((piece, i) => {
       const p = this.players[i];
       if (!p) return;
+      piece.clock += dtSeconds * 1000;
       const tex = this.textureFor(piece, p, runFrame);
       if (piece.sprite.texture !== tex) {
         piece.sprite.texture = tex;
@@ -235,6 +308,11 @@ export class PiecesView {
           piece.dir = dirFromDelta(s.x - from.x, s.y - from.y);
         }
         if (!moved && piece.moving) piece.sliding = false;
+        if (moved) {
+          piece.kicking = false;
+          // A jog keeps the celebration for when he stops; the restart's teleport ends it.
+          if (Math.hypot(dx, dy) > 3) piece.celebrating = false;
+        }
         piece.moving = moved;
       }
       piece.last = { x: p.x, y: p.y };

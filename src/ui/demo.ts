@@ -8,14 +8,15 @@ import { mulberry32 } from '../engine/rng';
 import type { PiecesView } from '../render/PiecesView';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import { DIRS, FRAME_STATES } from '../render/frames';
-import { HERO_POSES, frameCanvas, spriteCanvas, type HeroPose } from '../render/sprites';
+import { SHEET_ANIMS, SHEET_FRAME_MS, sheetFrame, sheetFrameAt, sheetFrames, sheetPivot } from '../render/sheet';
+import { HERO_POSES, frameCanvas, paintSheet, sheetCanvas, spriteCanvas, type HeroPose } from '../render/sprites';
 import type { Cutscene, CutsceneKind } from './Cutscene';
 import type { SetPiece } from './SetPiece';
 import type { CoinToss } from './CoinToss';
 import type { Duel } from './Duel';
 import type { PackView } from './PackView';
 
-// Preview routes for the art (`?demo=sheet|frames|pitch|cutscenes|shot|keeper|pack|toss`),
+// Preview routes for the art (`?demo=sheet|frames|anim|pitch|cutscenes|shot|keeper|pack|toss|duel`),
 // loaded on demand from main.ts. They exist so the figures can be iterated
 // against screenshots, and checked on a preview deploy, without playing a match.
 
@@ -38,6 +39,7 @@ export async function runDemo(route: string, deps: DemoDeps): Promise<void> {
   const other = KITS[Number(q.get('other') ?? 0) % KITS.length];
   if (route === 'sheet') return sheet(deps.overlay, kit, q);
   if (route === 'frames') return frames(deps.overlay, kit, other, q);
+  if (route === 'anim') return anim(deps.overlay, kit, other, q);
   if (route === 'pitch') return pitchLoop(deps.pieces, deps.player, kit, other, q);
   if (route === 'cutscenes') return cutscenes(deps.cutscene, kit, other, q);
   if (route === 'shot') return shot(deps.setPiece, kit, other, q);
@@ -107,6 +109,61 @@ function frames(overlay: HTMLElement, kit: Kit, other: Kit, q: URLSearchParams):
     }
   }
   overlay.appendChild(root);
+}
+
+/**
+ * The drawn sheet (art/sheet): every animation in two kits, each frame still and then
+ * playing on its pivot. `&style=` picks the hair, `&flip=1` mirrors, `&anim=` shows one.
+ */
+function anim(overlay: HTMLElement, kit: Kit, other: Kit, q: URLSearchParams): void {
+  const k = Number(q.get('k') ?? 3);
+  const flip = q.get('flip') === '1';
+  const style = Number(q.get('style') ?? 0);
+  const only = q.get('anim');
+  const root = document.createElement('div');
+  root.className = 'demo-sheet';
+  const players: { canvas: HTMLCanvasElement; paint: (ms: number) => void }[] = [];
+  for (const a of SHEET_ANIMS) {
+    if (only && a !== only) continue;
+    const keeper = a.startsWith('gk-');
+    for (const [n, k2] of [kit, other].entries()) {
+      const look = { skin: n + 1, hair: n * 2, style };
+      const row = document.createElement('div');
+      row.className = 'demo-row';
+      const label = document.createElement('div');
+      label.className = 'demo-label';
+      label.textContent = `${a} · ${k2.name}`;
+      row.appendChild(label);
+      for (let i = 0; i < sheetFrames(a); i++) row.appendChild(sheetCanvas(a, i, k2, keeper, k, look, flip));
+      // The playing copy: a fixed box with the pivot at a fixed spot, so slides and dives stay planted.
+      const box = document.createElement('canvas');
+      box.width = 48 * k;
+      box.height = 40 * k;
+      const g = box.getContext('2d')!;
+      players.push({
+        canvas: box,
+        paint: (ms) => {
+          const i = sheetFrameAt(a, ms);
+          const f = sheetFrame(a, i);
+          const [px, py] = sheetPivot(f, flip);
+          g.clearRect(0, 0, box.width, box.height);
+          g.fillStyle = '#2a9a44';
+          g.fillRect(0, 36 * k, box.width, 4 * k);
+          paintSheet(g, a, i, k2, keeper, (24 - px) * k, (36 - py) * k, k, look, flip);
+        },
+      });
+      row.appendChild(box);
+      root.appendChild(row);
+    }
+  }
+  overlay.appendChild(root);
+  const t0 = performance.now();
+  const loop = () => {
+    const ms = performance.now() - t0;
+    for (const p of players) p.paint(ms % (SHEET_FRAME_MS * 24));
+    requestAnimationFrame(loop);
+  };
+  loop();
 }
 
 /** CPU vs CPU turns played on the pitch forever, to see the player sprites move (`&speed=0.5` slows it). */

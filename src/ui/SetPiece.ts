@@ -2,7 +2,10 @@ import { statFactor } from '../engine/pool';
 import { GOAL_W, OVER_BAR, PITCH_L, PITCH_W } from '../engine/pitch';
 import type { KeeperDive, MatchState, Team } from '../engine/types';
 import { hex, type Kit } from '../render/kits';
-import { lookFor, paintNumber, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
+import { haptics } from '../input/haptics';
+import { KICK_CONTACT, SHEET_FIGURE_H, SHEET_FRAME_MS, sheetFrame, sheetFrames, sheetPivot, type SheetAnim } from '../render/sheet';
+import { spriteSet } from '../render/spriteSet';
+import { lookFor, paintNumber, paintSheet, paintSprite, spriteCanvas, spriteSize } from '../render/sprites';
 
 // The set-piece scene, ISS Deluxe style: the camera sits behind the kicker,
 // who is drawn big from behind with the goal (or the pitch) ahead. The player
@@ -332,12 +335,18 @@ export class SetPiece {
         const pct = Math.round(result.accuracy * 100);
         resultEl.textContent = result.accuracy >= 0.95 ? `PERFECT! ${pct}%` : result.accuracy >= 0.6 ? `GOOD ${pct}%` : `POOR ${pct}%`;
         resultEl.className = `sp-result ${result.accuracy >= 0.95 ? 'perfect' : result.accuracy >= 0.6 ? 'good' : 'poor'}`;
-        this.sounds?.kick();
-        // The kicker follows through and the ball flies off toward the horizon.
+        // The kicker follows through and the ball flies off toward the horizon; the sound and
+        // the buzz land when the boot meets the ball (after the drawn kicker's wind-up).
         figure.classList.add('kick');
         root.classList.add('flying');
+        const strike = () => {
+          this.sounds?.kick();
+          haptics.impact(spec.kind === 'shot' ? 'heavy' : 'medium');
+        };
+        const windUp = scene ? scene.kick(performance.now(), result.x, result.height ?? 0.2) : 0;
+        if (windUp > 0) setTimeout(strike, windUp);
+        else strike();
         if (scene) {
-          scene.kick(performance.now(), result.x, result.height ?? 0.2);
           const fly = (now: number) => {
             if (!root.isConnected) return;
             scene.draw(now, 'done', result.x, result.height ?? 0.2, false);
@@ -468,8 +477,11 @@ class ShotScene {
   private gl = 0;
   private ballX = 0;
   private ballY = 0;
+  /** When the ball leaves the boot; the drawn kicker starts his wind-up SHOOT_CONTACT_FRAME frames earlier. */
   private kickAt = -1;
   private kickTarget = { x: 0, y: 0 };
+  /** The drawn kicker (sheet art): feet pivot and scale; null when the rigged back view is baked into `fg`. */
+  private kicker: { x: number; y: number; s: number } | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -600,7 +612,15 @@ class ShotScene {
       const fx = Math.round(gx + (this.ballX - gx) * depth);
       const fy = Math.round(gl + (this.ballY - gl) * depth) + 1;
       g.fillStyle = C.shadow;
-      if (gh >= 44 || depth > 0.45) {
+      if (spriteSet() === 'sheet') {
+        // The drawn keeper in his crouch, facing the camera, doubled when the goal is big enough.
+        const s = gh >= 44 || depth > 0.45 ? 2 : 1;
+        const fr = sheetFrame('gk-defensive_stance', 0);
+        const [px, py] = sheetPivot(fr);
+        const fw = fr.rows[0].length * s;
+        g.fillRect(fx - Math.round(fw * 0.3), fy - 1, Math.round(fw * 0.6), 2);
+        paintSheet(g, 'gk-defensive_stance', 0, gk.kit, true, fx - Math.round(px * s), fy - py * s, s, lookFor(gk.name));
+      } else if (gh >= 44 || depth > 0.45) {
         // The big crouched keeper fills a goal this size, as in ISS's penalty view.
         const [hw, hh] = spriteSize('hero-ready');
         g.fillRect(fx - Math.round(hw * 0.3), fy - 1, Math.round(hw * 0.6), 2);
@@ -610,12 +630,38 @@ class ShotScene {
         paintSprite(g, 'ready', gk.kit, true, fx - 8, fy - 24, 1, lookFor(gk.name));
       }
     }
-    // The kicker from behind, his shadow and his number, on the foreground layer.
     g.fillStyle = C.shadow;
+    if (spriteSet() === 'sheet') {
+      // The drawn kicker from behind (the sheet's hand-made back view), the ball at his right
+      // boot, as tall as the rigged figure would be; painted per frame (paintKicker) so he can swing.
+      const s = Math.max(1, Math.floor(fig.h / SHEET_FIGURE_H));
+      this.kicker = { x: this.ballX - 3 * s, y: feet, s };
+      g.fillRect(this.kicker.x - 5 * s, feet - 1, 10 * s, 2 * ks);
+      return;
+    }
+    // The kicker from behind, his shadow and his number, on the foreground layer.
     g.fillRect(kx + Math.round(kicker.w * 0.2), feet - 1, Math.round(kicker.w * 0.6), 2 * ks);
     const f = this.fg.getContext('2d')!;
     paintSprite(f, fig.pose, this.spec.kit, this.spec.keeper, kx, ky, ks, lookFor(this.spec.name));
     if (this.spec.number != null) paintNumber(f, this.spec.kit, this.spec.keeper, kx, ky, ks, this.spec.number, fig.pose);
+  }
+
+  /** The kicking animation of the drawn kicker and when its boot meets the ball. */
+  private static readonly KICK: SheetAnim = 'back_kick';
+  private static readonly WIND_UP_MS = (KICK_CONTACT[ShotScene.KICK] ?? 0) * SHEET_FRAME_MS;
+
+  /** The drawn kicker: standing at the ball until the kick, then the swing from its first frame, with his number. */
+  private paintKicker(now: number): void {
+    const k = this.kicker;
+    if (!k) return;
+    const anim = ShotScene.KICK;
+    const start = this.kickAt - ShotScene.WIND_UP_MS;
+    const i = this.kickAt < 0 ? 0 : Math.min(sheetFrames(anim) - 1, Math.max(0, Math.floor((now - start) / SHEET_FRAME_MS)));
+    const [px, py] = sheetPivot(sheetFrame(anim, i));
+    const x = Math.round(k.x - px * k.s);
+    const y = Math.round(k.y - py * k.s);
+    paintSheet(this.ctx, anim, i, this.spec.kit, this.spec.keeper, x, y, k.s, lookFor(this.spec.name));
+    if (this.spec.number != null) paintNumber(this.ctx, this.spec.kit, this.spec.keeper, x, y, k.s, this.spec.number, 'sheet-back');
   }
 
   private paintGoal(g: CanvasRenderingContext2D, goalTop: number): void {
@@ -666,16 +712,19 @@ class ShotScene {
     g.fillRect(l, goalTop + 1, r - l + 1, 1);
   }
 
-  kick(now: number, x: number, h: number): void {
-    this.kickAt = now;
+  /** Start the kick; returns how long the drawn kicker winds up before the ball leaves (0 for the rigged figure). */
+  kick(now: number, x: number, h: number): number {
+    const windUp = this.kicker ? ShotScene.WIND_UP_MS : 0;
+    this.kickAt = now + windUp;
     this.kickTarget = this.target(x, h);
+    return windUp;
   }
 
   /** The keeper game: start the dive toward a direction, `power` of the way to the post or the bar. */
   dive(now: number, d: { x: number; y: number }, power: number): void {
     this.diveAt = now;
     // Full power lands his hands on the post (the figure is wide) or under the bar.
-    const [dw] = spriteSize(this.gk.big ? 'hero-dive' : 'ready');
+    const [dw] = spriteSet() === 'sheet' ? [sheetFrame('gk-clearance', 9).rows[0].length * (this.gk.big ? 2 : 1)] : spriteSize(this.gk.big ? 'hero-dive' : 'ready');
     const across = Math.max(this.gw * 0.25, this.gw / 2 - dw * 0.35);
     this.diveTo = { x: d.x * power * across, y: -d.y * power * this.gh * 0.65 };
   }
@@ -708,7 +757,19 @@ class ShotScene {
     const kit = this.spec.kit;
     c.fillStyle = C.shadow;
     c.fillRect(Math.round(this.gk.x + dx - pw * 0.3), this.gk.y - 1, Math.round(pw * 0.6), 2);
-    if (flying && this.gk.big) {
+    if (spriteSet() === 'sheet') {
+      // The drawn keeper: his crouch breathing while he waits, then the dive frames along the flight.
+      const s = this.gk.big ? 2 : 1;
+      let anim: SheetAnim = 'gk-defensive_stance';
+      let i = Math.floor(now / SHEET_FRAME_MS) % sheetFrames(anim);
+      if (flying) {
+        anim = d.y > 0 ? 'gk-clearance_2' : 'gk-clearance';
+        const t = Math.min(1, (now - this.diveAt) / FLY_MS);
+        i = Math.min(sheetFrames(anim) - 1, 3 + Math.floor(t * 7));
+      }
+      const [px, py] = sheetPivot(sheetFrame(anim, i), flip);
+      paintSheet(c, anim, i, kit, true, Math.round(this.gk.x + dx - px * s), Math.round(this.gk.y + dy - py * s), s, lookFor(this.spec.name), flip);
+    } else if (flying && this.gk.big) {
       const [dw, dh] = spriteSize('hero-dive');
       paintSprite(c, 'hero-dive', kit, true, Math.round(this.gk.x + dx - dw / 2), Math.round(this.gk.y + dy - dh), 1, lookFor(this.spec.name), flip);
     } else {
@@ -733,7 +794,7 @@ class ShotScene {
     const c = this.ctx;
     c.clearRect(0, 0, this.W, this.H);
     c.drawImage(this.bg, 0, 0);
-    if (this.kickAt >= 0) {
+    if (this.kickAt >= 0 && now >= this.kickAt) {
       const t = Math.min(1, (now - this.kickAt) / FLY_MS);
       const e = 1 - (1 - t) * (1 - t);
       const tx = this.kickTarget.x;
@@ -741,6 +802,7 @@ class ShotScene {
       const bx = this.ballX + (tx - this.ballX) * e;
       const by = this.ballY + (ty - this.ballY) * e - Math.sin(Math.PI * e) * this.gh * 0.25;
       c.drawImage(this.fg, 0, 0);
+      this.paintKicker(now);
       this.ball(bx, by, 3.5 - 2 * e);
       return;
     }
@@ -750,6 +812,7 @@ class ShotScene {
     this.arrow(this.ballX, this.ballY - 3, tgt.x, tgt.y, col);
     this.reticle(tgt.x, tgt.y, col);
     c.drawImage(this.fg, 0, 0);
+    this.paintKicker(now);
     this.ball(this.ballX, this.ballY, 3.5);
   }
 

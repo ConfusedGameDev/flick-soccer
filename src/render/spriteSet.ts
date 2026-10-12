@@ -1,9 +1,11 @@
-// Which player art the pitch uses: the typed 16x24 templates (the default,
-// what ships) or the imported frames (art/frames), which are still being
-// generated and are only for testing. `?sprites=generated|classic` picks and
-// remembers; a stored choice is cleared again by `?sprites=classic`.
+// Which player art the pitch uses: the hand-drawn Aseprite sheet (art/sheet,
+// the default on this branch), the typed 16x24 templates (`classic`, what
+// shipped before) or the generated frames (art/frames, still being made).
+// `?sprites=sheet|generated|classic` picks and remembers the choice under
+// localStorage, so a browser that stored `classic` earlier keeps it until it
+// visits `?sprites=sheet` once.
 
-export type SpriteSet = 'generated' | 'classic';
+export type SpriteSet = 'sheet' | 'generated' | 'classic';
 
 const KEY = 'flicksoccer.sprites';
 let current: SpriteSet | null = null;
@@ -13,11 +15,11 @@ export function spriteSet(): SpriteSet {
   let v: string | null = null;
   try {
     v = new URLSearchParams(location.search).get('sprites');
-    if (v === 'classic' || v === 'generated') localStorage.setItem(KEY, v);
+    if (v === 'classic' || v === 'generated' || v === 'sheet') localStorage.setItem(KEY, v);
     else v = localStorage.getItem(KEY);
   } catch {
     /* no storage */
   }
-  current = v === 'generated' ? 'generated' : 'classic';
+  current = v === 'generated' || v === 'classic' ? v : 'sheet';
   return current;
 }
