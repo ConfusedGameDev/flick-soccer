@@ -33,9 +33,13 @@ export const TACTIC_INFO: Record<Tactic, { name: string; text: string; price: nu
 
 export const hasTactic = (meta: TeamMeta | undefined, t: Tactic): boolean => !!meta?.tactics?.includes(t);
 
-/** Flicks a side gets this turn before packs and boosters. */
+/**
+ * Flicks a side gets this turn before packs and boosters: the base, catenaccio's third
+ * defensive flick, minus the flicks a broken-up combo cost the attack (`TeamMeta.lostFlicks`).
+ */
 export function maxFlicksFor(meta: TeamMeta | undefined, role: 'attack' | 'defense'): number {
-  return MAX_FLICKS[role] + (role === 'defense' && hasTactic(meta, 'catenaccio') ? 1 : 0);
+  if (role === 'attack') return Math.max(0, MAX_FLICKS.attack - (meta?.lostFlicks ?? 0));
+  return MAX_FLICKS.defense + (hasTactic(meta, 'catenaccio') ? 1 : 0);
 }
 
 /** Shift to a defender's interception chance on a pass (negative favours the attacker). */

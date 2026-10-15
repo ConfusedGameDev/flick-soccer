@@ -8,7 +8,7 @@ import type { Booster, MatchState, Team, TimelineEvent, TurnResult } from '../en
 import type { ServerMessage } from '../net/protocol';
 import { Socket } from '../net/Socket';
 import type { Kit } from '../render/kits';
-import type { PiecesView } from '../render/PiecesView';
+import { CELEBRATE_MS, type PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import { CARD_DELAY_MS, type Cutscene, type CutsceneKind } from '../ui/Cutscene';
@@ -236,10 +236,13 @@ export class OnlineMatch {
     preview.clear();
     pieces.setHighlights(null, []);
     await player.play(result);
+    // A goal: the scorers celebrate where they stand, then the restart hands the ball over.
+    const goal = result.events.some((e) => e.type === 'goal');
+    if (goal) await new Promise((r) => setTimeout(r, CELEBRATE_MS));
     this.state = result.state;
     this.snap();
     hud.setScoreboard(this.state);
-    await this.dramatic(result);
+    await this.dramatic(result, goal);
     const free = result.events.find((e) => e.type === 'pack' && e.free);
     if (free && free.type === 'pack') await this.showFreePack(free.team, free.booster, 'overtake');
     if (this.state.status === 'half-time') {
@@ -307,7 +310,7 @@ export class OnlineMatch {
     });
   }
 
-  private async dramatic(result: TurnResult): Promise<void> {
+  private async dramatic(result: TurnResult, held = false): Promise<void> {
     const ev = result.events;
     const find = <T extends TimelineEvent['type']>(t: T) => ev.find((e) => e.type === t) as Extract<TimelineEvent, { type: T }> | undefined;
     const shot = find('shot');
@@ -328,7 +331,7 @@ export class OnlineMatch {
     else if (throwIn) pick = ['throw-in', null, throwIn.team, null];
     if (!pick) return;
     // Let the pitch finish its say first: the shooter's follow-through, the celebration, the slide.
-    await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
+    if (!held) await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
     await this.card(...pick);
   }
 
@@ -396,6 +399,9 @@ export class OnlineMatch {
         break;
       case 'booster':
         hud.toast(`${teamName(e.team)}: ${BOOSTER_INFO[e.booster].name}!`);
+        break;
+      case 'penalty':
+        hud.toast(`${teamName(e.team)}'s combo is broken up: ${e.flicks === 1 ? 'one flick' : `${e.flicks} flicks`} fewer next attack`, true);
         break;
       case 'keeper-game':
         hud.toast(`${teamName(e.team)}: the keeper dives ${diveName(e.dive)}!`);

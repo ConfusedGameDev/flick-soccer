@@ -126,6 +126,20 @@ export function spotTaken(at: Vec2, players: readonly PlayerState[], selfId: num
   return players.some((p) => p.id !== selfId && dist(p.pos, at) < min) || reserved.some((r) => dist(r, at) < min);
 }
 
+/**
+ * The attackers as the chain projection sees them: team-mates sent running this turn stand
+ * where their run ends, so a pass played to that spot finds them as its receiver. Runs
+ * queued before the pass count; a run queued after it does not (the preview and the
+ * engine walk the plan in order).
+ */
+export function projectRuns(players: readonly PlayerState[], runs: ReadonlyMap<number, Vec2>): PlayerState[] {
+  if (runs.size === 0) return [...players];
+  return players.map((p) => {
+    const to = runs.get(p.id);
+    return to ? { ...p, pos: { ...to } } : p;
+  });
+}
+
 /** Range factor for a player's pass or shot. */
 export const kickRange = (p: PlayerState, kind: 'pass' | 'shot'): number => statFactor(kind === 'shot' ? p.stats.shot : p.stats.pass);
 
@@ -233,6 +247,11 @@ interface BallSegment {
   chainPos: number;
   /** Kicker and intended receiver play for the same club (chemistry). */
   clubmates: boolean;
+  /**
+   * The pass was played to a team-mate still running to where it lands: the ball waits
+   * there for him (a defender sliding in can still take it) instead of dying at once.
+   */
+  awaits: number | null;
 }
 
 /** How a turn's chain of play ended; drives the restart. */
@@ -287,6 +306,8 @@ export function resolveTurn(
     if (left > 0) meta[team].keeperCooldown = left;
     else delete meta[team].keeperCooldown;
   }
+  // A broken-up combo's debt is paid this turn through maxFlicksFor; it does not carry over.
+  delete meta[attackTeam].lostFlicks;
   const mods: Record<Team, TurnMods> = { home: { booster: null }, away: { booster: null } };
   // Tactics cards (catenaccio) set the base; packs and boosters adjust from there.
   const maxFlicks = { attack: maxFlicksFor(state.meta[attackTeam], 'attack'), defense: maxFlicksFor(state.meta[defenseTeam], 'defense') };
@@ -344,8 +365,8 @@ export function resolveTurn(
   }
   let unstoppableLeft = mods[attackTeam].booster === 'unstoppable-pass';
 
-  const attackFlicks = attackPlan.team === attackTeam ? attackPlan.flicks.slice(0, maxFlicks.attack) : [];
-  const defenseFlicks = defensePlan.team === defenseTeam ? defensePlan.flicks.slice(0, maxFlicks.defense) : [];
+  const attackFlicks = attackPlan.team === attackTeam ? attackPlan.flicks.slice(0, Math.max(0, maxFlicks.attack)) : [];
+  const defenseFlicks = defensePlan.team === defenseTeam ? defensePlan.flicks.slice(0, Math.max(0, maxFlicks.defense)) : [];
 
   // Every movement flick (slides, dives, runs) starts at t = 0 and runs in parallel.
   const moves: Move[] = [];
@@ -381,22 +402,31 @@ export function resolveTurn(
   // Attack: runs start now; passes and shots are queued and chained in order.
   // The chain is projected forward from the kickoff positions so that a flick
   // from the *next* carrier counts as a pass, not a run. This is the same
-  // projection the planning preview shows.
+  // projection the planning preview shows. A team-mate sent running earlier in
+  // the plan is projected to where his run ends, so a pass can be played to
+  // him there (run, pass, shoot): the ball then waits for him on arrival.
   // The first chain flick of a restart turn is the set piece: its distance is
   // fixed by the engine and it can never be a shot; later flicks are ordinary.
-  const chain: Flick[] = [];
+  const chain: { flick: Flick; receiverId: number | null }[] = [];
+  /** Where each attacker's run ends, for the receiver search of later passes. */
+  const runTo = new Map<number, Vec2>();
+  /** The plan queues a shot from a runner: a run-pass-shoot combo. */
+  let combo = false;
   let projected: MatchState = { ...state, players, ball: { ...ball }, possession: { ...possession } };
   for (const raw of attackFlicks) {
     const kind = flickKind(projected, attackTeam, 'attack', raw);
     if (kind === 'invalid') {
       events.push({ t, type: 'invalid-flick', playerId: raw.playerId, reason: 'not an attacker' });
     } else if (kind === 'run') {
+      const before = moves.length;
       addMove(byId(raw.playerId), raw, 'run');
+      if (moves.length > before) runTo.set(raw.playerId, moves[before].to);
     } else {
       const f = projected.setPiece ? { ...raw, strength: setPieceStrength(projected.setPiece, byId(raw.playerId)) } : raw;
-      chain.push(f);
+      if (kind === 'shot' && runTo.has(f.playerId)) combo = true;
       const { to, out } = passTarget(projected.ball, f, kind as 'pass' | 'shot', kickRange(byId(f.playerId), kind as 'pass' | 'shot'));
-      const receiver = kind === 'pass' && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
+      const receiver = kind === 'pass' && !out ? findReceiver(projectRuns(players, runTo), attackTeam, to, f.playerId) : null;
+      chain.push({ flick: f, receiverId: receiver?.id ?? null });
       projected = receiver
         ? { ...projected, setPiece: undefined, ball: { ...receiver.pos }, possession: { team: attackTeam, playerId: receiver.id } }
         : { ...projected, setPiece: undefined, possession: { team: attackTeam, playerId: -1 } };
@@ -428,7 +458,7 @@ export function resolveTurn(
         chainDone = true;
         break;
       }
-      const f = chain[flickIdx++];
+      const { flick: f, receiverId } = chain[flickIdx++];
       if (f.playerId !== possession.playerId) {
         events.push({ t, type: 'invalid-flick', playerId: f.playerId, reason: 'not the ball carrier' });
         continue;
@@ -455,9 +485,11 @@ export function resolveTurn(
       const speed = shot ? SHOT_SPEED : BALL_SPEED;
       const unstoppable = !shot && unstoppableLeft;
       if (unstoppable) unstoppableLeft = false;
-      const receiver = !shot && !out ? findReceiver(players, attackTeam, to, f.playerId) : null;
+      // The receiver the plan meant: a runner where his run ends, else whoever stands near the landing spot.
+      const receiver = !shot && !out ? (receiverId !== null ? byId(receiverId) : findReceiver(players, attackTeam, to, f.playerId)) : null;
       const clubmates = kicker.club !== '' && receiver?.club === kicker.club;
-      seg = { shot, height, over, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, clubmates };
+      const awaits = receiver && runTo.has(receiver.id) ? receiver.id : null;
+      seg = { shot, height, over, kicker, from, to, duration: dist(from, to) / speed, startT: t, out, rolled: new Set(), unstoppable, chainPos: flickIdx - 1, clubmates, awaits };
       events.push({ t, type: shot ? 'shot' : 'pass', from: f.playerId, to });
     }
 
@@ -539,11 +571,14 @@ export function resolveTurn(
           }
         } else {
           const receiver = findReceiver(players, attackTeam, ball, possession.playerId);
+          const runner = seg.awaits !== null ? moves.find((m) => m.idx === seg!.awaits) : undefined;
           if (receiver) {
             possession = { team: attackTeam, playerId: receiver.id };
             ball = { ...receiver.pos };
             events.push({ t, type: 'receive', playerId: receiver.id });
             seg = null;
+          } else if (runner && t < runner.duration) {
+            // Played to a runner still on his way: the ball sits where it landed until he gets there.
           } else {
             events.push({ t, type: 'dead-ball' });
             endChain({ kind: 'dead-ball' });
@@ -606,6 +641,12 @@ export function resolveTurn(
       break;
     case 'settled':
       break;
+  }
+
+  // ---- A combo broken up: the defence took the ball before the runner could shoot ----
+  if (combo && !events.some((e) => e.type === 'shot') && events.some((e) => e.type === 'intercept')) {
+    meta[attackTeam].lostFlicks = 1;
+    events.push({ t, type: 'penalty', team: attackTeam, flicks: 1 });
   }
 
   // ---- Overtake: the interceptor's side gets a free booster pack, if its hand has room ----

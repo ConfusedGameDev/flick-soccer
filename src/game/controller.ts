@@ -5,7 +5,7 @@ import { maxFlicksFor } from '../engine/tactics';
 import { mulberry32 } from '../engine/rng';
 import { packSeed } from '../engine/seeds';
 import { keeperOf } from '../engine/setup';
-import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, setPieceStrength, spotTaken } from '../engine/sim';
+import { findReceiver, flickKind, kickRange, moveRange, moveTarget, passTarget, projectRuns, setPieceStrength, spotTaken } from '../engine/sim';
 import type { Booster, Flick, KeeperDive, MatchState, Plan, SetPiece as SetPieceKind, Team, Vec2 } from '../engine/types';
 import { add, dist, normalize, scale, sub } from '../engine/vec';
 import { FlickGesture, type FlickGestureHandlers } from '../input/FlickGesture';
@@ -92,6 +92,8 @@ interface Session {
   moving: Set<number>;
   /** Where those movement flicks end; another move may not end there. */
   reserved: Vec2[];
+  /** Attack: where each runner's run ends, so a later pass can be played to him there (run, pass, shoot). */
+  runs: Map<number, Vec2>;
   /** The booster drawn from this turn's pack, once opened. */
   pack: Booster | null;
   booster: Booster | null;
@@ -169,6 +171,7 @@ export class LocalController implements PlanController {
         projected: state,
         moving: new Set(),
         reserved: [],
+        runs: new Map(),
         pack: null,
         booster: null,
         final: new Set(),
@@ -188,6 +191,8 @@ export class LocalController implements PlanController {
       this.timer = setInterval(() => this.tick(), 250);
       this.tick();
       this.refresh();
+      const lost = state.meta[team].lostFlicks ?? 0;
+      if (role === 'attack' && lost > 0) hud.toast(`${teamName(team)} lose ${lost === 1 ? 'a flick' : `${lost} flicks`}: the combo was broken up`, true);
       // A corner or throw-in starts with the set-piece scene; the rest of the turn is planned after.
       if (role === 'attack' && state.setPiece) void this.takeSetPiece();
     });
@@ -370,7 +375,8 @@ export class LocalController implements PlanController {
     if (kind === 'pass' || kind === 'shot') {
       const { to, out } = passTarget(s.projected.ball, flick, kind, kickRange(player, kind));
       if (kind === 'shot') return { kind, from: s.projected.ball, to, bad: !out };
-      const receiver = out ? null : findReceiver(s.state.players, s.team, to, id);
+      // A team-mate already sent running counts where his run ends, as in the engine's projection.
+      const receiver = out ? null : findReceiver(projectRuns(s.state.players, s.runs), s.team, to, id);
       return { kind, from: s.projected.ball, to, receiver: receiver?.pos, bad: out || !receiver };
     }
     const rangeMul = (s.booster === 'longer-slide' && kind !== 'run' ? 1.5 : 1) * moveRange(player, kind);
@@ -500,19 +506,21 @@ export class LocalController implements PlanController {
     s.ghosts = [];
     s.moving = new Set();
     s.reserved = [];
+    s.runs = new Map();
     s.projected = s.state;
     for (const f of s.draft) {
       const g = this.ghostFor(f.playerId, f);
       s.ghosts.push(g);
       if (g.kind === 'pass' || g.kind === 'shot') {
-        const receiver = g.receiver ? findReceiver(s.state.players, s.team, g.to, f.playerId) : null;
-        // Mirrors the engine: only the first chain flick is the set piece.
+        const receiver = g.receiver ? findReceiver(projectRuns(s.state.players, s.runs), s.team, g.to, f.playerId) : null;
+        // Mirrors the engine: only the first chain flick is the set piece; a runner receives where his run ends.
         s.projected = receiver
           ? { ...s.projected, setPiece: undefined, ball: { ...receiver.pos }, possession: { team: s.team, playerId: receiver.id } }
           : { ...s.projected, setPiece: undefined, possession: { team: s.team, playerId: -1 } };
       } else {
         s.moving.add(f.playerId);
         s.reserved.push(g.to);
+        if (g.kind === 'run') s.runs.set(f.playerId, g.to);
       }
     }
   }

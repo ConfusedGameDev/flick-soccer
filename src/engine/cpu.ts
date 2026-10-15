@@ -266,7 +266,7 @@ function rankAttacks(
   const rng = mulberry32(seed);
   const empty: Plan = { team: other(team), flicks: [] };
   const ranked: { plan: Plan; score: number }[] = [];
-  const maxFlicks = MAX_FLICKS.attack - (extras.pack ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
+  const maxFlicks = maxFlicksFor(state.meta[team], 'attack') - (extras.pack ? 1 : 0) + (extras.booster === 'extra-flick' ? 1 : 0);
   for (let i = 0; i < params.attackSamples; i++) {
     const plan = { ...sampleAttack(state, team, rng, maxFlicks), ...extras };
     ranked.push({ plan, score: expectedScore(state, plan, empty, team, params.seeds, seed + i) });

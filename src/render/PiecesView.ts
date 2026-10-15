@@ -11,6 +11,8 @@ export const PLAYER_RADIUS_M = 1.3;
 /** How tall a player sprite is in world meters; larger than life, as in 16-bit football games. */
 const SPRITE_HEIGHT_M = 5;
 const RUN_FRAME_MS = 130;
+/** How long the scorers celebrate on the pitch before the restart, in ms. */
+export const CELEBRATE_MS = 1500;
 
 const CARRIER_RING = 0xffd447;
 const FLICKABLE_RING = 0xffffff;
@@ -29,8 +31,8 @@ interface Piece {
   sliding: boolean;
   /** Following through a kick (sheet art), until the animation ends or the player moves. */
   kicking: boolean;
-  /** Celebrating a goal (sheet art), until the restart moves the player. */
-  celebrating: boolean;
+  /** Celebrating a goal (sheet art): ms left, 0 when not; a restart's teleport ends it early. */
+  celebrating: number;
   /** The sheet animation playing, its current frame and its own clock (ms), so one-shots start at frame 0. */
   anim: SheetAnim;
   frame: number;
@@ -94,7 +96,7 @@ export class PiecesView {
     if (piece.sliding) return p.keeper ? 'gk-clearance' : 'slide_tackle';
     if (piece.moving) return 'run';
     if (piece.kicking) return 'shoot_ball';
-    if (piece.celebrating) return 'celebration_1';
+    if (piece.celebrating > 0) return 'celebration_1';
     return p.keeper ? 'gk-idle' : 'idle';
   }
 
@@ -147,7 +149,7 @@ export class PiecesView {
       const dir: Dir8 = p.team === 'home' ? 'n' : 's';
       const anim: SheetAnim = p.keeper ? 'gk-idle' : 'idle';
       // Idles start out of phase so a line of players does not breathe in unison.
-      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false, kicking: false, celebrating: false, anim, frame: 0, clock: id * 37 };
+      const piece0 = { last: null, moving: false, facing: 1 as const, dir, sliding: false, kicking: false, celebrating: 0, anim, frame: 0, clock: id * 37 };
       const look = lookFor(p.name);
       const kit = this.kits[p.team];
       const sprite = new Sprite(this.sheet ? sheetTexture(anim, 0, kit, p.keeper, look) : this.frames ? frameTexture('idle', dir, kit, p.keeper, look) : spriteTexture('stand', kit, p.keeper, look));
@@ -216,12 +218,11 @@ export class PiecesView {
     p.clock = SHOOT_CONTACT_FRAME * SHEET_FRAME_MS;
   }
 
-  /** A goal for `team`: its players celebrate until the restart moves them. */
-  celebrate(team: Team): void {
+  /** A goal for `team`: its players celebrate for `ms` (CELEBRATE_MS), or until the restart moves them. */
+  celebrate(team: Team, ms = CELEBRATE_MS): void {
     this.pieces.forEach((p, i) => {
       if (this.players[i]?.team !== team) return;
-      p.celebrating = true;
-      p.clock = i * 53;
+      p.celebrating = ms;
     });
   }
 
@@ -281,6 +282,7 @@ export class PiecesView {
       const p = this.players[i];
       if (!p) return;
       piece.clock += dtSeconds * 1000;
+      if (piece.celebrating > 0) piece.celebrating = Math.max(0, piece.celebrating - dtSeconds * 1000);
       const tex = this.textureFor(piece, p, runFrame);
       if (piece.sprite.texture !== tex) {
         piece.sprite.texture = tex;
@@ -311,7 +313,7 @@ export class PiecesView {
         if (moved) {
           piece.kicking = false;
           // A jog keeps the celebration for when he stops; the restart's teleport ends it.
-          if (Math.hypot(dx, dy) > 3) piece.celebrating = false;
+          if (Math.hypot(dx, dy) > 3) piece.celebrating = 0;
         }
         piece.moving = moved;
       }

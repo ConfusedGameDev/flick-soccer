@@ -60,6 +60,11 @@ export interface TeamMeta {
   tactics?: Tactic[];
   /** Turns to wait before the keeper game can be used again; absent means it is ready. */
   keeperCooldown?: number;
+  /**
+   * Flicks the side loses on its next attacking turn: a run-pass-shoot combo the defence
+   * broke up before the shot. Paid through `maxFlicksFor` and dropped once paid.
+   */
+  lostFlicks?: number;
 }
 
 /** Passive rules a team carries through a season run; effects live in engine/tactics.ts. */
@@ -162,6 +167,8 @@ export type TimelineEvent = { t: number } & (
   | { type: 'booster'; team: Team; booster: Booster }
   /** The defence spent its flicks on the keeper game. */
   | { type: 'keeper-game'; team: Team; dive: KeeperDive }
+  /** The defence broke up a run-pass-shoot combo before the shot: the attack loses `flicks` next time it attacks. */
+  | { type: 'penalty'; team: Team; flicks: number }
   | { type: 'invalid-flick'; playerId: number; reason: string }
   | { type: 'half-time' }
   | { type: 'full-time' }

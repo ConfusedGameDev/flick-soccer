@@ -7,7 +7,7 @@ import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/see
 import { keeperOf, initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
 import type { Booster, MatchState, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
-import type { PiecesView } from '../render/PiecesView';
+import { CELEBRATE_MS, type PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
 import type { Sfx } from '../audio/Sfx';
@@ -385,8 +385,8 @@ export class Match {
     this.deps.sfx.whistle(true);
   }
 
-  /** The one dramatic moment of a turn, if any, as a cutscene card. */
-  private async dramatic(result: TurnResult): Promise<void> {
+  /** The one dramatic moment of a turn, if any, as a cutscene card. `held` skips the pause when the pitch already had its moment. */
+  private async dramatic(result: TurnResult, held = false): Promise<void> {
     const ev = result.events;
     const byType = <T extends TimelineEvent['type']>(t: T) => ev.find((e) => e.type === t) as Extract<TimelineEvent, { type: T }> | undefined;
     const shot = byType('shot');
@@ -423,7 +423,7 @@ export class Match {
     }
     if (!kind) return;
     // Let the pitch finish its say first: the shooter's follow-through, the celebration, the slide.
-    await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
+    if (!held) await new Promise((r) => setTimeout(r, CARD_DELAY_MS));
     await this.card(kind, playerId, team, foilId);
   }
 
@@ -522,10 +522,13 @@ export class Match {
     const result = resolveTurn(this.state, attackPlan, defensePlan, this.turnSeed());
     this.lastResult = result;
     await player.play(result);
+    // A goal: the scorers celebrate where they stand, then the restart hands the ball over.
+    const goal = result.events.some((e) => e.type === 'goal');
+    if (goal) await new Promise((r) => setTimeout(r, CELEBRATE_MS));
     this.state = result.state;
     this.snap();
     hud.setScoreboard(this.state);
-    await this.dramatic(result);
+    await this.dramatic(result, goal);
 
     const free = result.events.find((e) => e.type === 'pack' && e.free);
     if (free && free.type === 'pack') await this.showFreePack(free.team, free.booster, 'overtake');
@@ -637,6 +640,9 @@ export class Match {
         break;
       case 'keeper-game':
         hud.toast(`${teamName(e.team)}: the keeper dives ${diveName(e.dive)}!`);
+        break;
+      case 'penalty':
+        hud.toast(`${teamName(e.team)}'s combo is broken up: ${e.flicks === 1 ? 'one flick' : `${e.flicks} flicks`} fewer next attack`, true);
         break;
       case 'invalid-flick':
         hud.toast(`Ignored: ${e.reason}`);

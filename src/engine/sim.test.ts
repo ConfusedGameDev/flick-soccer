@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCK_CHANCE, BODY_RADIUS, GOAL_W, HEIGHT_SAVE_SHIFT, HOLD_CHANCE, INTERCEPT_CHANCE, KEEPER_GAME_COOLDOWN, KEEPER_GAME_COST, KEEPER_REACH, PASS_RANGE, PITCH_L, PITCH_W, RUN_RANGE, SAVE_CHANCE, SET_PIECE_METERS, SLIDE_RANGE, TACKLE_REACH, TURNS_PER_HALF } from './pitch';
 import { mulberry32 } from './rng';
+import { maxFlicksFor } from './tactics';
 import { initialMatch, keeperOf, kickoffPosition } from './setup';
-import { continueMatch, findReceiver, flickKind, keeperRead, passTarget, resolveDuel, resolveTurn, shotAcross, spotTaken } from './sim';
+import { continueMatch, findReceiver, flickKind, keeperRead, passTarget, projectRuns, resolveDuel, resolveTurn, shotAcross, spotTaken } from './sim';
 import type { Flick, KeeperDive, MatchState, Plan, PlayerState, Team, TurnResult, Vec2 } from './types';
 import { dist, normalize, sub } from './vec';
 
@@ -578,5 +579,127 @@ describe('the keeper game', () => {
     expect(resolveTurn(base, a, { ...defense(), ...game(RIGHT) }, 7).events.filter((e) => e.type !== 'keeper-game')).toEqual(
       resolveTurn(base, a, defense(), 7).events,
     );
+  });
+});
+
+describe('run, pass, shoot', () => {
+  /** Home carrier in the middle third, a team-mate ready to run into the attacking third, the away side out of the way. */
+  function comboState(): MatchState {
+    const s: MatchState = structuredClone(base);
+    const carrier = s.players[home(8).id];
+    const runner = s.players[home(9).id];
+    carrier.pos = { x: 34, y: 60 };
+    runner.pos = { x: 30, y: 68 };
+    s.ball = { ...carrier.pos };
+    s.possession = { team: 'home', playerId: carrier.id };
+    for (const p of s.players) if (p.team === 'home' && p.id !== carrier.id && p.id !== runner.id) p.pos = { x: 4 + p.number * 5, y: 20 };
+    for (const p of s.players) if (p.team === 'away' && !p.keeper) p.pos = { x: 5, y: 30 };
+    return s;
+  }
+  const run = (id: number): Flick => ({ playerId: id, dir: { x: 0, y: 1 }, strength: 1 });
+  const runEnd = { x: 30, y: 68 + RUN_RANGE };
+  const shotFrom = (id: number, from: Vec2): Flick => ({ playerId: id, dir: normalize(sub({ x: PITCH_W / 2, y: PITCH_L }, from)), strength: 1, shot: true });
+
+  it('projectRuns stands a runner where his run ends and leaves everyone else alone', () => {
+    const s = comboState();
+    const runner = home(9).id;
+    const projected = projectRuns(s.players, new Map([[runner, runEnd]]));
+    expect(projected[runner].pos).toEqual(runEnd);
+    expect(projected[home(8).id].pos).toEqual(s.players[home(8).id].pos);
+    expect(findReceiver(projected, 'home', runEnd, home(8).id)?.id).toBe(runner);
+  });
+
+  it('plays a pass to where the runner will be, waits for him there, and lets him shoot third', () => {
+    const s = comboState();
+    const carrier = home(8).id;
+    const runner = home(9).id;
+    const a = attack(run(runner), flick(carrier, s.ball, runEnd), shotFrom(runner, runEnd));
+    const r = resolveTurn(s, a, defense(), 7);
+    const receive = r.events.find((e) => e.type === 'receive');
+    expect(receive).toMatchObject({ playerId: runner });
+    const shot = r.events.find((e) => e.type === 'shot');
+    expect(shot).toMatchObject({ from: runner });
+    expect(r.events.filter((e) => e.type === 'invalid-flick')).toEqual([]);
+    expect(r.events.some((e) => e.type === 'penalty')).toBe(false);
+    expect(r.state.meta.home.lostFlicks).toBeUndefined();
+  });
+
+  it('the ball waits where it lands for the runner it was played to', () => {
+    const s = comboState();
+    const carrier = home(8).id;
+    const runner = home(9).id;
+    // A short pass lands long before the runner is anywhere near it.
+    s.players[carrier].pos = { x: 34, y: 76 };
+    s.ball = { ...s.players[carrier].pos };
+    const flight = dist(s.ball, runEnd) / 24;
+    const r = resolveTurn(s, attack(run(runner), flick(carrier, s.ball, runEnd), shotFrom(runner, runEnd)), defense(), 7);
+    const receive = r.events.find((e) => e.type === 'receive');
+    expect(receive).toMatchObject({ playerId: runner });
+    expect(receive!.t).toBeGreaterThan(flight + 0.2);
+    expect(r.events.some((e) => e.type === 'dead-ball')).toBe(false);
+    expect(r.events.find((e) => e.type === 'shot')).toMatchObject({ from: runner });
+  });
+
+  it('only counts a run queued before the pass: pass first, run after, is a dead ball', () => {
+    const s = comboState();
+    const carrier = home(8).id;
+    const runner = home(9).id;
+    s.players[carrier].pos = { x: 34, y: 76 };
+    s.ball = { ...s.players[carrier].pos };
+    const r = resolveTurn(s, attack(flick(carrier, s.ball, runEnd), run(runner)), defense(), 7);
+    expect(r.events.some((e) => e.type === 'dead-ball')).toBe(true);
+    expect(r.state.status).toBe('duel');
+  });
+
+  it('a defender sliding onto the waiting ball breaks the combo up: the attack loses a flick next time', () => {
+    const s = comboState();
+    const carrier = home(8).id;
+    const runner = home(9).id;
+    const stopper = s.players[away(5).id];
+    stopper.pos = { x: 30, y: runEnd.y + 4 };
+    const a = attack(run(runner), flick(carrier, s.ball, runEnd), shotFrom(runner, runEnd));
+    const d = defense({ playerId: stopper.id, dir: { x: 0, y: -1 }, strength: 2 / SLIDE_RANGE });
+    const r = resolveTurn(s, a, d, seedFor({ chance: INTERCEPT_CHANCE, succeeds: true }));
+    expect(r.events.some((e) => e.type === 'intercept')).toBe(true);
+    expect(r.events.some((e) => e.type === 'shot')).toBe(false);
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'penalty', team: 'home', flicks: 1 }));
+    expect(r.state.meta.home.lostFlicks).toBe(1);
+    expect(r.state.possession.team).toBe('away');
+
+    // The debt waits while the other side attacks...
+    const r2 = resolveTurn(r.state, plan('away'), plan('home'), 11);
+    expect(r2.state.meta.home.lostFlicks).toBe(1);
+    expect(maxFlicksFor(r2.state.meta.home, 'attack')).toBe(2);
+    expect(maxFlicksFor(r2.state.meta.away, 'attack')).toBe(3);
+
+    // ...and is paid on home's next attack: only two flicks count, then it is gone.
+    const s3: MatchState = { ...r2.state, status: 'playing', ball: { x: 34, y: 40 }, possession: { team: 'home', playerId: carrier } };
+    s3.players = s3.players.map((p) => (p.id === carrier ? { ...p, pos: { x: 34, y: 40 } } : p));
+    const runners = s3.players.filter((p) => p.team === 'home' && p.pos.y === 20).slice(0, 3);
+    const r3 = resolveTurn(s3, attack(...runners.map((p) => run(p.id))), plan('away'), 13);
+    expect(r3.events.filter((e) => e.type === 'run')).toHaveLength(2);
+    expect(r3.state.meta.home.lostFlicks).toBeUndefined();
+  });
+
+  it('a shot that is saved, or an intercepted pass outside the combo, costs nothing', () => {
+    const s = comboState();
+    const carrier = home(8).id;
+    const runner = home(9).id;
+    const a = attack(run(runner), flick(carrier, s.ball, runEnd), shotFrom(runner, runEnd));
+    // Every seed either scores or is saved: the shot was taken, so no penalty either way.
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const r = resolveTurn(s, a, defense(), seed);
+      expect(r.events.some((e) => e.type === 'shot')).toBe(true);
+      expect(r.events.some((e) => e.type === 'penalty')).toBe(false);
+    }
+    // A plain pass to a standing team-mate, intercepted: an overtake, not a broken combo.
+    const mate = s.players[home(7).id];
+    mate.pos = { x: 34, y: 80 };
+    const stopper = s.players[away(5).id];
+    stopper.pos = { x: 34, y: 70 };
+    const r = resolveTurn(s, attack(flick(carrier, s.ball, mate.pos)), defense(), seedFor({ chance: INTERCEPT_CHANCE, succeeds: true }));
+    expect(r.events.some((e) => e.type === 'intercept')).toBe(true);
+    expect(r.events.some((e) => e.type === 'penalty')).toBe(false);
+    expect(r.state.meta.home.lostFlicks).toBeUndefined();
   });
 });
