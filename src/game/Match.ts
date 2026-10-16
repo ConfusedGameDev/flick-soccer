@@ -6,7 +6,7 @@ import { mulberry32 } from '../engine/rng';
 import { cpuSeed, duelSeed, kickoffSeed, newSeed, turnSeed } from '../engine/seeds';
 import { keeperOf, initialMatch } from '../engine/setup';
 import { continueMatch, resolveDuel, resolveTurn } from '../engine/sim';
-import type { Booster, MatchState, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
+import type { Booster, MatchState, Plan, Tactic, Team, TimelineEvent, TurnResult } from '../engine/types';
 import type { PiecesView } from '../render/PiecesView';
 import type { PlanPreview } from '../render/PlanPreview';
 import type { TimelinePlayer } from '../render/TimelinePlayer';
@@ -25,6 +25,7 @@ import { CpuController, teamName, type LocalController, type PlanController } fr
 import type { TeamBuilder } from './TeamBuilder';
 import { Tutor, setTutorialState, tutorialState } from './Tutorial';
 import { RUN_STAGES, applyResult, clearRun, loadRun, newRun, opponentFor, saveRun, type RunState } from './run';
+import { SAVED_MODES, clearSavedMatch, loadSavedMatch, saveMatch, savedMatchLabel, type SavedMatch, type SavedMode } from './saved';
 
 export type Phase =
   | 'MENU'
@@ -89,6 +90,12 @@ export class Match {
   /** Tactics cards in play for the next match (season run). */
   private startTactics: Partial<Record<Team, Tactic[]>> = {};
   private controllers: Record<Team, PlanController>;
+  /** A saved match the player chose to continue from the menu; consumed by the next playMatch. */
+  private resume: SavedMatch | null = null;
+  /** The attack plan restored with a saved match, used instead of asking the attacker again. */
+  private resumedPlan: Plan | null = null;
+  /** The run the match in play belongs to (season run only), stamped on every snapshot. */
+  private runKey: { seed: number; stage: number } | undefined;
 
   constructor(private readonly deps: MatchDeps) {
     this.controllers = { home: deps.local, away: deps.local };
@@ -106,6 +113,13 @@ export class Match {
       }
       if (this.mode === 'run') {
         await this.seasonRun();
+        continue;
+      }
+      if (this.resume) {
+        // A saved match: kits and controllers were set by the menu, the state comes with it.
+        const saved = this.resume;
+        this.resume = null;
+        await this.playMatch('Back to menu', saved);
         continue;
       }
       if (this.mode === 'tutorial') {
@@ -126,16 +140,50 @@ export class Match {
     }
   }
 
-  /** The coin toss, the turns and the full-time card, for whatever squads and kits are set. */
-  private async playMatch(button = 'Back to menu'): Promise<void> {
-    await this.kickoff();
+  /**
+   * The coin toss, the turns and the full-time card, for whatever squads and kits
+   * are set; with a saved match, the turns carry on from its snapshot instead.
+   */
+  private async playMatch(button = 'Back to menu', saved?: SavedMatch): Promise<void> {
+    if (saved) this.restore(saved);
+    else await this.kickoff();
     this.deps.sfx.crowdStart();
     while (this.state.status !== 'full-time' && !this.quit) await this.runTurn();
+    clearSavedMatch();
     if (!this.quit) await this.fullTime(button);
     this.deps.sfx.crowdStop();
     this.quit = false;
     this.startBoosters = {};
     this.startTactics = {};
+  }
+
+  /** Pick up a saved match where it stopped: the seed, the state and any confirmed attack plan. */
+  private restore(saved: SavedMatch): void {
+    const { pieces, hud, local } = this.deps;
+    this.seed = saved.seed;
+    local.setSeed(this.seed);
+    this.state = saved.state;
+    this.resumedPlan = saved.attackPlan ?? null;
+    pieces.rebuild(this.state.players);
+    this.snap();
+    hud.setScoreboard(this.state);
+    hud.toast('Match resumed', true);
+  }
+
+  /**
+   * Snapshot the match so closing the app loses nothing. Called at every turn
+   * boundary; the tutorial and online matches are never saved. `state` lets the
+   * resolved state be saved before its playback has made it current.
+   */
+  private persist(state: MatchState = this.state, attackPlan?: Plan): void {
+    if (this.tutor || !SAVED_MODES.includes(this.mode as SavedMode)) return;
+    saveMatch({ v: 1, mode: this.mode as SavedMode, seed: this.seed, state, kits: this.kits, attackPlan, run: this.runKey });
+  }
+
+  /** The CPU opponent: seeded from the match seed and clock, so a replay thinks the same thoughts. */
+  private useCpu(difficulty: Difficulty): void {
+    const { local, hud } = this.deps;
+    this.controllers = { home: local, away: new CpuController(difficulty, hud, (s) => cpuSeed(this.seed, s)) };
   }
 
   /**
@@ -145,7 +193,16 @@ export class Match {
   private async seasonRun(): Promise<void> {
     const { hud, builder, pool, pieces, local, store } = this.deps;
     let run: RunState | null = loadRun();
-    if (run && !run.over) {
+    // A saved match of this run: straight back onto the pitch, no store and no cover.
+    let saved = this.resume;
+    this.resume = null;
+    if (saved && (!run || run.over || saved.run?.seed !== run.seed || saved.run?.stage !== run.stage)) {
+      clearSavedMatch();
+      saved = null;
+    }
+    if (saved) {
+      /* the menu already chose to continue */
+    } else if (run && !run.over) {
       const pick = await hud.showMenu<'continue' | 'new'>('Season run', `A run is in progress: match ${run.stage + 1} of ${RUN_STAGES}, 🪙 ${run.coins}.`, [
         { key: 'continue', label: 'Continue the run' },
         { key: 'new', label: 'Start a new run' },
@@ -164,29 +221,39 @@ export class Match {
     }
     for (;;) {
       const opponent = opponentFor(pool, run);
-      if (run.results.length > 0) {
-        const next = await store.run(run, pool, opponent);
-        if (!next) return;
-        run = next;
-        saveRun(run);
+      if (saved) {
+        this.kits = saved.kits;
+        pieces.setKits({ ...this.kits });
+        hud.setKits(this.kits);
+        this.useCpu(opponent.difficulty);
+      } else {
+        if (run.results.length > 0) {
+          const next = await store.run(run, pool, opponent);
+          if (!next) return;
+          run = next;
+          saveRun(run);
+        }
+        const home = [...KITS, ...loadCustomKits()].find((k) => k.id === run!.kitId) ?? KITS[0];
+        const away = KITS.filter((k) => k.id !== home.id)[(run.seed + run.stage) % (KITS.length - 1)];
+        this.kits = { home, away };
+        pieces.setKits({ ...this.kits });
+        hud.setKits(this.kits);
+        this.squads = { home: run.squad, away: opponent.squad };
+        this.startBoosters = { home: run.boosters };
+        this.startTactics = { home: run.tactics };
+        this.seed = newSeed();
+        local.setSeed(this.seed);
+        this.useCpu(opponent.difficulty);
+        await hud.showCover(
+          `Match ${run.stage + 1} of ${RUN_STAGES}: ${opponent.name}`,
+          `${opponent.difficulty === 'easy' ? 'An easy opponent' : 'A sharp opponent'} drafted with ${opponent.budget} points. Win to move up the ladder; a draw replays the stage; a loss ends the run.`,
+          'Kick off',
+        );
       }
-      const home = [...KITS, ...loadCustomKits()].find((k) => k.id === run!.kitId) ?? KITS[0];
-      const away = KITS.filter((k) => k.id !== home.id)[(run.seed + run.stage) % (KITS.length - 1)];
-      this.kits = { home, away };
-      pieces.setKits({ ...this.kits });
-      hud.setKits(this.kits);
-      this.squads = { home: run.squad, away: opponent.squad };
-      this.startBoosters = { home: run.boosters };
-      this.startTactics = { home: run.tactics };
-      this.seed = newSeed();
-      local.setSeed(this.seed);
-      this.controllers = { home: local, away: new CpuController(opponent.difficulty, hud, (s) => cpuSeed(this.seed, s)) };
-      await hud.showCover(
-        `Match ${run.stage + 1} of ${RUN_STAGES}: ${opponent.name}`,
-        `${opponent.difficulty === 'easy' ? 'An easy opponent' : 'A sharp opponent'} drafted with ${opponent.budget} points. Win to move up the ladder; a draw replays the stage; a loss ends the run.`,
-        'Kick off',
-      );
-      await this.playMatch('Continue');
+      this.runKey = { seed: run.seed, stage: run.stage };
+      await this.playMatch('Continue', saved ?? undefined);
+      this.runKey = undefined;
+      saved = null;
       run = applyResult(run, this.state.score, opponent.name, this.state.meta.home.boosters);
       saveRun(run);
       if (run.over) {
@@ -231,9 +298,7 @@ export class Match {
     hud.setPlanning(null);
     hud.setScoreboard(this.state);
     local.setSeed(this.seed);
-    const cpuEasy = () => {
-      this.controllers = { home: local, away: new CpuController('easy', hud, (s) => cpuSeed(this.seed, s)) };
-    };
+    this.resume = null;
     if (tutorialState() === 'new') {
       setTutorialState('offered');
       const pick = await hud.showMenu<'tutorial' | 'skip'>('Welcome!', 'First time here? A short guided match teaches flicks, defending and the booster packs.', [
@@ -242,9 +307,35 @@ export class Match {
       ]);
       if (pick === 'tutorial') {
         this.mode = 'tutorial';
-        cpuEasy();
+        this.useCpu('easy');
         return;
       }
+    }
+    // A match left unfinished the last time the app closed: offer to pick it up.
+    let saved = loadSavedMatch();
+    if (saved?.mode === 'run') {
+      const run = loadRun();
+      if (!run || run.over || saved.run?.seed !== run.seed || saved.run?.stage !== run.stage) {
+        clearSavedMatch();
+        saved = null;
+      }
+    }
+    if (saved) {
+      const pick = await hud.showMenu<'continue' | 'discard'>('Match in progress', savedMatchLabel(saved), [
+        { key: 'continue', label: 'Continue the match' },
+        { key: 'discard', label: 'Abandon it' },
+      ]);
+      if (pick === 'continue') {
+        this.mode = saved.mode;
+        this.resume = saved;
+        this.kits = saved.kits;
+        this.deps.pieces.setKits({ ...this.kits });
+        hud.setKits(this.kits);
+        if (saved.mode === 'hotseat') this.controllers = { home: local, away: local };
+        else if (saved.mode !== 'run') this.useCpu(saved.mode === 'cpu-easy' ? 'easy' : 'normal');
+        return;
+      }
+      clearSavedMatch();
     }
     hud.overlay.classList.add('title');
     this.mode = await hud.showMenu<Mode>('Super Soccer Deluxo', 'Turn-based flick football', [
@@ -259,14 +350,11 @@ export class Match {
     hud.overlay.classList.remove('title');
     if (this.mode === 'online-create' || this.mode === 'online-join' || this.mode === 'run') return;
     if (this.mode === 'tutorial') {
-      cpuEasy();
+      this.useCpu('easy');
     } else if (this.mode === 'hotseat') {
       this.controllers = { home: local, away: local };
     } else {
-      const difficulty: Difficulty = this.mode === 'cpu-easy' ? 'easy' : 'normal';
-      // The CPU's seed comes from the match seed and clock, so a replay thinks the same thoughts.
-      const cpu = new CpuController(difficulty, hud, (s) => cpuSeed(this.seed, s));
-      this.controllers = { home: local, away: cpu };
+      this.useCpu(this.mode === 'cpu-easy' ? 'easy' : 'normal');
     }
   }
 
@@ -470,59 +558,77 @@ export class Match {
     });
   }
 
+  /**
+   * One turn: both plans, the resolution, then whatever the result calls for
+   * (a duel, half time, the review). A match restored right after a resolution
+   * enters with status 'duel' or 'half-time' and only settles that.
+   */
   private async runTurn(): Promise<void> {
     const { hud, player, pieces, preview, duel } = this.deps;
-    const attackTeam = this.state.possession.team;
-    const defenseTeam = other(attackTeam);
     const turnLabel = `Half ${this.state.half} · Turn ${this.state.turn}`;
+    /** Who attacked this turn; null when the turn was resolved before the match was restored. */
+    let attackTeam: Team | null = null;
     this.snap();
     hud.setScoreboard(this.state);
 
-    if (this.hotSeat) {
-      this.setPhase('HANDOFF');
-      await hud.showCover(
-        `${turnLabel}: ${teamName(attackTeam)} attack`,
-        `Hand the device to the ${teamName(attackTeam)} player. Tap Ready when nobody else is looking.`,
-      );
-    }
-    this.setPhase('PLAN_ATTACK');
-    if (this.tutor && !this.isCpu(attackTeam)) {
-      hud.setStatus(`${teamName(attackTeam)} attack`, 'The coach has a word…');
-      await this.tutor.beat('attack');
-    }
-    const attackPlan = await this.controllers[attackTeam].plan(this.state, attackTeam, 'attack');
+    if (this.state.status === 'playing') {
+      attackTeam = this.state.possession.team;
+      const defenseTeam = other(attackTeam);
+      this.persist();
 
-    if (this.hotSeat) {
-      this.setPhase('HANDOFF');
-      await hud.showCover(
-        `${teamName(defenseTeam)} defend`,
-        `Hand the device to the ${teamName(defenseTeam)} player. The attack plan is hidden.`,
-      );
-    }
-    this.setPhase('PLAN_DEFENSE');
-    if (this.tutor && !this.isCpu(defenseTeam)) {
-      hud.setStatus(`${teamName(defenseTeam)} defend`, 'The coach has a word…');
-      await this.tutor.beat('defense');
-    }
-    const defensePlan = await this.controllers[defenseTeam].plan(this.state, defenseTeam, 'defense');
+      let attackPlan = this.resumedPlan;
+      this.resumedPlan = null;
+      if (!attackPlan) {
+        if (this.hotSeat) {
+          this.setPhase('HANDOFF');
+          await hud.showCover(
+            `${turnLabel}: ${teamName(attackTeam)} attack`,
+            `Hand the device to the ${teamName(attackTeam)} player. Tap Ready when nobody else is looking.`,
+          );
+        }
+        this.setPhase('PLAN_ATTACK');
+        if (this.tutor && !this.isCpu(attackTeam)) {
+          hud.setStatus(`${teamName(attackTeam)} attack`, 'The coach has a word…');
+          await this.tutor.beat('attack');
+        }
+        attackPlan = await this.controllers[attackTeam].plan(this.state, attackTeam, 'attack');
+        this.persist(this.state, attackPlan);
+      }
 
-    this.setPhase('RESOLVE');
-    await this.tutor?.beat('resolve');
-    hud.setPlanning(null);
-    hud.setStatus(turnLabel, 'Both plans play out…');
-    preview.clear();
-    pieces.setHighlights(null, []);
-    const result = resolveTurn(this.state, attackPlan, defensePlan, this.turnSeed());
-    this.lastResult = result;
-    await player.play(result);
-    this.state = result.state;
-    this.snap();
-    hud.setScoreboard(this.state);
-    await this.dramatic(result);
+      if (this.hotSeat) {
+        this.setPhase('HANDOFF');
+        await hud.showCover(
+          `${teamName(defenseTeam)} defend`,
+          `Hand the device to the ${teamName(defenseTeam)} player. The attack plan is hidden.`,
+        );
+      }
+      this.setPhase('PLAN_DEFENSE');
+      if (this.tutor && !this.isCpu(defenseTeam)) {
+        hud.setStatus(`${teamName(defenseTeam)} defend`, 'The coach has a word…');
+        await this.tutor.beat('defense');
+      }
+      const defensePlan = await this.controllers[defenseTeam].plan(this.state, defenseTeam, 'defense');
 
-    const free = result.events.find((e) => e.type === 'pack' && e.free);
-    if (free && free.type === 'pack') await this.showFreePack(free.team, free.booster, 'overtake');
-    await this.tutor?.beat('resolved');
+      this.setPhase('RESOLVE');
+      await this.tutor?.beat('resolve');
+      hud.setPlanning(null);
+      hud.setStatus(turnLabel, 'Both plans play out…');
+      preview.clear();
+      pieces.setHighlights(null, []);
+      const result = resolveTurn(this.state, attackPlan, defensePlan, this.turnSeed());
+      this.lastResult = result;
+      // Saved before the playback: closing the app mid-animation cannot replay the turn.
+      this.persist(result.state);
+      await player.play(result);
+      this.state = result.state;
+      this.snap();
+      hud.setScoreboard(this.state);
+      await this.dramatic(result);
+
+      const free = result.events.find((e) => e.type === 'pack' && e.free);
+      if (free && free.type === 'pack') await this.showFreePack(free.team, free.booster, 'overtake');
+      await this.tutor?.beat('resolved');
+    }
 
     if (this.state.status === 'duel') {
       this.setPhase('DUEL');
@@ -531,6 +637,7 @@ export class Match {
       const winner = await duel.run({ left: 'home', right: 'away' }, NAMES, this.cpuMasher(), undefined, this.kits);
       const { state, booster } = resolveDuel(this.state, winner, duelSeed(this.seed, this.state));
       this.state = state;
+      this.persist();
       this.snap();
       await this.card('duel', this.state.possession.playerId, winner);
       if (booster) await this.showFreePack(winner, booster, 'win the ball');
@@ -544,6 +651,7 @@ export class Match {
         'Start second half',
       );
       this.state = continueMatch(this.state);
+      this.persist();
       return;
     }
     if (this.state.status === 'full-time') return;
@@ -551,8 +659,8 @@ export class Match {
     this.setPhase('REVIEW');
     const next = this.state.possession.team;
     hud.setStatus(
-      `${turnLabel} done`,
-      next === attackTeam ? `${teamName(next)} keep the ball` : `${teamName(next)} take over the attack`,
+      attackTeam ? `${turnLabel} done` : 'Match resumed',
+      attackTeam === null ? `${teamName(next)} attack` : next === attackTeam ? `${teamName(next)} keep the ball` : `${teamName(next)} take over the attack`,
     );
     if ((await this.tutor?.beat('review')) === 'quit') {
       this.quit = true;

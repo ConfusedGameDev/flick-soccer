@@ -42,6 +42,8 @@ async function nativeSetup(): Promise<void> {
  * Silence the game while it is in the background. The page's visibility
  * covers browsers and iOS; the Android WebView does not reliably report it
  * when the activity pauses, so the App plugin's state change is wired too.
+ * Nothing needs saving here: Match snapshots itself synchronously at every
+ * turn boundary (game/saved.ts), so the latest one is already on disk.
  */
 function lifecycle(sfx: Sfx): void {
   document.addEventListener('visibilitychange', () => (document.hidden ? sfx.suspend() : sfx.resume()));
