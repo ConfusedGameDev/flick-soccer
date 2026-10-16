@@ -1459,7 +1459,7 @@ button:disabled {
   --right: var(--away);
 }
 
-/* The rope: each side's colour reaches from its end to the knot; a press pulls the knot your way. */
+/* The rope: the leader's colour grows from the centre out to the knot; a press pulls the knot your way. */
 .duel-rope {
   display: flex;
   align-items: center;
@@ -1494,13 +1494,15 @@ button:disabled {
 }
 
 .duel-pull.left {
-  left: 0;
+  right: 50%;
+  width: 0;
   border-radius: 9px 0 0 9px;
   background: var(--left);
 }
 
 .duel-pull.right {
-  right: 0;
+  left: 50%;
+  width: 0;
   border-radius: 0 9px 9px 0;
   background: var(--right);
 }

@@ -75,7 +75,7 @@ There are no offside or fouls in the PoC.
 
 | Mode | How it works |
 |---|---|
-| Same-device | Two round arcade buttons in the teams' colours, one on each side of the screen, with multi-touch so both players can press at once; every press buzzes the phone. The rope between them shows a ball knot that each press pulls toward the presser. Keyboard fallback for desktop (`A` for the left player, `L` for the right). |
+| Same-device | Two round arcade buttons in the teams' colours, one on each side of the screen, with multi-touch so both players can press at once; every press buzzes the phone. The rope between them shows a ball knot that each press pulls toward the presser, and the leader's colour grows from the centre out to the knot. Keyboard fallback for desktop (`A` for the left player, `L` for the right). |
 | vs CPU | The CPU presses at a rate set by difficulty, with some random variation. |
 | Online | Each client sends its press counts to the server, which decides the winner. Presses are capped at about 15 per second to block auto-clickers **(proposed)**. |
 
